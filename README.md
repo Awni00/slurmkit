@@ -14,7 +14,7 @@ A CLI toolkit for managing and generating SLURM jobs.
 ### From Source
 
 ```bash
-pip install git+https://github.com/Awni00/slurm-job-utils.git
+pip install git+https://github.com/Awni00/slurmkit.git
 ```
 <!--
 ### From PyPI
