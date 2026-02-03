@@ -1,0 +1,45 @@
+name: hyperparameter_sweep
+description: "Demo: Parameter sweep to test slurmkit grid mode"
+
+# Template and output configuration
+template: ../../templates/training.job.j2
+output_dir: ../../jobs/hyperparameter_sweep/job_scripts
+logs_dir: ../../jobs/hyperparameter_sweep/logs
+
+# Parameter grid - generates all combinations
+# This creates: 2 algorithms × 2 datasets × 2 configs = 8 jobs
+parameters:
+  mode: grid
+  values:
+    # Algorithm to test
+    algorithm: [algo_a, algo_b]
+
+    # Dataset size
+    dataset: [small, large]
+
+    # Configuration
+    config: [default, optimized]
+
+    # Fixed parameter: how long each job runs (in seconds)
+    duration: [15]
+
+# SLURM resource configuration
+slurm_args:
+  # Default resources (minimal for demo)
+  defaults:
+    # partition: devel  # use project-level default partition
+    time: "00:05:00"   # 5 minutes is plenty for demo
+    mem: "1G"          # Minimal memory needed
+    nodes: 1
+    ntasks: 1
+    cpus_per_task: 1
+
+  # Dynamic resource allocation based on parameters
+  # See slurm_logic.py for implementation
+  logic:
+    file: slurm_logic.py
+    function: get_slurm_args
+
+# Job naming pattern
+# This creates readable names like: demo_algo_a_small_default
+job_name_pattern: "demo_{{ algorithm }}_{{ dataset }}_{{ config }}"

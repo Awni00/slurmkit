@@ -1,0 +1,118 @@
+#!/bin/bash
+#SBATCH --job-name={{ job_name }}
+#SBATCH --partition={{ slurm.partition }}
+#SBATCH --time={{ slurm.time }}
+#SBATCH --mem={{ slurm.mem }}
+#SBATCH --nodes={{ slurm.nodes }}
+#SBATCH --ntasks={{ slurm.ntasks }}
+{% if slurm.gpus is defined %}
+#SBATCH --gres=gpu:{{ slurm.gpus }}
+{% endif %}
+{% if slurm.cpus_per_task is defined %}
+#SBATCH --cpus-per-task={{ slurm.cpus_per_task }}
+{% endif %}
+#SBATCH --output={{ logs_dir }}/{{ job_name }}.%j.out
+
+# =============================================================================
+# Slurmkit Demo Job: {{ job_name }}
+# Description: Simple demo job to test slurmkit functionality
+# =============================================================================
+
+echo "=================================="
+echo "SLURMKIT DEMO JOB"
+echo "=================================="
+echo "Job started at: $(date)"
+echo "Running on: $(hostname)"
+echo "Job ID: $SLURM_JOB_ID"
+echo "Job name: {{ job_name }}"
+echo "=================================="
+
+# Print all job parameters
+echo ""
+echo "Job Parameters:"
+{% for key, value in params.items() %}
+echo "  {{ key }}: {{ value }}"
+{% endfor %}
+echo ""
+
+# Print SLURM resource allocation
+echo "SLURM Resources:"
+echo "  Partition: {{ slurm.partition }}"
+echo "  Time limit: {{ slurm.time }}"
+echo "  Memory: {{ slurm.mem }}"
+{% if slurm.gpus is defined %}
+echo "  GPUs: {{ slurm.gpus }}"
+{% endif %}
+{% if slurm.cpus_per_task is defined %}
+echo "  CPUs per task: {{ slurm.cpus_per_task }}"
+{% endif %}
+echo ""
+
+{% if algorithm == 'algo_b' and config == 'optimized' %}
+# =============================================================================
+# SIMULATED FAILURE: algo_b is incompatible with optimized config
+# =============================================================================
+echo ""
+echo "ERROR: Algorithm 'algo_b' is incompatible with 'optimized' configuration!"
+echo "This is a simulated failure for testing slurmkit error handling."
+echo ""
+echo "=================================="
+echo "Job FAILED at: $(date)"
+echo "=================================="
+exit 1
+
+{% elif dataset == 'large' and algorithm == 'algo_a' %}
+# =============================================================================
+# SIMULATED FAILURE: algo_a sometimes fails on large datasets
+# =============================================================================
+echo ""
+echo "ERROR: Algorithm 'algo_a' encountered out-of-memory error on large dataset!"
+echo "This is a simulated failure for testing slurmkit error handling."
+echo ""
+echo "=================================="
+echo "Job FAILED at: $(date)"
+echo "=================================="
+exit 2
+
+{% else %}
+# Simulate some work with a sleep
+echo "Simulating work..."
+DURATION={{ duration | default(10) }}
+echo "Sleeping for $DURATION seconds..."
+
+for i in $(seq 1 $DURATION); do
+    echo "  Progress: $i/$DURATION seconds"
+    sleep 1
+done
+
+echo ""
+echo "Work complete!"
+echo ""
+
+# Create a simple output file
+OUTPUT_DIR="results/{{ job_name }}"
+mkdir -p "$OUTPUT_DIR"
+OUTPUT_FILE="$OUTPUT_DIR/result.txt"
+
+cat > "$OUTPUT_FILE" << EOF
+Job: {{ job_name }}
+Job ID: $SLURM_JOB_ID
+Hostname: $(hostname)
+Start time: $(date)
+Parameters:
+{% for key, value in params.items() %}
+  {{ key }}: {{ value }}
+{% endfor %}
+Status: SUCCESS
+EOF
+
+echo "Results written to: $OUTPUT_FILE"
+
+echo ""
+echo "=================================="
+echo "Job completed successfully!"
+echo "Job ended at: $(date)"
+echo "=================================="
+
+exit 0
+{% endif %}

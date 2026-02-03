@@ -1,0 +1,73 @@
+#!/bin/bash
+#SBATCH --job-name={{ job_name }}
+#SBATCH --partition={{ slurm.partition }}
+#SBATCH --time={{ slurm.time }}
+#SBATCH --mem={{ slurm.mem }}
+{% if slurm.gpus is defined %}
+#SBATCH --gres=gpu:{{ slurm.gpus }}
+{% endif %}
+#SBATCH --output={{ logs_dir }}/{{ job_name }}.%j.out
+
+# =============================================================================
+# Slurmkit Demo Job: {{ job_name }}
+# Description: Simple evaluation demo
+# =============================================================================
+
+echo "=================================="
+echo "SLURMKIT DEMO - EVALUATION"
+echo "=================================="
+echo "Job started at: $(date)"
+echo "Running on: $(hostname)"
+echo "Job ID: $SLURM_JOB_ID"
+echo "=================================="
+
+# Print parameters
+echo ""
+echo "Evaluation Parameters:"
+{% for key, value in params.items() %}
+echo "  {{ key }}: {{ value }}"
+{% endfor %}
+echo ""
+
+# Simulate evaluation work
+DURATION={{ duration | default(5) }}
+echo "Running evaluation for $DURATION seconds..."
+sleep $DURATION
+
+# Generate fake metrics
+ACCURACY=$(awk -v min=0.85 -v max=0.95 'BEGIN{srand(); print min+rand()*(max-min)}')
+LOSS=$(awk -v min=0.05 -v max=0.15 'BEGIN{srand(); print min+rand()*(max-min)}')
+
+echo ""
+echo "Evaluation Results:"
+echo "  Accuracy: $ACCURACY"
+echo "  Loss: $LOSS"
+echo ""
+
+# Save results
+RESULTS_DIR="results/evaluations"
+mkdir -p "$RESULTS_DIR"
+RESULTS_FILE="$RESULTS_DIR/{{ job_name }}_results.txt"
+
+cat > "$RESULTS_FILE" << EOF
+Evaluation Results for {{ job_name }}
+Job ID: $SLURM_JOB_ID
+Date: $(date)
+Parameters:
+{% for key, value in params.items() %}
+  {{ key }}: {{ value }}
+{% endfor %}
+
+Metrics:
+  Accuracy: $ACCURACY
+  Loss: $LOSS
+EOF
+
+echo "Results saved to: $RESULTS_FILE"
+echo ""
+echo "=================================="
+echo "Evaluation complete!"
+echo "Job ended at: $(date)"
+echo "=================================="
+
+exit 0

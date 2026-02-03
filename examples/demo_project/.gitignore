@@ -1,0 +1,24 @@
+# slurmkit generated files
+.slurm-kit/
+.job-collections/
+jobs/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+
+# Training outputs
+checkpoints/
+logs/training/
+results/
+wandb/
+
+# Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~

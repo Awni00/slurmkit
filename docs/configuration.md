@@ -1,0 +1,219 @@
+# Configuration
+
+slurmkit uses a layered configuration system with the following precedence (highest to lowest):
+
+1. **CLI arguments** - Override everything
+2. **Environment variables** - System-level defaults
+3. **Project config file** - `.slurm-kit/config.yaml`
+4. **Built-in defaults** - Fallback values
+
+## Configuration File
+
+The project configuration file is located at `.slurm-kit/config.yaml` relative to your project root.
+
+### Creating Configuration
+
+Initialize configuration interactively:
+
+```bash
+slurmkit init
+```
+
+Or create/edit `.slurm-kit/config.yaml` manually.
+
+### Full Configuration Reference
+
+```yaml
+# =============================================================================
+# Directory Structure
+# =============================================================================
+
+# Root directory for job files (scripts, outputs)
+# Relative paths are resolved from project root
+jobs_dir: jobs/
+
+# Directory for collection YAML files
+collections_dir: .job-collections/
+
+# Directory for cross-cluster sync files
+sync_dir: .slurm-kit/sync/
+
+# =============================================================================
+# Output File Patterns
+# =============================================================================
+
+# Patterns to match job output files
+# Tried in order; first match wins
+# Placeholders: {job_name}, {job_id}
+output_patterns:
+  - "{job_name}.{job_id}.out"
+  - "{job_name}.{job_id}.*.out"
+  - "slurm-{job_id}.out"
+
+# =============================================================================
+# Job Directory Structure
+# =============================================================================
+
+# Subdirectory names within each experiment directory
+job_structure:
+  scripts_subdir: job_scripts/   # Where job scripts are stored
+  logs_subdir: logs/             # Where output files are stored
+
+# =============================================================================
+# Default SLURM Arguments
+# =============================================================================
+
+# These defaults are used when generating jobs
+slurm_defaults:
+  partition: compute
+  time: "24:00:00"
+  mem: "16G"
+  nodes: 1
+  ntasks: 1
+  # Add any other SLURM directives here
+  # gpus: 1
+  # cpus-per-task: 4
+
+# =============================================================================
+# Cleanup Settings
+# =============================================================================
+
+cleanup:
+  # Minimum runtime (seconds) for jobs to keep during cleanup
+  # Jobs that failed faster than this are candidates for deletion
+  threshold_seconds: 300
+
+  # Minimum age (days) for jobs to consider during cleanup
+  # Prevents deleting recent failures that might be retrying
+  min_age_days: 3
+
+# =============================================================================
+# W&B Settings (Optional)
+# =============================================================================
+
+wandb:
+  # Your W&B username or team name
+  entity: null
+
+  # Default projects for cleanup commands
+  default_projects: []
+```
+
+## Environment Variables
+
+All settings can be overridden via environment variables:
+
+| Variable | Description | Example |
+|----------|-------------|---------|
+| `SLURMKIT_CONFIG` | Path to config file | `/path/to/config.yaml` |
+| `SLURMKIT_JOBS_DIR` | Jobs directory | `experiments/` |
+| `SLURMKIT_COLLECTIONS_DIR` | Collections directory | `.collections/` |
+| `SLURMKIT_SYNC_DIR` | Sync files directory | `.slurm-kit/sync/` |
+| `SLURMKIT_WANDB_ENTITY` | W&B entity | `awni00` |
+| `SLURMKIT_WANDB_PROJECT` | Default W&B project | `my-project` |
+| `SLURMKIT_DRY_RUN` | Global dry-run mode | `1` or `true` |
+
+### Example Usage
+
+```bash
+# Use different jobs directory
+export SLURMKIT_JOBS_DIR=experiments/
+
+# Enable dry-run mode globally
+export SLURMKIT_DRY_RUN=1
+
+# Run command with overrides
+slurmkit status exp1
+```
+
+## CLI Overrides
+
+Most commands accept arguments to override configuration:
+
+```bash
+# Override jobs directory
+slurmkit status exp1 --jobs-dir /custom/path/
+
+# Override config file
+slurmkit --config /path/to/config.yaml status exp1
+```
+
+## Output File Patterns
+
+The `output_patterns` setting controls how slurmkit finds and parses job output files.
+
+### Pattern Syntax
+
+- `{job_name}` - Matches the job name (any characters)
+- `{job_id}` - Matches the SLURM job ID (digits, optional underscore for arrays)
+- `*` - Wildcard (any characters except dots)
+
+### Common Patterns
+
+```yaml
+output_patterns:
+  # Standard pattern: job_name.job_id.out
+  - "{job_name}.{job_id}.out"
+
+  # With extra suffix: job_name.job_id.hostname.out
+  - "{job_name}.{job_id}.*.out"
+
+  # SLURM default: slurm-job_id.out
+  - "slurm-{job_id}.out"
+
+  # Array jobs: job_name.job_id_index.out
+  - "{job_name}.{job_id}.out"
+```
+
+### Priority
+
+Patterns are tried in order. Use more specific patterns first:
+
+```yaml
+output_patterns:
+  # More specific first
+  - "{job_name}.{job_id}.node01.out"
+  - "{job_name}.{job_id}.*.out"
+  # Generic fallback last
+  - "slurm-{job_id}.out"
+```
+
+## SLURM Defaults
+
+The `slurm_defaults` section provides default values for job generation:
+
+```yaml
+slurm_defaults:
+  partition: gpu
+  time: "48:00:00"
+  mem: "64G"
+  nodes: 1
+  ntasks: 1
+  gpus: 2
+  cpus-per-task: 8
+
+  # Any valid SLURM directive
+  mail-user: user@example.com
+  mail-type: END,FAIL
+```
+
+These are passed to job templates as `{{ slurm.partition }}`, `{{ slurm.time }}`, etc.
+
+## Programmatic Access
+
+Access configuration from Python:
+
+```python
+from slurmkit import get_config
+
+# Get global config
+config = get_config()
+
+# Access values
+jobs_dir = config.get_path("jobs_dir")
+partition = config.get("slurm_defaults.partition")
+patterns = config.get_output_patterns()
+
+# Get full config as dict
+config_dict = config.as_dict()
+```

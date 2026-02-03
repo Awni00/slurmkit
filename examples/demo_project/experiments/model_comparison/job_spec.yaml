@@ -1,0 +1,46 @@
+name: model_comparison
+description: "Demo: Explicit list of parameter combinations (list mode)"
+
+# Template and output configuration
+template: ../../templates/training.job.j2
+output_dir: ../../jobs/model_comparison/job_scripts
+logs_dir: ../../jobs/model_comparison/logs
+
+# Explicit list of parameter combinations
+# Use this when you want specific combinations rather than a full grid
+parameters:
+  mode: list
+  values:
+    # Fast baseline test
+    - algorithm: baseline
+      dataset: tiny
+      duration: 10
+
+    # Standard configuration
+    - algorithm: improved
+      dataset: small
+      duration: 20
+
+    # Large-scale test
+    - algorithm: optimized
+      dataset: large
+      duration: 30
+
+    # Special experimental configuration
+    - algorithm: experimental
+      dataset: medium
+      duration: 25
+      extra_flag: enabled
+
+# SLURM resource configuration
+slurm_args:
+  defaults:
+    partition: compute  # CHANGE THIS to your cluster's partition
+    time: "00:05:00"   # 5 minutes for demo
+    mem: "1G"
+    nodes: 1
+    ntasks: 1
+    cpus_per_task: 1
+
+# Job naming includes key parameters
+job_name_pattern: "compare_{{ algorithm }}_{{ dataset }}"
