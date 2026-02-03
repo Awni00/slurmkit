@@ -1,0 +1,119 @@
+site_name: slurmkit
+site_description: CLI toolkit for managing and generating SLURM jobs
+site_url: https://awni00.github.io/slurmkit/
+repo_url: https://github.com/Awni00/slurmkit
+repo_name: Awni00/slurmkit
+
+theme:
+  name: material
+  # Color scheme - customize by changing these values
+  # See: https://squidfunk.github.io/mkdocs-material/setup/changing-the-colors/
+  palette:
+    # Light mode
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    # Dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+
+  features:
+    # Navigation
+    - navigation.tabs
+    - navigation.tabs.sticky
+    - navigation.sections
+    - navigation.expand
+    - navigation.top
+    - navigation.footer
+    # Search
+    - search.suggest
+    - search.highlight
+    - search.share
+    # Content
+    - content.code.copy
+    - content.code.annotate
+    - toc.follow
+
+  # Logo and favicon - uncomment and set paths to customize
+  # logo: assets/logo.png
+  # favicon: assets/favicon.png
+
+  icon:
+    repo: fontawesome/brands/github
+
+# Plugins
+plugins:
+  - search
+  - mkdocstrings:
+      default_handler: python
+      handlers:
+        python:
+          paths: [src]
+          options:
+            docstring_style: google
+            show_source: true
+            show_root_heading: true
+            show_root_full_path: false
+            show_symbol_type_heading: true
+            show_symbol_type_toc: true
+            members_order: source
+            merge_init_into_class: true
+            show_signature_annotations: true
+            separate_signature: true
+            signature_crossrefs: true
+
+# Markdown extensions
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.tabbed:
+      alternate_style: true
+  - tables
+  - attr_list
+  - md_in_html
+  - toc:
+      permalink: true
+
+# Navigation structure
+nav:
+  - Home: index.md
+  - User Guide:
+    - Getting Started: getting-started.md
+    - Configuration: configuration.md
+    - Job Generation: job-generation.md
+    - Collections: collections.md
+    - Cross-Cluster Sync: sync.md
+    - CLI Reference: cli-reference.md
+  - API Reference:
+    - Overview: api/index.md
+    - Config: api/config.md
+    - Collections: api/collections.md
+    - Job Generation: api/generate.md
+    - SLURM Utilities: api/slurm.md
+    - Sync: api/sync.md
+
+# Extra configuration
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/Awni00/slurmkit
+
+# Watch for changes in src during development
+watch:
+  - src/slurmkit
