@@ -10,16 +10,14 @@ theme:
   # See: https://squidfunk.github.io/mkdocs-material/setup/changing-the-colors/
   palette:
     # Light mode
-    - media: "(prefers-color-scheme: light)"
-      scheme: default
+    - scheme: default
       primary: black
       accent: indigo
       toggle:
         icon: material/brightness-7
         name: Switch to dark mode
     # Dark mode
-    - media: "(prefers-color-scheme: dark)"
-      scheme: slate
+    - scheme: slate
       primary: black
       accent: indigo
       toggle:
