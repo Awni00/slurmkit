@@ -169,6 +169,8 @@ job_structure:
 
 ## Documentation
 
+Full documentation is available at [https://awni00.github.io/slurmkit/](https://awni00.github.io/slurmkit/)
+
 - [Getting Started](docs/getting-started.md)
 - [Configuration](docs/configuration.md)
 - [Job Generation](docs/job-generation.md)
