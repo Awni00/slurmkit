@@ -1,8 +1,12 @@
-# slurmkit
+![slurmkit header](docs/assets/slurmkit-header-landscape.png)
+
+---
+
+<!-- # slurmkit -->
 
 A CLI toolkit for managing and generating SLURM jobs.
 
-**slurmkit** provides tools for:
+`slurmkit` provides tools for:
 - Auto-discovering and tracking SLURM job status
 - Generating job scripts from templates with parameter sweeps
 - Organizing jobs into trackable collections
@@ -255,6 +259,29 @@ slurmkit sync --push
 # On cluster B
 git pull
 slurmkit collection show my_exp
+```
+
+## Development
+
+### Setup
+
+We recommend using [uv](https://github.com/astral-sh/uv) to manage the development environment.
+
+```bash
+# Clone the repository
+git clone https://github.com/Awni00/slurmkit.git
+cd slurmkit
+
+# Create a virtual environment and install dependencies in editable mode
+uv venv
+source .venv/bin/activate
+uv pip install -e ".[dev]"
+```
+
+### Running Tests
+
+```bash
+pytest
 ```
 
 ## License
