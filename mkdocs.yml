@@ -12,7 +12,7 @@ theme:
     # Light mode
     - media: "(prefers-color-scheme: light)"
       scheme: default
-      primary: indigo
+      primary: black
       accent: indigo
       toggle:
         icon: material/brightness-7
@@ -20,7 +20,7 @@ theme:
     # Dark mode
     - media: "(prefers-color-scheme: dark)"
       scheme: slate
-      primary: indigo
+      primary: black
       accent: indigo
       toggle:
         icon: material/brightness-4
@@ -44,8 +44,8 @@ theme:
     - toc.follow
 
   # Logo and favicon - uncomment and set paths to customize
-  # logo: assets/logo.png
-  # favicon: assets/favicon.png
+  logo: assets/slurmkit-slime-logo.png
+  favicon: assets/slurmkit-icon-512.png
 
   icon:
     repo: fontawesome/brands/github
