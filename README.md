@@ -1,5 +1,13 @@
 ![slurmkit header](docs/assets/slurmkit-header-landscape.png)
 
+<p align="center">
+  <a href="#installation">Install</a> •
+  <a href="#quick-start">Quick Start</a> •
+  <a href="https://awni00.github.io/slurmkit">Docs</a> •
+  <a href="https://deepwiki.com/Awni00/slurmkit">DeepWiki</a>
+ 
+</p>
+
 ---
 
 <!-- # slurmkit -->
