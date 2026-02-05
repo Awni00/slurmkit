@@ -14,7 +14,9 @@ Collections are stored as YAML files for human readability and git tracking.
 from __future__ import annotations
 
 import socket
+import subprocess
 from datetime import datetime
+from functools import lru_cache
 from pathlib import Path
 from typing import Any, Dict, Iterator, List, Optional, Union
 
@@ -36,6 +38,38 @@ JOB_STATE_RUNNING = "running"
 JOB_STATE_COMPLETED = "completed"
 JOB_STATE_FAILED = "failed"
 JOB_STATE_UNKNOWN = "unknown"
+
+
+# =============================================================================
+# Git Metadata Helpers
+# =============================================================================
+
+def _run_git_command(args: List[str]) -> Optional[str]:
+    """Run a git command and return stripped stdout, or None on failure."""
+    try:
+        result = subprocess.run(
+            ["git", *args],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except OSError:
+        return None
+
+    if result.returncode != 0:
+        return None
+
+    value = result.stdout.strip()
+    return value if value else None
+
+
+@lru_cache(maxsize=1)
+def _get_git_metadata() -> Dict[str, Optional[str]]:
+    """Get current git branch and commit ID for logging."""
+    return {
+        "git_branch": _run_git_command(["rev-parse", "--abbrev-ref", "HEAD"]),
+        "git_commit_id": _run_git_command(["rev-parse", "HEAD"]),
+    }
 
 
 # =============================================================================
@@ -137,6 +171,7 @@ class Collection:
         Returns:
             The created job entry dictionary.
         """
+        git_metadata = _get_git_metadata()
         job_entry = {
             "job_name": job_name,
             "job_id": job_id,
@@ -149,6 +184,8 @@ class Collection:
             "started_at": started_at,
             "completed_at": completed_at,
             "resubmissions": [],
+            "git_branch": git_metadata["git_branch"],
+            "git_commit_id": git_metadata["git_commit_id"],
         }
 
         self._jobs.append(job_entry)
@@ -263,12 +300,15 @@ class Collection:
         if job is None:
             return False
 
+        git_metadata = _get_git_metadata()
         resubmission = {
             "job_id": job_id,
             "state": None,
             "hostname": hostname or socket.gethostname(),
             "submitted_at": datetime.now().isoformat(timespec="seconds"),
             "extra_params": extra_params or {},
+            "git_branch": git_metadata["git_branch"],
+            "git_commit_id": git_metadata["git_commit_id"],
         }
 
         if "resubmissions" not in job:

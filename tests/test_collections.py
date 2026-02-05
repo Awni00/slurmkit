@@ -34,6 +34,8 @@ class TestCollection:
         assert len(collection) == 1
         assert job["job_name"] == "train_model"
         assert job["parameters"] == {"lr": 0.01}
+        assert "git_branch" in job
+        assert "git_commit_id" in job
 
     def test_get_job(self):
         """Test getting a job by name."""
@@ -99,6 +101,8 @@ class TestCollection:
         assert len(job["resubmissions"]) == 1
         assert job["resubmissions"][0]["job_id"] == "12346"
         assert job["resubmissions"][0]["extra_params"]["checkpoint"] == "last.pt"
+        assert "git_branch" in job["resubmissions"][0]
+        assert "git_commit_id" in job["resubmissions"][0]
 
     def test_filter_jobs_by_state(self):
         """Test filtering jobs by state."""
