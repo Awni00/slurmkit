@@ -1,11 +1,17 @@
 ![slurmkit header](docs/assets/slurmkit-header-landscape.png)
 
 <p align="center">
+  <a href="https://github.com/Awni00/slurmkit/actions/workflows/tests.yml"><img src="https://github.com/Awni00/slurmkit/actions/workflows/tests.yml/badge.svg" alt="Unit Tests"></a>
+  <a href="https://github.com/Awni00/slurmkit/actions/workflows/docs.yml"><img src="https://github.com/Awni00/slurmkit/actions/workflows/docs.yml/badge.svg" alt="Docs"></a>
+  <img src="https://img.shields.io/badge/python-3.8%2B-blue" alt="Python 3.8+">
+  <img src="https://img.shields.io/badge/license-MIT-green" alt="MIT License">
+</p>
+
+<p align="center">
   <a href="#installation">Install</a> •
   <a href="#quick-start">Quick Start</a> •
   <a href="https://awni00.github.io/slurmkit">Docs</a> •
   <a href="https://deepwiki.com/Awni00/slurmkit">DeepWiki</a>
- 
 </p>
 
 ---
@@ -13,6 +19,8 @@
 <!-- # slurmkit -->
 
 A CLI toolkit for managing and generating SLURM jobs.
+
+
 
 `slurmkit` provides tools for:
 - Auto-discovering and tracking SLURM job status
