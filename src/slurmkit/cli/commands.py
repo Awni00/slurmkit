@@ -1005,6 +1005,140 @@ def cmd_collection_show(args: Any) -> int:
     return 0
 
 
+def cmd_collection_analyze(args: Any) -> int:
+    """Analyze state patterns by parameter values in a collection."""
+    if args.min_support < 1:
+        print("Error: --min-support must be >= 1")
+        return 1
+    if args.top_k < 1:
+        print("Error: --top-k must be >= 1")
+        return 1
+
+    config = get_configured_config(args)
+    manager = CollectionManager(config=config)
+
+    if not manager.exists(args.name):
+        print(f"Error: Collection not found: {args.name}")
+        return 1
+
+    collection = manager.load(args.name)
+
+    # Refresh job states from SLURM unless --no-refresh is specified
+    if not getattr(args, "no_refresh", False):
+        collection.refresh_states()
+        manager.save(collection)
+
+    analysis = collection.analyze_status_by_params(
+        attempt_mode=args.attempt_mode,
+        min_support=args.min_support,
+        selected_params=args.param,
+        top_k=args.top_k,
+    )
+
+    if args.format == "json":
+        print(json.dumps(analysis, indent=2, default=str))
+        return 0
+
+    summary = analysis["summary"]
+    counts = summary["counts"]
+    rates = summary["rates"]
+    parameters = analysis["parameters"]
+    skipped = analysis["metadata"]["skipped_params"]
+
+    print(f"Collection Analysis: {collection.name}")
+    print(
+        f"  Attempt mode: {args.attempt_mode} | Min support: {args.min_support} | Top-k: {args.top_k}"
+    )
+    if args.param:
+        print(f"  Selected params: {', '.join(args.param)}")
+    print_separator()
+
+    print(f"Overall summary ({summary['total_jobs']} jobs):")
+    for state in ["completed", "failed", "running", "pending", "unknown"]:
+        pct = rates[state] * 100.0
+        print(f"  {state}: {counts[state]} ({pct:.1f}%)")
+
+    if not parameters:
+        print("\nNo analyzable parameters found.")
+        if skipped:
+            print(f"Skipped requested params: {', '.join(skipped)}")
+        return 0
+
+    for param_block in parameters:
+        param = param_block["param"]
+        rows = []
+        for value_entry in param_block["values"]:
+            c = value_entry["counts"]
+            r = value_entry["rates"]
+            rows.append([
+                param,
+                value_entry["value"],
+                value_entry["n"],
+                c["failed"],
+                c["completed"],
+                c["running"],
+                c["pending"],
+                c["unknown"],
+                f"{r['failure_rate'] * 100.0:.1f}",
+                f"{r['completion_rate'] * 100.0:.1f}",
+                "yes" if value_entry["low_sample"] else "",
+            ])
+
+        print(f"\nParameter: {param}")
+        print(
+            tabulate(
+                rows,
+                headers=[
+                    "Param",
+                    "Value",
+                    "N",
+                    "Failed",
+                    "Completed",
+                    "Running",
+                    "Pending",
+                    "Unknown",
+                    "Fail %",
+                    "Complete %",
+                    "Low N",
+                ],
+                tablefmt="simple",
+            )
+        )
+
+    def _render_top_values(title: str, entries: List[Dict[str, Any]], rate_key: str) -> None:
+        print(f"\n{title}:")
+        if not entries:
+            print("  (no groups met min support)")
+            return
+        rows = []
+        for entry in entries:
+            rows.append([
+                entry["param"],
+                entry["value"],
+                entry["n"],
+                f"{entry['rates'][rate_key] * 100.0:.1f}",
+                entry["counts"]["failed"],
+                entry["counts"]["completed"],
+            ])
+        print(
+            tabulate(
+                rows,
+                headers=["Param", "Value", "N", "Rate %", "Failed", "Completed"],
+                tablefmt="simple",
+            )
+        )
+
+    _render_top_values("Top risky values", analysis["top_risky_values"], "failure_rate")
+    _render_top_values("Top stable values", analysis["top_stable_values"], "completion_rate")
+
+    print("\nNotes:")
+    print(f"  - Low N marks groups with n < min_support ({args.min_support}).")
+    if skipped:
+        print(f"  - Skipped requested params not found: {', '.join(skipped)}")
+
+    return 0
+
+
 def cmd_collection_update(args: Any) -> int:
     """Refresh job states in collection."""
     config = get_configured_config(args)

@@ -424,6 +424,53 @@ For more information on a command, run: slurmkit <command> --help
     )
 
     # collection update
+    coll_analyze_parser = collection_subparsers.add_parser(
+        "analyze",
+        help="Analyze job outcomes by parameter values",
+    )
+    coll_analyze_parser.add_argument(
+        "name",
+        help="Collection name",
+    )
+    coll_analyze_parser.add_argument(
+        "--format",
+        choices=["table", "json"],
+        default="table",
+        help="Output format (default: table)",
+    )
+    coll_analyze_parser.add_argument(
+        "--no-refresh",
+        action="store_true",
+        help="Don't refresh job states from SLURM before analysis",
+    )
+    coll_analyze_parser.add_argument(
+        "--min-support",
+        type=int,
+        default=3,
+        metavar="N",
+        help="Minimum sample size for high-confidence highlights (default: 3)",
+    )
+    coll_analyze_parser.add_argument(
+        "--param",
+        action="append",
+        metavar="KEY",
+        help="Analyze only selected parameter key(s); repeat to include multiple",
+    )
+    coll_analyze_parser.add_argument(
+        "--attempt-mode",
+        choices=["primary", "latest"],
+        default="primary",
+        help="Use primary job states or latest resubmission states (default: primary)",
+    )
+    coll_analyze_parser.add_argument(
+        "--top-k",
+        type=int,
+        default=10,
+        metavar="N",
+        help="Number of entries to show for risky/stable summaries (default: 10)",
+    )
+
+    # collection update
     coll_update_parser = collection_subparsers.add_parser(
         "update",
         help="Refresh job states in collection",
@@ -570,6 +617,8 @@ def main(argv: Optional[List[str]] = None) -> int:
                 return commands.cmd_collection_list(args)
             elif args.collection_action == "show":
                 return commands.cmd_collection_show(args)
+            elif args.collection_action == "analyze":
+                return commands.cmd_collection_analyze(args)
             elif args.collection_action == "update":
                 return commands.cmd_collection_update(args)
             elif args.collection_action == "delete":

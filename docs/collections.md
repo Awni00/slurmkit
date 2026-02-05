@@ -98,6 +98,42 @@ Refresh job states from SLURM:
 slurmkit collection update my_experiment
 ```
 
+### Analyze Status by Parameter
+
+Find patterns between parameter values and job outcomes:
+
+```bash
+slurmkit collection analyze my_experiment
+```
+
+Options:
+- `--format json` - Output analysis as JSON
+- `--no-refresh` - Skip SLURM refresh (analyze current YAML state)
+- `--min-support N` - Minimum sample size for risky/stable summaries (default: 3)
+- `--param KEY` - Restrict analysis to specific parameter keys (repeatable)
+- `--attempt-mode latest` - Use latest resubmission state instead of primary job state
+- `--top-k N` - Number of entries in top risky/stable lists (default: 10)
+
+Examples:
+
+```bash
+# Analyze specific parameters
+slurmkit collection analyze my_experiment --param algo --param learning_rate
+
+# Use latest retry outcome and stricter support threshold
+slurmkit collection analyze my_experiment --attempt-mode latest --min-support 5
+
+# Machine-readable output
+slurmkit collection analyze my_experiment --format json
+```
+
+The report includes:
+- Overall normalized state summary (`completed`, `failed`, `running`, `pending`, `unknown`)
+- Per-parameter value tables with counts and failure/completion rates
+- Top risky values (highest failure rates)
+- Top stable values (highest completion rates)
+- `Low N` marker for groups below `--min-support`
+
 ### Delete Collection
 
 ```bash

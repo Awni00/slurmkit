@@ -13,6 +13,7 @@ Collections are stored as YAML files for human readability and git tracking.
 
 from __future__ import annotations
 
+import json
 import socket
 import subprocess
 from datetime import datetime
@@ -429,6 +430,192 @@ class Collection:
             summary[state] += 1
 
         return summary
+
+    def _get_analysis_rows(self, attempt_mode: str = "primary") -> List[Dict[str, Any]]:
+        """Build canonical rows for status analysis."""
+        rows = []
+
+        for job in self._jobs:
+            state = job.get("state")
+            if attempt_mode == "latest":
+                resubmissions = job.get("resubmissions", [])
+                if resubmissions:
+                    latest_state = resubmissions[-1].get("state")
+                    if latest_state:
+                        state = latest_state
+
+            rows.append({
+                "job_name": job.get("job_name"),
+                "state": self._normalize_state(state),
+                "parameters": job.get("parameters", {}) or {},
+            })
+
+        return rows
+
+    def _format_param_value(self, value: Any) -> str:
+        """Serialize a parameter value to a stable, display-safe string key."""
+        if isinstance(value, (dict, list, tuple)):
+            return json.dumps(value, sort_keys=True)
+        return str(value)
+
+    def analyze_status_by_params(
+        self,
+        attempt_mode: str = "primary",
+        min_support: int = 3,
+        selected_params: Optional[List[str]] = None,
+        top_k: int = 10,
+    ) -> Dict[str, Any]:
+        """
+        Analyze job state distributions by parameter value.
+
+        Args:
+            attempt_mode: Either "primary" or "latest".
+            min_support: Minimum group size for high-confidence highlights.
+            selected_params: Optional list of specific parameter keys to analyze.
+            top_k: Max number of entries in risky/stable summaries.
+
+        Returns:
+            Analysis payload suitable for table rendering or JSON output.
+        """
+        if attempt_mode not in ("primary", "latest"):
+            raise ValueError("attempt_mode must be 'primary' or 'latest'")
+        if min_support < 1:
+            raise ValueError("min_support must be >= 1")
+        if top_k < 1:
+            raise ValueError("top_k must be >= 1")
+
+        rows = self._get_analysis_rows(attempt_mode=attempt_mode)
+
+        summary_counts = {
+            JOB_STATE_COMPLETED: 0,
+            JOB_STATE_FAILED: 0,
+            JOB_STATE_RUNNING: 0,
+            JOB_STATE_PENDING: 0,
+            JOB_STATE_UNKNOWN: 0,
+        }
+        for row in rows:
+            state = row["state"]
+            summary_counts[state] = summary_counts.get(state, 0) + 1
+
+        total_jobs = len(rows)
+        summary_rates = {}
+        for state, count in summary_counts.items():
+            summary_rates[state] = (count / total_jobs) if total_jobs > 0 else 0.0
+
+        available_params = sorted({
+            key
+            for row in rows
+            for key in row.get("parameters", {}).keys()
+        })
+
+        if selected_params:
+            params_to_analyze = list(dict.fromkeys(selected_params))
+            skipped_params = [p for p in params_to_analyze if p not in available_params]
+        else:
+            params_to_analyze = available_params
+            skipped_params = []
+
+        parameter_results = []
+        all_value_entries = []
+
+        for param in params_to_analyze:
+            grouped: Dict[str, Dict[str, Any]] = {}
+
+            for row in rows:
+                params = row.get("parameters", {})
+                if param not in params:
+                    continue
+
+                value_key = self._format_param_value(params[param])
+                if value_key not in grouped:
+                    grouped[value_key] = {
+                        "value": value_key,
+                        "n": 0,
+                        "counts": {
+                            JOB_STATE_COMPLETED: 0,
+                            JOB_STATE_FAILED: 0,
+                            JOB_STATE_RUNNING: 0,
+                            JOB_STATE_PENDING: 0,
+                            JOB_STATE_UNKNOWN: 0,
+                        },
+                    }
+
+                grouped[value_key]["n"] += 1
+                grouped[value_key]["counts"][row["state"]] += 1
+
+            if not grouped:
+                continue
+
+            values = []
+            for value_key, data in grouped.items():
+                n = data["n"]
+                failure_rate = data["counts"][JOB_STATE_FAILED] / n
+                completion_rate = data["counts"][JOB_STATE_COMPLETED] / n
+
+                entry = {
+                    "value": value_key,
+                    "n": n,
+                    "counts": data["counts"],
+                    "rates": {
+                        "failure_rate": failure_rate,
+                        "completion_rate": completion_rate,
+                    },
+                    "low_sample": n < min_support,
+                }
+                values.append(entry)
+                all_value_entries.append({
+                    "param": param,
+                    **entry,
+                })
+
+            values.sort(
+                key=lambda x: (
+                    -x["rates"]["failure_rate"],
+                    -x["n"],
+                    x["value"],
+                )
+            )
+            parameter_results.append({
+                "param": param,
+                "values": values,
+            })
+
+        eligible = [e for e in all_value_entries if e["n"] >= min_support]
+        top_risky = sorted(
+            eligible,
+            key=lambda x: (
+                -x["rates"]["failure_rate"],
+                -x["n"],
+                x["param"],
+                x["value"],
+            ),
+        )[:top_k]
+        top_stable = sorted(
+            eligible,
+            key=lambda x: (
+                -x["rates"]["completion_rate"],
+                -x["n"],
+                x["param"],
+                x["value"],
+            ),
+        )[:top_k]
+
+        return {
+            "summary": {
+                "total_jobs": total_jobs,
+                "counts": summary_counts,
+                "rates": summary_rates,
+            },
+            "parameters": parameter_results,
+            "top_risky_values": top_risky,
+            "top_stable_values": top_stable,
+            "metadata": {
+                "min_support": min_support,
+                "attempt_mode": attempt_mode,
+                "selected_params": selected_params or [],
+                "skipped_params": skipped_params,
+            },
+        }
 
     def refresh_states(self, update_resubmissions: bool = True) -> int:
         """

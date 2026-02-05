@@ -160,6 +160,103 @@ class TestCollection:
         assert restored.description == collection.description
         assert len(restored) == len(collection)
 
+    def test_analyze_status_by_params_scalar_values(self):
+        """Test state aggregation by scalar parameter values."""
+        collection = Collection("test")
+        collection.add_job(job_name="a", parameters={"algo": "algo_a"}, state="COMPLETED")
+        collection.add_job(job_name="b", parameters={"algo": "algo_a"}, state="FAILED")
+        collection.add_job(job_name="c", parameters={"algo": "algo_b"}, state="FAILED")
+
+        analysis = collection.analyze_status_by_params(min_support=1)
+        algo_block = next(x for x in analysis["parameters"] if x["param"] == "algo")
+
+        assert [v["value"] for v in algo_block["values"]] == ["algo_b", "algo_a"]
+        assert algo_block["values"][0]["counts"]["failed"] == 1
+        assert algo_block["values"][0]["rates"]["failure_rate"] == 1.0
+        assert algo_block["values"][1]["counts"]["failed"] == 1
+        assert algo_block["values"][1]["counts"]["completed"] == 1
+
+    def test_analyze_status_by_params_non_scalar_values(self):
+        """Test non-scalar parameter values are grouped using stable JSON strings."""
+        collection = Collection("test")
+        collection.add_job(
+            job_name="a",
+            parameters={"config": {"b": 2, "a": 1}},
+            state="COMPLETED",
+        )
+        collection.add_job(
+            job_name="b",
+            parameters={"config": {"a": 1, "b": 2}},
+            state="FAILED",
+        )
+
+        analysis = collection.analyze_status_by_params(min_support=1)
+        config_block = next(x for x in analysis["parameters"] if x["param"] == "config")
+
+        assert len(config_block["values"]) == 1
+        assert config_block["values"][0]["value"] == '{"a": 1, "b": 2}'
+        assert config_block["values"][0]["n"] == 2
+
+    def test_analyze_status_by_params_attempt_mode_latest(self):
+        """Test latest attempt mode uses most recent resubmission state."""
+        collection = Collection("test")
+        collection.add_job(job_name="a", parameters={"algo": "x"}, state="FAILED")
+        collection.add_resubmission("a", job_id="101")
+        collection.get_job("a")["resubmissions"][-1]["state"] = "COMPLETED"
+
+        primary = collection.analyze_status_by_params(
+            attempt_mode="primary",
+            min_support=1,
+        )
+        latest = collection.analyze_status_by_params(
+            attempt_mode="latest",
+            min_support=1,
+        )
+
+        primary_value = primary["parameters"][0]["values"][0]
+        latest_value = latest["parameters"][0]["values"][0]
+        assert primary_value["counts"]["failed"] == 1
+        assert latest_value["counts"]["completed"] == 1
+
+    def test_analyze_status_by_params_filter_and_skipped(self):
+        """Test selected parameter filtering and skipped param reporting."""
+        collection = Collection("test")
+        collection.add_job(job_name="a", parameters={"algo": "x"}, state="COMPLETED")
+
+        analysis = collection.analyze_status_by_params(
+            selected_params=["algo", "missing"],
+            min_support=1,
+        )
+        assert [p["param"] for p in analysis["parameters"]] == ["algo"]
+        assert analysis["metadata"]["skipped_params"] == ["missing"]
+
+    def test_analyze_status_by_params_low_support_and_top_lists(self):
+        """Test low-sample flags and top risky/stable sections."""
+        collection = Collection("test")
+        collection.add_job(job_name="a", parameters={"algo": "x"}, state="FAILED")
+        collection.add_job(job_name="b", parameters={"algo": "x"}, state="FAILED")
+        collection.add_job(job_name="c", parameters={"algo": "x"}, state="COMPLETED")
+        collection.add_job(job_name="d", parameters={"algo": "y"}, state="COMPLETED")
+
+        analysis = collection.analyze_status_by_params(min_support=2, top_k=2)
+        algo_block = next(x for x in analysis["parameters"] if x["param"] == "algo")
+        y_row = next(x for x in algo_block["values"] if x["value"] == "y")
+        assert y_row["low_sample"] is True
+
+        assert len(analysis["top_risky_values"]) >= 1
+        assert analysis["top_risky_values"][0]["param"] == "algo"
+        assert len(analysis["top_stable_values"]) >= 1
+        assert analysis["top_stable_values"][0]["param"] == "algo"
+
+    def test_analyze_status_by_params_empty_collection(self):
+        """Test empty collection analysis output structure."""
+        collection = Collection("test")
+        analysis = collection.analyze_status_by_params()
+        assert analysis["summary"]["total_jobs"] == 0
+        assert analysis["parameters"] == []
+        assert analysis["top_risky_values"] == []
+        assert analysis["top_stable_values"] == []
+
 
 class TestCollectionManager:
     """Tests for CollectionManager class."""

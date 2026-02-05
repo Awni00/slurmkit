@@ -282,6 +282,23 @@ slurmkit collection update <name>
 
 Refresh job states from SLURM.
 
+#### collection analyze
+
+```bash
+slurmkit collection analyze <name> [options]
+```
+
+Analyze how job states vary across parameter values.
+
+| Option | Description |
+|--------|-------------|
+| `--format FORMAT` | Output: `table`, `json` |
+| `--no-refresh` | Skip SLURM refresh and analyze stored collection data |
+| `--min-support N` | Minimum sample size for top risky/stable summaries (default: 3) |
+| `--param KEY` | Analyze only selected parameter key(s); repeatable |
+| `--attempt-mode MODE` | Use `primary` or `latest` attempt state (default: `primary`) |
+| `--top-k N` | Number of rows in risky/stable summaries (default: 10) |
+
 #### collection delete
 
 ```bash
@@ -313,6 +330,8 @@ slurmkit collection create my_exp --description "Training sweep"
 slurmkit collection list
 slurmkit collection show my_exp --state failed
 slurmkit collection update my_exp
+slurmkit collection analyze my_exp --min-support 5 --param algo --param learning_rate
+slurmkit collection analyze my_exp --attempt-mode latest --format json
 slurmkit collection delete my_exp --keep-outputs
 slurmkit collection add my_exp 12345678 12345679
 ```
