@@ -103,6 +103,10 @@ parameters:
     learning_rate: [0.001, 0.01, 0.1]
     batch_size: [32, 64]
     model: [resnet18, resnet50]
+  # Optional filter for grid mode
+  filter:
+    file: params_filter.py
+    function: include_params
 
 # SLURM arguments
 slurm_args:
@@ -137,6 +141,31 @@ parameters:
 ```
 
 Generates 4 jobs: `(0.001, 32), (0.001, 64), (0.01, 32), (0.01, 64)`
+
+### Grid Filtering
+
+For incompatible parameter combinations, add a filter function to trim the grid:
+
+```yaml
+parameters:
+  mode: grid
+  values:
+    algorithm: [algo_a, algo_b]
+    dataset: [small, large]
+  filter:
+    file: params_filter.py
+    function: include_params  # Optional, defaults to "include_params"
+```
+
+```python
+# params_filter.py
+def include_params(params: dict) -> bool:
+    # Exclude algo_b with small dataset
+    return not (params.get("algorithm") == "algo_b" and params.get("dataset") == "small")
+```
+
+Filters only apply to grid mode; list mode ignores them.
+Filter file paths are resolved relative to the job spec file.
 
 ### List Mode
 

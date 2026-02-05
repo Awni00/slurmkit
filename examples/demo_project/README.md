@@ -18,7 +18,8 @@ demo_project/
 │   └── evaluation.job.j2             # Simple evaluation demo
 ├── experiments/                       # Experiment configurations
 │   ├── hyperparameter_sweep/
-│   │   ├── job_spec.yaml             # Parameter grid specification (8 jobs)
+│   │   ├── job_spec.yaml             # Parameter grid specification (6 jobs after filter)
+│   │   ├── params_filter.py          # Grid filter logic
 │   │   └── slurm_logic.py            # Dynamic resource allocation
 │   └── model_comparison/
 │       └── job_spec.yaml             # Explicit parameter list (4 jobs)
@@ -60,7 +61,7 @@ slurmkit generate experiments/hyperparameter_sweep/job_spec.yaml \
     --collection hp_sweep
 ```
 
-This creates 8 jobs (2 algorithms × 2 datasets × 2 configs).
+This creates 6 jobs (8 combinations minus 2 filtered: algo_b + small).
 
 **Model comparison (list mode):**
 ```bash
@@ -156,6 +157,7 @@ See `templates/training.job.j2` for:
 - **Grid mode**: automatically generates all combinations
 - Job naming patterns using parameter values
 - Multiple parameters (algorithm, dataset, config)
+- Optional grid filtering via `params_filter.py`
 
 ### 3. Parameter Lists
 
@@ -192,7 +194,7 @@ slurmkit sync --push
 ### Workflow 1: Basic Demo Run
 
 ```bash
-# Generate 8 demo jobs
+# Generate 6 demo jobs (filter excludes algo_b + small)
 slurmkit generate experiments/hyperparameter_sweep/job_spec.yaml --collection demo_run
 
 # Preview what will be submitted

@@ -39,6 +39,7 @@ from slurmkit.generate import (
     generate_jobs_from_spec,
     load_job_spec,
     expand_parameters,
+    resolve_parameters_filter_spec,
 )
 from slurmkit.sync import SyncManager
 
@@ -548,13 +549,18 @@ def cmd_generate(args: Any) -> int:
         with open(params_path, "r") as f:
             parameters = yaml.safe_load(f) or {}
 
+        parameters_for_gen = resolve_parameters_filter_spec(
+            parameters,
+            base_dir=params_path.parent,
+        )
+
         # Determine output directory
         output_dir = Path(args.output_dir) if args.output_dir else Path(".")
 
         # Create generator
         generator = JobGenerator(
             template_path=template_path,
-            parameters=parameters,
+            parameters=parameters_for_gen,
             slurm_defaults=config.get_slurm_defaults(),
             slurm_logic_file=args.slurm_args_file,
             config=config,

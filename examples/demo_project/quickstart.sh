@@ -66,9 +66,9 @@ fi
 step "2" "Review job specifications"
 
 echo "Available demo experiments:"
-echo "  1. Parameter Sweep - Grid Mode (8 jobs, ~15 sec each)"
+echo "  1. Parameter Sweep - Grid Mode (6 jobs, ~15 sec each)"
 echo "     experiments/hyperparameter_sweep/job_spec.yaml"
-echo "     2 algorithms × 2 datasets × 2 configs = 8 jobs"
+echo "     8 combos minus 2 filtered (algo_b + small) = 6 jobs"
 echo ""
 echo "  2. Parameter List - List Mode (4 jobs, 10-30 sec each)"
 echo "     experiments/model_comparison/job_spec.yaml"

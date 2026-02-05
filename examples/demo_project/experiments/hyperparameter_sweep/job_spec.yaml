@@ -7,7 +7,8 @@ output_dir: ../../jobs/hyperparameter_sweep/job_scripts
 logs_dir: ../../jobs/hyperparameter_sweep/logs
 
 # Parameter grid - generates all combinations
-# This creates: 2 algorithms × 2 datasets × 2 configs = 8 jobs
+# This creates: 2 algorithms × 2 datasets × 2 configs = 8 combos
+# The filter below excludes algo_b + small, leaving 6 jobs total
 parameters:
   mode: grid
   values:
@@ -22,6 +23,11 @@ parameters:
 
     # Fixed parameter: how long each job runs (in seconds)
     duration: [15]
+
+  # Optional filter to exclude incompatible combinations
+  filter:
+    file: params_filter.py
+    function: include_params
 
 # SLURM resource configuration
 slurm_args:

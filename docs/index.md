@@ -215,6 +215,19 @@ parameters:
   values:
     - {lr: 0.001, bs: 32}
     - {lr: 0.01, bs: 64}
+
+Filter incompatible grid combinations with a Python predicate:
+
+```yaml
+parameters:
+  mode: grid
+  values:
+    algorithm: [algo_a, algo_b]
+    dataset: [small, large]
+  filter:
+    file: params_filter.py
+    function: include_params
+```
 ```
 
 ### Dynamic SLURM Arguments

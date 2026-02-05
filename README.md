@@ -92,6 +92,10 @@ parameters:
   values:
     learning_rate: [0.001, 0.01, 0.1]
     batch_size: [32, 64]
+  # Optional: exclude incompatible combinations
+  filter:
+    file: params_filter.py
+    function: include_params
 
 slurm_args:
   defaults:

@@ -45,6 +45,16 @@ class TestExpandGrid:
         result = list(expand_grid(params))
         assert result == [{"a": 1, "b": "x"}]
 
+    def test_grid_filter(self):
+        """Test grid expansion with a filter function."""
+        params = {"a": [1, 2], "b": ["x"]}
+
+        def include_params(p):
+            return p["a"] == 2
+
+        result = list(expand_grid(params, filter_func=include_params))
+        assert result == [{"a": 2, "b": "x"}]
+
 
 class TestExpandParameters:
     """Tests for expand_parameters function."""
@@ -85,6 +95,42 @@ class TestExpandParameters:
         spec = {"mode": "invalid", "values": {"a": [1]}}
         with pytest.raises(ValueError):
             expand_parameters(spec)
+
+    def test_grid_mode_with_filter_file(self):
+        """Test parameter expansion with a filter function loaded from file."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            filter_path = Path(tmpdir) / "filter.py"
+            filter_path.write_text(
+                "def include_params(params):\n"
+                "    return params.get('a') == 2\n"
+            )
+
+            spec = {
+                "mode": "grid",
+                "values": {"a": [1, 2], "b": ["x"]},
+                "filter": {"file": str(filter_path)},
+            }
+
+            result = expand_parameters(spec)
+            assert result == [{"a": 2, "b": "x"}]
+
+    def test_list_mode_ignores_filter(self):
+        """Test that list mode ignores filter logic."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            filter_path = Path(tmpdir) / "filter.py"
+            filter_path.write_text(
+                "def include_params(params):\n"
+                "    return False\n"
+            )
+
+            spec = {
+                "mode": "list",
+                "values": [{"a": 1}, {"a": 2}],
+                "filter": {"file": str(filter_path)},
+            }
+
+            result = expand_parameters(spec)
+            assert result == [{"a": 1}, {"a": 2}]
 
 
 class TestGenerateJobName:
@@ -158,6 +204,31 @@ echo "Batch size: {{ batch_size }}"
         assert len(names) == 2
         assert "job_lr0.01" in names
         assert "job_lr0.1" in names
+
+    def test_generator_from_spec_with_filter(self, template_dir):
+        """Test generator from spec resolves filter file path."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            spec_path = Path(tmpdir) / "spec.yaml"
+            filter_path = Path(tmpdir) / "params_filter.py"
+            filter_path.write_text(
+                "def include_params(params):\n"
+                "    return params.get('learning_rate') == 0.1\n"
+            )
+
+            spec_data = {
+                "template": str(Path(template_dir) / "test.job.j2"),
+                "parameters": {
+                    "mode": "grid",
+                    "values": {"learning_rate": [0.01, 0.1]},
+                    "filter": {"file": "params_filter.py"},
+                },
+                "slurm_args": {"defaults": {"partition": "gpu", "time": "1:00:00"}},
+            }
+            with open(spec_path, "w") as f:
+                yaml.dump(spec_data, f)
+
+            generator = JobGenerator.from_spec(spec_path)
+            assert generator.count_jobs() == 1
 
     def test_generator_preview(self, template_dir):
         """Test previewing a generated job."""

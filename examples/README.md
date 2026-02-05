@@ -83,7 +83,7 @@ slurmkit generate experiments/my_experiment/job_spec.yaml
 | Feature | Location | What it Shows |
 |---------|----------|---------------|
 | Basic template | `templates/training.job.j2` | Jinja2 syntax, SLURM directives, parameter substitution, creating output files |
-| Parameter grid | `experiments/hyperparameter_sweep/job_spec.yaml` | Grid mode for all combinations (8 jobs) |
+| Parameter grid | `experiments/hyperparameter_sweep/job_spec.yaml` | Grid mode with filtering (6 jobs) |
 | Parameter list | `experiments/model_comparison/job_spec.yaml` | List mode for explicit combinations (4 jobs) |
 | Dynamic resources | `experiments/hyperparameter_sweep/slurm_logic.py` | Python function for SLURM args based on parameters |
 | Job naming | Both job specs | Readable naming patterns using parameters |

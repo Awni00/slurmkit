@@ -28,7 +28,10 @@ from slurmkit.collections import Collection, CollectionManager
 # Parameter Expansion
 # =============================================================================
 
-def expand_grid(params: Dict[str, List[Any]]) -> Iterator[Dict[str, Any]]:
+def expand_grid(
+    params: Dict[str, List[Any]],
+    filter_func: Optional[Callable[[Dict[str, Any]], bool]] = None,
+) -> Iterator[Dict[str, Any]]:
     """
     Expand a parameter grid into all combinations.
 
@@ -37,6 +40,9 @@ def expand_grid(params: Dict[str, List[Any]]) -> Iterator[Dict[str, Any]]:
 
     Args:
         params: Dictionary mapping parameter names to lists of values.
+        filter_func: Optional predicate to include/exclude combinations.
+            If provided, only combinations where filter_func(params) is True
+            are yielded.
 
     Yields:
         Dictionary for each combination of parameter values.
@@ -53,11 +59,15 @@ def expand_grid(params: Dict[str, List[Any]]) -> Iterator[Dict[str, Any]]:
     values = [params[k] if isinstance(params[k], list) else [params[k]] for k in keys]
 
     for combo in itertools.product(*values):
-        yield dict(zip(keys, combo))
+        combo_dict = dict(zip(keys, combo))
+        if filter_func is not None and not filter_func(combo_dict):
+            continue
+        yield combo_dict
 
 
 def expand_parameters(
     spec: Dict[str, Any],
+    filter_func: Optional[Callable[[Dict[str, Any]], bool]] = None,
 ) -> List[Dict[str, Any]]:
     """
     Expand a parameter specification into a list of parameter dicts.
@@ -71,6 +81,8 @@ def expand_parameters(
             mode: "grid" or "list"
             values: For grid mode, dict of param_name -> list of values.
                     For list mode, list of param dicts.
+        filter_func: Optional predicate for grid mode to include/exclude
+            combinations.
 
     Returns:
         List of parameter dictionaries.
@@ -94,10 +106,102 @@ def expand_parameters(
             return [values]
 
     elif mode == "grid":
-        return list(expand_grid(values))
+        if filter_func is None:
+            filter_spec = spec.get("filter")
+            if callable(filter_spec):
+                filter_func = filter_spec
+            elif isinstance(filter_spec, dict):
+                filter_file = filter_spec.get("file", "")
+                if filter_file:
+                    filter_func = load_param_filter_function(
+                        filter_file,
+                        filter_spec.get("function", "include_params"),
+                    )
+        return list(expand_grid(values, filter_func=filter_func))
 
     else:
         raise ValueError(f"Unknown parameter mode: {mode}. Use 'grid' or 'list'.")
+
+
+# =============================================================================
+# Parameter Filter Logic
+# =============================================================================
+
+def load_param_filter_function(
+    file_path: Union[str, Path],
+    function_name: str = "include_params",
+) -> Callable[[Dict[str, Any]], bool]:
+    """
+    Load a Python function for filtering parameter combinations.
+
+    The function should have signature:
+        def include_params(params: dict) -> bool
+
+    Args:
+        file_path: Path to the Python file.
+        function_name: Name of the function to load.
+
+    Returns:
+        The loaded function.
+
+    Raises:
+        FileNotFoundError: If the file doesn't exist.
+        AttributeError: If the function isn't found in the file.
+    """
+    file_path = Path(file_path)
+
+    if not file_path.exists():
+        raise FileNotFoundError(f"Parameter filter file not found: {file_path}")
+
+    # Load the module dynamically
+    spec = importlib.util.spec_from_file_location("param_filter_module", file_path)
+    if spec is None or spec.loader is None:
+        raise ImportError(f"Could not load module from {file_path}")
+
+    module = importlib.util.module_from_spec(spec)
+    sys.modules["param_filter_module"] = module
+    spec.loader.exec_module(module)
+
+    # Get the function
+    if not hasattr(module, function_name):
+        raise AttributeError(
+            f"Function '{function_name}' not found in {file_path}"
+        )
+
+    return getattr(module, function_name)
+
+
+def resolve_parameters_filter_spec(
+    parameters: Dict[str, Any],
+    base_dir: Union[str, Path],
+) -> Dict[str, Any]:
+    """
+    Resolve filter file paths in a parameter spec relative to base_dir.
+
+    Returns a shallow-copied spec without mutating the input.
+    """
+    if not isinstance(parameters, dict):
+        return parameters
+
+    filter_spec = parameters.get("filter")
+    if not isinstance(filter_spec, dict):
+        return parameters
+
+    filter_file = filter_spec.get("file", "")
+    if not filter_file:
+        return parameters
+
+    base_dir = Path(base_dir)
+    filter_path = Path(filter_file)
+    if not filter_path.is_absolute():
+        filter_path = base_dir / filter_file
+
+    resolved = parameters.copy()
+    resolved_filter = filter_spec.copy()
+    resolved_filter["file"] = str(filter_path)
+    resolved["filter"] = resolved_filter
+
+    return resolved
 
 
 # =============================================================================
@@ -295,6 +399,20 @@ class JobGenerator:
         self.job_name_pattern = job_name_pattern
         self.logs_dir = Path(logs_dir) if logs_dir else None
 
+        # Parameter filter logic (optional)
+        self.param_filter_func = None
+        if isinstance(self.parameters, dict) and self.parameters.get("mode", "grid") == "grid":
+            filter_spec = self.parameters.get("filter")
+            if callable(filter_spec):
+                self.param_filter_func = filter_spec
+            elif isinstance(filter_spec, dict):
+                filter_file = filter_spec.get("file", "")
+                if filter_file:
+                    self.param_filter_func = load_param_filter_function(
+                        filter_file,
+                        filter_spec.get("function", "include_params"),
+                    )
+
         # SLURM arguments - merge config defaults with job spec defaults
         # Config defaults provide the base, job spec defaults override
         self.slurm_defaults = config.get_slurm_defaults().copy()
@@ -341,6 +459,11 @@ class JobGenerator:
         if not Path(template_path).is_absolute():
             template_path = spec_dir / template_path
 
+        parameters = resolve_parameters_filter_spec(
+            spec.get("parameters", {}),
+            base_dir=spec_dir,
+        )
+
         slurm_logic_file = None
         slurm_logic_function = "get_slurm_args"
         slurm_args = spec.get("slurm_args", {})
@@ -361,7 +484,7 @@ class JobGenerator:
 
         return cls(
             template_path=template_path,
-            parameters=spec.get("parameters", {}),
+            parameters=parameters,
             slurm_defaults=slurm_args.get("defaults"),
             slurm_logic_file=slurm_logic_file,
             slurm_logic_function=slurm_logic_function,
@@ -400,7 +523,10 @@ class JobGenerator:
         template = self._env.get_template(self.template_path.name)
 
         # Expand parameters
-        param_list = expand_parameters(self.parameters)
+        param_list = expand_parameters(
+            self.parameters,
+            filter_func=self.param_filter_func,
+        )
 
         generated = []
 
@@ -471,7 +597,10 @@ class JobGenerator:
         template = self._env.get_template(self.template_path.name)
 
         # Expand parameters
-        param_list = expand_parameters(self.parameters)
+        param_list = expand_parameters(
+            self.parameters,
+            filter_func=self.param_filter_func,
+        )
 
         if index >= len(param_list):
             raise IndexError(f"Index {index} out of range (max {len(param_list) - 1})")
@@ -510,7 +639,12 @@ class JobGenerator:
         Returns:
             Number of parameter combinations.
         """
-        return len(expand_parameters(self.parameters))
+        return len(
+            expand_parameters(
+                self.parameters,
+                filter_func=self.param_filter_func,
+            )
+        )
 
     def list_job_names(self) -> List[str]:
         """
@@ -519,7 +653,10 @@ class JobGenerator:
         Returns:
             List of job names.
         """
-        param_list = expand_parameters(self.parameters)
+        param_list = expand_parameters(
+            self.parameters,
+            filter_func=self.param_filter_func,
+        )
         return [
             generate_job_name(params, pattern=self.job_name_pattern, env=self._env)
             for params in param_list
