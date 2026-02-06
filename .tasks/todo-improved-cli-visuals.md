@@ -1,0 +1,1 @@
+Rough: improve the CLI interface visually e.g. through the use of colors etc. Make such CLI utils modular and apply consistently across CLI

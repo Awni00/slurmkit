@@ -1,0 +1,3 @@
+Rough: utility for automatically analyzing potential errors, using LLM CLI tool or similar (e.g., `gemini-cli`; interface user-specifiable, e.g., through provided python function). Notify user through email, slack, and custom webhooks etc. Make report highly structured and skimmable.
+
+How to use email notifications? Note that when using slurm compute instance, the slurm email command might have restrictions and require ssh-ing back to the host node and doing it through there. See e.g., github.com/awni00/slurm-ai-notify  
