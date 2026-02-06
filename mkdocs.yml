@@ -96,6 +96,7 @@ nav:
     - Configuration: configuration.md
     - Job Generation: job-generation.md
     - Collections: collections.md
+    - Notifications: notifications.md
     - Cross-Cluster Sync: sync.md
     - CLI Reference: cli-reference.md
   - API Reference:

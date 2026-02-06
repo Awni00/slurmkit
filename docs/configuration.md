@@ -88,6 +88,30 @@ cleanup:
   min_age_days: 3
 
 # =============================================================================
+# Notifications (Optional)
+# =============================================================================
+
+notifications:
+  defaults:
+    # Applied when route-level settings are not provided
+    events: [job_failed]
+    timeout_seconds: 5
+    max_attempts: 3
+    backoff_seconds: 0.5
+    output_tail_lines: 40
+
+  routes:
+    - name: team_slack
+      type: slack            # slack | discord | webhook
+      url: "${SLACK_WEBHOOK_URL}"
+      enabled: true
+      events: [job_failed]
+      headers: {}
+      timeout_seconds: 5
+      max_attempts: 3
+      backoff_seconds: 0.5
+
+# =============================================================================
 # W&B Settings (Optional)
 # =============================================================================
 
@@ -198,6 +222,44 @@ slurm_defaults:
 ```
 
 These are passed to job templates as `{{ slurm.partition }}`, `{{ slurm.time }}`, etc.
+
+## Notifications
+
+Use `notifications.routes` to define where `slurmkit notify` sends events.
+
+### Route Fields
+
+- `name` - Unique route name used by `slurmkit notify --route ...`
+- `type` - `webhook`, `slack`, or `discord`
+- `url` - Destination URL; supports `${ENV_VAR}` interpolation
+- `enabled` - Optional boolean (default: `true`)
+- `events` - Optional list of subscribed events (defaults to `job_failed`)
+- `headers` - Optional HTTP headers map; supports `${ENV_VAR}` interpolation
+- `timeout_seconds` - Optional request timeout override
+- `max_attempts` - Optional retry attempts override
+- `backoff_seconds` - Optional retry backoff override
+
+### Defaults Behavior
+
+- If `events` is omitted on a route, it defaults to `notifications.defaults.events`.
+- If `notifications.defaults.events` is omitted, it defaults to `[job_failed]`.
+- Retry and timeout values fall back from route settings to `notifications.defaults`.
+
+### Environment Variable Interpolation
+
+`url` and `headers` support `${VAR_NAME}` placeholders:
+
+```yaml
+notifications:
+  routes:
+    - name: secure_webhook
+      type: webhook
+      url: "${NOTIFY_WEBHOOK_URL}"
+      headers:
+        Authorization: "Bearer ${NOTIFY_WEBHOOK_TOKEN}"
+```
+
+If any referenced variable is missing, that route is treated as a route-level configuration error at runtime.
 
 ## Programmatic Access
 

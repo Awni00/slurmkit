@@ -42,6 +42,11 @@ from slurmkit.generate import (
     resolve_parameters_filter_spec,
 )
 from slurmkit.sync import SyncManager
+from slurmkit.notifications import (
+    EVENT_JOB_COMPLETED,
+    EVENT_JOB_FAILED,
+    NotificationService,
+)
 
 
 # =============================================================================
@@ -97,6 +102,33 @@ def cmd_init(args: Any) -> int:
     print("\nW&B settings (optional, press Enter to skip):")
     wandb_entity = input("  W&B entity: ").strip() or None
 
+    # Notification settings (optional)
+    print("\nNotifications (optional):")
+    enable_notifications = prompt_yes_no("  Configure notifications now? [y/N]: ")
+    notification_route = None
+    if enable_notifications:
+        route_type = input("  Route type [webhook]: ").strip().lower() or "webhook"
+        if route_type not in ("webhook", "slack", "discord"):
+            print("  Invalid route type. Falling back to 'webhook'.")
+            route_type = "webhook"
+
+        default_route_name = f"{route_type}_default"
+        route_name = input(f"  Route name [{default_route_name}]: ").strip() or default_route_name
+        route_url = input("  Route URL (supports ${ENV_VAR}): ").strip()
+        if not route_url:
+            print("  Empty route URL. Notifications setup skipped.")
+        else:
+            events_raw = input("  Events (comma-separated) [job_failed]: ").strip() or "job_failed"
+            events = [event.strip() for event in events_raw.split(",") if event.strip()]
+            notification_route = {
+                "name": route_name,
+                "type": route_type,
+                "url": route_url,
+                "enabled": True,
+                "events": events or ["job_failed"],
+                "headers": {},
+            }
+
     # Build config
     config_data = {
         "jobs_dir": jobs_dir,
@@ -122,6 +154,16 @@ def cmd_init(args: Any) -> int:
             "threshold_seconds": 300,
             "min_age_days": 3,
         },
+        "notifications": {
+            "defaults": {
+                "events": ["job_failed"],
+                "timeout_seconds": 5,
+                "max_attempts": 3,
+                "backoff_seconds": 0.5,
+                "output_tail_lines": 40,
+            },
+            "routes": [],
+        },
     }
 
     if wandb_entity:
@@ -129,6 +171,9 @@ def cmd_init(args: Any) -> int:
             "entity": wandb_entity,
             "default_projects": [],
         }
+
+    if notification_route:
+        config_data["notifications"]["routes"].append(notification_route)
 
     # Write config
     config_path.parent.mkdir(parents=True, exist_ok=True)
@@ -1268,6 +1313,144 @@ def cmd_collection_remove(args: Any) -> int:
     manager.save(collection)
     print(f"\nRemoved {removed} job(s) from collection '{args.name}'.")
     return 0
+
+
+# =============================================================================
+# notify Commands
+# =============================================================================
+
+def _compute_notification_exit_code(
+    success_count: int,
+    attempted_count: int,
+    strict: bool,
+) -> int:
+    """Compute command exit code from route-delivery outcomes."""
+    if attempted_count == 0:
+        return 0
+    if strict:
+        return 0 if success_count == attempted_count else 1
+    return 0 if success_count > 0 else 1
+
+
+def _print_notification_results(
+    delivery_results: List[Any],
+    route_errors: List[str],
+) -> None:
+    """Print human-readable delivery summary."""
+    for error in route_errors:
+        print(f"[route-error] {error}")
+
+    for result in delivery_results:
+        if result.success:
+            mode = "dry-run" if result.dry_run else "sent"
+            attempts = f"{result.attempts} attempt(s)" if not result.dry_run else "no request sent"
+            print(f"[ok] {result.route_name} ({result.route_type}) - {mode}, {attempts}")
+        else:
+            details = result.error or "unknown error"
+            if result.status_code is not None:
+                details = f"HTTP {result.status_code} - {details}"
+            print(f"[failed] {result.route_name} ({result.route_type}) - {details}")
+
+
+def cmd_notify_job(args: Any) -> int:
+    """Send notification for a completed/failed job."""
+    config = get_configured_config(args)
+    service = NotificationService(config=config)
+
+    job_id = args.job_id or os.environ.get("SLURM_JOB_ID")
+    if not job_id:
+        print("Error: Missing job ID. Pass --job-id or set SLURM_JOB_ID.")
+        return 1
+
+    exit_code = int(args.exit_code)
+    event = EVENT_JOB_FAILED if exit_code != 0 else EVENT_JOB_COMPLETED
+
+    if args.on == "failed" and event != EVENT_JOB_FAILED:
+        print("Skipping notification: event is job_completed and --on failed is active.")
+        return 0
+
+    payload, context_warnings = service.build_job_payload(
+        job_id=job_id,
+        exit_code=exit_code,
+        event=event,
+        collection_name=args.collection,
+        tail_lines=args.tail_lines,
+    )
+    for warning in context_warnings:
+        print(f"[context-warning] {warning}")
+
+    route_resolution = service.resolve_routes(
+        event=event,
+        route_names=args.route,
+    )
+
+    if not route_resolution.routes and not route_resolution.errors:
+        print(f"No notification routes matched event '{event}'.")
+        return 0
+
+    if args.dry_run:
+        print("Dry run enabled. Payload preview:")
+        print(json.dumps(payload, indent=2, default=str))
+        if route_resolution.routes:
+            names = ", ".join(route.name for route in route_resolution.routes)
+            print(f"Resolved routes: {names}")
+        else:
+            print("Resolved routes: (none)")
+
+    delivery_results = service.dispatch(
+        payload=payload,
+        routes=route_resolution.routes,
+        dry_run=args.dry_run,
+    )
+    _print_notification_results(delivery_results, route_resolution.errors)
+
+    success_count = sum(1 for result in delivery_results if result.success)
+    attempted_count = len(delivery_results) + len(route_resolution.errors)
+    return _compute_notification_exit_code(
+        success_count=success_count,
+        attempted_count=attempted_count,
+        strict=args.strict,
+    )
+
+
+def cmd_notify_test(args: Any) -> int:
+    """Send synthetic test notification to configured routes."""
+    config = get_configured_config(args)
+    service = NotificationService(config=config)
+
+    payload = service.build_test_payload()
+    route_resolution = service.resolve_routes(
+        event=None,
+        route_names=args.route,
+    )
+
+    if not route_resolution.routes and not route_resolution.errors:
+        print("No enabled notification routes configured.")
+        return 0
+
+    if args.dry_run:
+        print("Dry run enabled. Payload preview:")
+        print(json.dumps(payload, indent=2, default=str))
+        if route_resolution.routes:
+            names = ", ".join(route.name for route in route_resolution.routes)
+            print(f"Resolved routes: {names}")
+        else:
+            print("Resolved routes: (none)")
+
+    delivery_results = service.dispatch(
+        payload=payload,
+        routes=route_resolution.routes,
+        dry_run=args.dry_run,
+    )
+    _print_notification_results(delivery_results, route_resolution.errors)
+
+    success_count = sum(1 for result in delivery_results if result.success)
+    attempted_count = len(delivery_results) + len(route_resolution.errors)
+    return _compute_notification_exit_code(
+        success_count=success_count,
+        attempted_count=attempted_count,
+        strict=args.strict,
+    )
 
 
 # =============================================================================

@@ -33,6 +33,7 @@ Examples:
   slurmkit find 12345              Find output file for job ID
   slurmkit generate job_spec.yaml  Generate jobs from spec file
   slurmkit submit jobs/exp1/       Submit job scripts
+  slurmkit notify test             Test notification routes
   slurmkit collection list         List all collections
   slurmkit sync                    Sync job states to file
 
@@ -558,6 +559,91 @@ For more information on a command, run: slurmkit <command> --help
         help="Git commit and push sync file",
     )
 
+    # notify
+    notify_parser = subparsers.add_parser(
+        "notify",
+        help="Send job lifecycle notifications",
+        description="Send notifications to configured webhook routes.",
+    )
+    notify_subparsers = notify_parser.add_subparsers(
+        dest="notify_action",
+        title="actions",
+        metavar="<action>",
+    )
+
+    # notify job
+    notify_job_parser = notify_subparsers.add_parser(
+        "job",
+        help="Send notification for a completed job",
+    )
+    notify_job_parser.add_argument(
+        "--job-id",
+        metavar="JOB_ID",
+        help="SLURM job ID (defaults to SLURM_JOB_ID env var)",
+    )
+    notify_job_parser.add_argument(
+        "--collection",
+        metavar="NAME",
+        help="Optional collection name to narrow metadata lookup",
+    )
+    notify_job_parser.add_argument(
+        "--exit-code",
+        type=int,
+        default=0,
+        metavar="N",
+        help="Process exit code used to derive event type (default: 0)",
+    )
+    notify_job_parser.add_argument(
+        "--on",
+        choices=["failed", "always"],
+        default="failed",
+        help="Notification trigger mode (default: failed)",
+    )
+    notify_job_parser.add_argument(
+        "--route",
+        action="append",
+        metavar="NAME",
+        help="Route name filter (repeatable)",
+    )
+    notify_job_parser.add_argument(
+        "--tail-lines",
+        type=int,
+        metavar="N",
+        help="Override number of output tail lines for failure notifications",
+    )
+    notify_job_parser.add_argument(
+        "--strict",
+        action="store_true",
+        help="Require all selected routes to succeed",
+    )
+    notify_job_parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Show resolved routes and payload without sending requests",
+    )
+
+    # notify test
+    notify_test_parser = notify_subparsers.add_parser(
+        "test",
+        help="Send synthetic test notification",
+    )
+    notify_test_parser.add_argument(
+        "--route",
+        action="append",
+        metavar="NAME",
+        help="Route name filter (repeatable)",
+    )
+    notify_test_parser.add_argument(
+        "--strict",
+        action="store_true",
+        help="Require all selected routes to succeed",
+    )
+    notify_test_parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Show resolved routes and payload without sending requests",
+    )
+
     return parser
 
 
@@ -633,6 +719,15 @@ def main(argv: Optional[List[str]] = None) -> int:
 
         elif args.command == "sync":
             return commands.cmd_sync(args)
+
+        elif args.command == "notify":
+            if args.notify_action == "job":
+                return commands.cmd_notify_job(args)
+            elif args.notify_action == "test":
+                return commands.cmd_notify_test(args)
+            else:
+                parser.parse_args([args.command, "--help"])
+                return 1
 
         else:
             parser.print_help()

@@ -17,6 +17,8 @@
 # Slurmkit Demo Job: {{ job_name }}
 # Description: Simple demo job to test slurmkit functionality
 # =============================================================================
+# Optional notification hook (uncomment and configure route in .slurm-kit/config.yaml):
+# trap 'rc=$?; slurmkit notify job --job-id "${SLURM_JOB_ID}" --exit-code "${rc}"; exit "${rc}"' EXIT
 
 echo "=================================="
 echo "SLURMKIT DEMO JOB"

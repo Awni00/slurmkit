@@ -117,6 +117,26 @@ slurmkit collection show hp_sweep --state running
 slurmkit collection show hp_sweep --state failed
 ```
 
+### 5.5 Configure and Test Notifications (Optional)
+
+Add a route in `.slurm-kit/config.yaml`:
+
+```yaml
+notifications:
+  routes:
+    - name: demo_webhook
+      type: webhook
+      url: "${DEMO_WEBHOOK_URL}"
+      events: [job_failed]
+```
+
+Test route configuration:
+
+```bash
+slurmkit notify test --route demo_webhook
+slurmkit notify test --dry-run
+```
+
 ### 6. View Job Output
 
 **Find output file:**
@@ -208,6 +228,12 @@ watch -n 10 'slurmkit collection show demo_run'
 
 # When done, check results
 ls results/
+```
+
+To notify from inside a job script while preserving original exit code:
+
+```bash
+trap 'rc=$?; slurmkit notify job --job-id "${SLURM_JOB_ID}" --exit-code "${rc}"; exit "${rc}"' EXIT
 ```
 
 ### Workflow 2: Iterative Template Development

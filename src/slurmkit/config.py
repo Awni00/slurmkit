@@ -69,6 +69,18 @@ DEFAULT_CONFIG = {
         "threshold_seconds": 300,  # Min runtime to keep (5 minutes)
         "min_age_days": 3,         # Min age before considering for cleanup
     },
+
+    # Notifications (webhook transports)
+    "notifications": {
+        "defaults": {
+            "events": ["job_failed"],
+            "timeout_seconds": 5,
+            "max_attempts": 3,
+            "backoff_seconds": 0.5,
+            "output_tail_lines": 40,
+        },
+        "routes": [],
+    },
 }
 
 # Environment variable prefix

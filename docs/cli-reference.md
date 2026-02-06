@@ -31,6 +31,7 @@ Interactive prompts for:
 - Jobs directory
 - Default SLURM partition, time, memory
 - W&B entity (optional)
+- Notification route setup (optional)
 
 ---
 
@@ -358,6 +359,58 @@ slurmkit sync [options]
 slurmkit sync
 slurmkit sync --collection exp1 exp2
 slurmkit sync --push
+```
+
+---
+
+### slurmkit notify
+
+Send job lifecycle notifications to configured webhook routes.
+
+#### notify job
+
+```bash
+slurmkit notify job [options]
+```
+
+| Option | Description |
+|--------|-------------|
+| `--job-id JOB_ID` | SLURM job ID (defaults to `SLURM_JOB_ID`) |
+| `--collection NAME` | Optional collection to narrow metadata lookup |
+| `--exit-code N` | Exit code used to derive event (`0` => completed, nonzero => failed) |
+| `--on MODE` | `failed` (default) or `always` |
+| `--route NAME` | Route name filter (repeatable) |
+| `--tail-lines N` | Override failure output tail line count |
+| `--strict` | Require all attempted routes to succeed |
+| `--dry-run` | Preview payload/routes without sending HTTP |
+
+Examples:
+
+```bash
+slurmkit notify job --job-id 12345 --exit-code 1
+slurmkit notify job --job-id 12345 --exit-code 0 --on always
+slurmkit notify job --job-id 12345 --route team_slack --route custom_ops
+slurmkit notify job --job-id 12345 --dry-run
+```
+
+#### notify test
+
+```bash
+slurmkit notify test [options]
+```
+
+| Option | Description |
+|--------|-------------|
+| `--route NAME` | Route name filter (repeatable) |
+| `--strict` | Require all attempted routes to succeed |
+| `--dry-run` | Preview payload/routes without sending HTTP |
+
+Examples:
+
+```bash
+slurmkit notify test
+slurmkit notify test --route team_slack
+slurmkit notify test --dry-run
 ```
 
 ---

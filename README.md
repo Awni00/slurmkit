@@ -148,6 +148,7 @@ slurmkit resubmit --collection exp1 --filter failed
 | `slurmkit generate <spec>` | Generate job scripts from template |
 | `slurmkit submit` | Submit job scripts |
 | `slurmkit resubmit` | Resubmit failed jobs |
+| `slurmkit notify` | Send job lifecycle notifications |
 | `slurmkit collection` | Manage job collections |
 | `slurmkit clean outputs` | Clean failed job outputs |
 | `slurmkit clean wandb` | Clean failed W&B runs |
@@ -175,6 +176,19 @@ slurm_defaults:
 job_structure:
   scripts_subdir: job_scripts/
   logs_subdir: logs/
+
+notifications:
+  defaults:
+    events: [job_failed]
+    timeout_seconds: 5
+    max_attempts: 3
+    backoff_seconds: 0.5
+    output_tail_lines: 40
+  routes:
+    - name: team_slack
+      type: slack
+      url: "${SLACK_WEBHOOK_URL}"
+      events: [job_failed]
 ```
 
 ### Environment Variables
@@ -195,6 +209,7 @@ Full documentation is available at [https://awni00.github.io/slurmkit/](https://
 - [Configuration](docs/configuration.md)
 - [Job Generation](docs/job-generation.md)
 - [Collections](docs/collections.md)
+- [Notifications](docs/notifications.md)
 - [Cross-Cluster Sync](docs/sync.md)
 - [CLI Reference](docs/cli-reference.md)
 
@@ -231,6 +246,26 @@ slurmkit collection show my_exp --state failed
 
 # Update states from SLURM
 slurmkit collection update my_exp
+```
+
+### Notifications
+
+Send job lifecycle notifications to Slack, Discord, or generic webhooks:
+
+```bash
+# Validate route setup
+slurmkit notify test
+
+# Typical end-of-job call from script (default: notify only on failure)
+slurmkit notify job --job-id "$SLURM_JOB_ID" --exit-code "$rc"
+```
+
+Recommended trap snippet inside a job script:
+
+```bash
+rc=$?
+slurmkit notify job --job-id "${SLURM_JOB_ID}" --exit-code "${rc}"
+exit "${rc}"
 ```
 
 ### Parameter Sweeps

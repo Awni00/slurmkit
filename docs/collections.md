@@ -226,6 +226,23 @@ slurmkit resubmit --collection my_experiment --filter failed \
     --extra-params "checkpoint=checkpoints/last.pt"
 ```
 
+## Notifications Integration
+
+Collections are used by `slurmkit notify job` to enrich notifications with:
+- Collection name/description
+- Job metadata (name, state, timestamps)
+- Output path and failure tail snippet (when available)
+
+Typical end-of-job pattern:
+
+```bash
+rc=$?
+slurmkit notify job --job-id "${SLURM_JOB_ID}" --exit-code "${rc}"
+exit "${rc}"
+```
+
+See [Notifications](notifications.md) for full route setup and command reference.
+
 ## Cross-Cluster Tracking
 
 Jobs track the hostname where they were submitted:
