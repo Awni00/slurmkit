@@ -19,11 +19,13 @@ import importlib
 import json
 import os
 import re
+import smtplib
 import socket
 import time
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
+from email.message import EmailMessage
 from pathlib import Path
 from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple
 
@@ -45,7 +47,7 @@ except ImportError:  # pragma: no cover - guarded by packaging dependency
     requests = None
 
 
-ROUTE_TYPES = {"webhook", "slack", "discord"}
+ROUTE_TYPES = {"webhook", "slack", "discord", "email"}
 DEFAULT_EVENT_FAILED = "job_failed"
 EVENT_JOB_COMPLETED = "job_completed"
 EVENT_JOB_FAILED = "job_failed"
@@ -85,6 +87,14 @@ class NotificationRoute:
     timeout_seconds: float
     max_attempts: int
     backoff_seconds: float
+    email_to: List[str] = field(default_factory=list)
+    email_from: Optional[str] = None
+    smtp_host: Optional[str] = None
+    smtp_port: int = 587
+    smtp_username: Optional[str] = None
+    smtp_password: Optional[str] = None
+    smtp_starttls: bool = True
+    smtp_ssl: bool = False
 
 
 @dataclass
@@ -198,6 +208,23 @@ def _to_positive_int(value: Any, default: int) -> int:
     except (TypeError, ValueError):
         return default
     return parsed if parsed > 0 else default
+
+
+def _to_bool(value: Any, default: bool) -> bool:
+    """Convert common scalar values to bool with default fallback."""
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return bool(value)
+    if isinstance(value, str):
+        lowered = value.strip().lower()
+        if lowered in {"1", "true", "yes", "y", "on"}:
+            return True
+        if lowered in {"0", "false", "no", "n", "off"}:
+            return False
+    return default
 
 
 
@@ -366,16 +393,119 @@ class NotificationService:
 
         enabled = bool(raw_route.get("enabled", True))
 
-        raw_url = raw_route.get("url")
-        if raw_url is None or str(raw_url).strip() == "":
-            raise NotificationConfigError(f"Route '{name}' is missing required field 'url'.")
-        url = str(_interpolate_env(raw_url))
+        email_to: List[str] = []
+        email_from: Optional[str] = None
+        smtp_host: Optional[str] = None
+        smtp_port = 587
+        smtp_username: Optional[str] = None
+        smtp_password: Optional[str] = None
+        smtp_starttls = True
+        smtp_ssl = False
 
-        raw_headers = raw_route.get("headers", {}) or {}
-        if not isinstance(raw_headers, dict):
-            raise NotificationConfigError(f"Route '{name}' field 'headers' must be a mapping.")
-        headers = _interpolate_env(raw_headers)
-        normalized_headers = {str(k): str(v) for k, v in headers.items()}
+        if route_type == "email":
+            if "url" in raw_route:
+                raise NotificationConfigError(
+                    f"Route '{name}' of type 'email' must not define field 'url'."
+                )
+            if "headers" in raw_route:
+                raise NotificationConfigError(
+                    f"Route '{name}' of type 'email' must not define field 'headers'."
+                )
+
+            raw_to = raw_route.get("to")
+            if raw_to is None:
+                raise NotificationConfigError(
+                    f"Route '{name}' of type 'email' is missing required field 'to'."
+                )
+            resolved_to = _interpolate_env(raw_to)
+            candidates: List[str] = []
+            if isinstance(resolved_to, str):
+                candidates = [part.strip() for part in resolved_to.split(",") if part.strip()]
+            elif isinstance(resolved_to, list):
+                for entry in resolved_to:
+                    for part in str(entry).split(","):
+                        trimmed = part.strip()
+                        if trimmed:
+                            candidates.append(trimmed)
+            else:
+                raise NotificationConfigError(
+                    f"Route '{name}' field 'to' must be a string or list of strings."
+                )
+            seen_to: set = set()
+            email_to = []
+            for recipient in candidates:
+                if recipient in seen_to:
+                    continue
+                seen_to.add(recipient)
+                email_to.append(recipient)
+            if not email_to:
+                raise NotificationConfigError(
+                    f"Route '{name}' field 'to' must contain at least one recipient."
+                )
+
+            raw_from = raw_route.get("from")
+            if raw_from is None or str(raw_from).strip() == "":
+                raise NotificationConfigError(
+                    f"Route '{name}' of type 'email' is missing required field 'from'."
+                )
+            email_from = str(_interpolate_env(raw_from)).strip()
+            if not email_from:
+                raise NotificationConfigError(
+                    f"Route '{name}' field 'from' resolved to an empty value."
+                )
+
+            raw_smtp_host = raw_route.get("smtp_host")
+            if raw_smtp_host is None or str(raw_smtp_host).strip() == "":
+                raise NotificationConfigError(
+                    f"Route '{name}' of type 'email' is missing required field 'smtp_host'."
+                )
+            smtp_host = str(_interpolate_env(raw_smtp_host)).strip()
+            if not smtp_host:
+                raise NotificationConfigError(
+                    f"Route '{name}' field 'smtp_host' resolved to an empty value."
+                )
+
+            smtp_port = _to_positive_int(
+                _interpolate_env(raw_route.get("smtp_port", 587)),
+                587,
+            )
+            smtp_starttls = _to_bool(
+                _interpolate_env(raw_route.get("smtp_starttls", True)),
+                True,
+            )
+            smtp_ssl = _to_bool(
+                _interpolate_env(raw_route.get("smtp_ssl", False)),
+                False,
+            )
+            if smtp_starttls and smtp_ssl:
+                raise NotificationConfigError(
+                    f"Route '{name}' cannot enable both smtp_starttls and smtp_ssl."
+                )
+
+            raw_username = raw_route.get("smtp_username")
+            raw_password = raw_route.get("smtp_password")
+            if raw_username is not None and str(raw_username).strip() != "":
+                smtp_username = str(_interpolate_env(raw_username)).strip()
+            if raw_password is not None and str(raw_password).strip() != "":
+                smtp_password = str(_interpolate_env(raw_password)).strip()
+            if bool(smtp_username) != bool(smtp_password):
+                raise NotificationConfigError(
+                    f"Route '{name}' must set both smtp_username and smtp_password together."
+                )
+
+            url = ""
+            normalized_headers: Dict[str, str] = {}
+        else:
+            raw_url = raw_route.get("url")
+            if raw_url is None or str(raw_url).strip() == "":
+                raise NotificationConfigError(f"Route '{name}' is missing required field 'url'.")
+            url = str(_interpolate_env(raw_url))
+
+            raw_headers = raw_route.get("headers", {}) or {}
+            if not isinstance(raw_headers, dict):
+                raise NotificationConfigError(f"Route '{name}' field 'headers' must be a mapping.")
+            headers = _interpolate_env(raw_headers)
+            normalized_headers = {str(k): str(v) for k, v in headers.items()}
 
         events = _normalize_events(raw_route.get("events"), fallback=defaults.events)
 
@@ -393,6 +523,14 @@ class NotificationService:
             timeout_seconds=timeout_seconds,
             max_attempts=max_attempts,
             backoff_seconds=backoff_seconds,
+            email_to=email_to,
+            email_from=email_from,
+            smtp_host=smtp_host,
+            smtp_port=smtp_port,
+            smtp_username=smtp_username,
+            smtp_password=smtp_password,
+            smtp_starttls=smtp_starttls,
+            smtp_ssl=smtp_ssl,
         )
 
     def resolve_routes(
@@ -427,12 +565,20 @@ class NotificationService:
 
         for idx, raw in enumerate(raw_routes):
             if not isinstance(raw, dict):
-                errors.append(f"Route entry at index {idx} must be a mapping.")
+                if not selected:
+                    errors.append(f"Route entry at index {idx} must be a mapping.")
                 continue
 
             raw_name = str(raw.get("name", "")).strip()
             if raw_name:
                 known_names.add(raw_name)
+
+            # When an explicit route allow-list is provided, only validate selected
+            # routes so unrelated routes do not block targeted sends/tests.
+            if selected and raw_name not in selected:
+                if raw_name:
+                    skipped.append(raw_name)
+                continue
 
             try:
                 route = self._parse_route(raw, defaults)
@@ -1146,7 +1292,108 @@ class NotificationService:
             return {"text": self._render_human_message(payload)}
         if route.route_type == "discord":
             return {"content": self._render_human_message(payload)}
+        if route.route_type == "email":
+            return payload
         raise NotificationConfigError(f"Unsupported route type '{route.route_type}'.")
+
+    def _render_email_subject(self, payload: Dict[str, Any]) -> str:
+        """Render concise subject line for email delivery."""
+        event = payload.get("event")
+        job = payload.get("job", {}) or {}
+        collection = payload.get("collection", {}) or {}
+
+        if event == EVENT_JOB_FAILED:
+            return f"SLURMKIT ALERT: job_failed ({job.get('job_id') or 'unknown'})"
+        if event == EVENT_JOB_COMPLETED:
+            return f"SLURMKIT: job_completed ({job.get('job_id') or 'unknown'})"
+        if event == EVENT_COLLECTION_FAILED:
+            return f"SLURMKIT ALERT: collection_failed ({collection.get('name') or 'unknown'})"
+        if event == EVENT_COLLECTION_COMPLETED:
+            return f"SLURMKIT: collection_completed ({collection.get('name') or 'unknown'})"
+        return "SLURMKIT: test_notification"
+
+    def _send_email(
+        self,
+        route: NotificationRoute,
+        payload: Dict[str, Any],
+        dry_run: bool = False,
+    ) -> DeliveryResult:
+        """Send text email through SMTP with retries."""
+        if dry_run:
+            return DeliveryResult(
+                route_name=route.name,
+                route_type=route.route_type,
+                success=True,
+                attempts=0,
+                dry_run=True,
+            )
+
+        if not route.smtp_host or not route.email_from or not route.email_to:
+            return DeliveryResult(
+                route_name=route.name,
+                route_type=route.route_type,
+                success=False,
+                attempts=0,
+                error="email route is missing required SMTP fields",
+            )
+
+        attempts = 0
+        for attempts in range(1, route.max_attempts + 1):
+            try:
+                message = EmailMessage()
+                message["Subject"] = self._render_email_subject(payload)
+                message["From"] = route.email_from
+                message["To"] = ", ".join(route.email_to)
+                message.set_content(self._render_human_message(payload))
+
+                if route.smtp_ssl:
+                    with smtplib.SMTP_SSL(
+                        route.smtp_host,
+                        route.smtp_port,
+                        timeout=route.timeout_seconds,
+                    ) as smtp_conn:
+                        if route.smtp_username and route.smtp_password:
+                            smtp_conn.login(route.smtp_username, route.smtp_password)
+                        smtp_conn.send_message(message)
+                else:
+                    with smtplib.SMTP(
+                        route.smtp_host,
+                        route.smtp_port,
+                        timeout=route.timeout_seconds,
+                    ) as smtp_conn:
+                        smtp_conn.ehlo()
+                        if route.smtp_starttls:
+                            smtp_conn.starttls()
+                            smtp_conn.ehlo()
+                        if route.smtp_username and route.smtp_password:
+                            smtp_conn.login(route.smtp_username, route.smtp_password)
+                        smtp_conn.send_message(message)
+
+                return DeliveryResult(
+                    route_name=route.name,
+                    route_type=route.route_type,
+                    success=True,
+                    attempts=attempts,
+                )
+            except (smtplib.SMTPException, OSError) as exc:
+                if attempts < route.max_attempts:
+                    time.sleep(route.backoff_seconds * (2 ** (attempts - 1)))
+                    continue
+                return DeliveryResult(
+                    route_name=route.name,
+                    route_type=route.route_type,
+                    success=False,
+                    attempts=attempts,
+                    error=str(exc),
+                )
+
+        return DeliveryResult(
+            route_name=route.name,
+            route_type=route.route_type,
+            success=False,
+            attempts=attempts,
+            error="Email delivery failed after retries",
+        )
 
     def _send_json(
         self,
@@ -1241,8 +1488,15 @@ class NotificationService:
         """Dispatch payload to all selected routes."""
         results = []
         for route in routes:
-            route_payload = self._route_payload(route, payload)
-            result = self._send_json(route, route_payload, dry_run=dry_run)
+            if route.route_type == "email":
+                route_payload = copy.deepcopy(payload)
+                route_payload.setdefault("meta", {})
+                route_payload["meta"]["route_name"] = route.name
+                route_payload["meta"]["route_type"] = route.route_type
+                result = self._send_email(route, route_payload, dry_run=dry_run)
+            else:
+                route_payload = self._route_payload(route, payload)
+                result = self._send_json(route, route_payload, dry_run=dry_run)
             results.append(result)
         return results
 

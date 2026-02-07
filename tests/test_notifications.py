@@ -2,14 +2,17 @@
 
 from argparse import Namespace
 from pathlib import Path
+import smtplib
 
 import yaml
 
 from slurmkit.collections import CollectionManager
 from slurmkit.config import Config
 from slurmkit.notifications import (
+    EVENT_COLLECTION_COMPLETED,
     EVENT_JOB_COMPLETED,
     EVENT_JOB_FAILED,
+    EVENT_TEST,
     NotificationService,
     SCHEMA_VERSION,
 )
@@ -119,6 +122,30 @@ def test_route_filtering_and_unknown_route_error(tmp_path):
     assert [route.name for route in resolution.routes] == ["b"]
     assert len(resolution.errors) == 1
     assert "Unknown notification route 'missing'" in resolution.errors[0]
+
+
+def test_route_filtering_ignores_unselected_route_parse_errors(tmp_path, monkeypatch):
+    """Filtering to specific routes should not parse unrelated routes."""
+    monkeypatch.delenv("MISSING_NOTIFY_URL", raising=False)
+    config = _make_config(
+        tmp_path,
+        {
+            "notifications": {
+                "routes": [
+                    {"name": "broken", "type": "webhook", "url": "${MISSING_NOTIFY_URL}"},
+                    {"name": "ok", "type": "webhook", "url": "https://example.test/ok"},
+                ]
+            }
+        },
+    )
+    service = NotificationService(config=config)
+    resolution = service.resolve_routes(
+        event=EVENT_JOB_FAILED,
+        route_names=["ok"],
+    )
+
+    assert [route.name for route in resolution.routes] == ["ok"]
+    assert resolution.errors == []
 
 
 def test_route_retry_timeout_backoff_fallbacks(tmp_path):
@@ -352,3 +379,452 @@ def test_partial_success_evaluation_strict_vs_non_strict(tmp_path, monkeypatch):
     assert sum(1 for r in results if r.success) == 1
     assert service.evaluate_delivery(results, strict=False) == 0
     assert service.evaluate_delivery(results, strict=True) == 1
+
+
+def test_email_route_parses_recipients_and_defaults(tmp_path):
+    """Email route should parse recipients and apply SMTP defaults."""
+    config = _make_config(
+        tmp_path,
+        {
+            "notifications": {
+                "routes": [
+                    {
+                        "name": "mail",
+                        "type": "email",
+                        "to": "ops@example.com, ml@example.com, ops@example.com",
+                        "from": "noreply@example.com",
+                        "smtp_host": "smtp.example.com",
+                    }
+                ]
+            }
+        },
+    )
+    service = NotificationService(config=config)
+    resolution = service.resolve_routes(event=EVENT_JOB_FAILED)
+
+    assert resolution.errors == []
+    assert len(resolution.routes) == 1
+    route = resolution.routes[0]
+    assert route.route_type == "email"
+    assert route.email_to == ["ops@example.com", "ml@example.com"]
+    assert route.email_from == "noreply@example.com"
+    assert route.smtp_host == "smtp.example.com"
+    assert route.smtp_port == 587
+    assert route.smtp_starttls is True
+    assert route.smtp_ssl is False
+
+
+def test_email_route_accepts_list_recipients(tmp_path):
+    """Email route should accept recipient list format."""
+    config = _make_config(
+        tmp_path,
+        {
+            "notifications": {
+                "routes": [
+                    {
+                        "name": "mail",
+                        "type": "email",
+                        "to": ["ops@example.com", "ml@example.com"],
+                        "from": "noreply@example.com",
+                        "smtp_host": "smtp.example.com",
+                    }
+                ]
+            }
+        },
+    )
+    service = NotificationService(config=config)
+    resolution = service.resolve_routes(event=EVENT_JOB_FAILED)
+    assert resolution.errors == []
+    assert resolution.routes[0].email_to == ["ops@example.com", "ml@example.com"]
+
+
+def test_email_route_missing_required_fields(tmp_path):
+    """Email route requires to/from/smtp_host fields."""
+    config = _make_config(
+        tmp_path,
+        {
+            "notifications": {
+                "routes": [
+                    {"name": "m1", "type": "email", "from": "x@example.com", "smtp_host": "smtp.example.com"},
+                    {"name": "m2", "type": "email", "to": ["x@example.com"], "smtp_host": "smtp.example.com"},
+                    {"name": "m3", "type": "email", "to": ["x@example.com"], "from": "x@example.com"},
+                ]
+            }
+        },
+    )
+    service = NotificationService(config=config)
+    resolution = service.resolve_routes(event=EVENT_JOB_FAILED)
+    assert len(resolution.routes) == 0
+    assert len(resolution.errors) == 3
+    joined = "\n".join(resolution.errors)
+    assert "required field 'to'" in joined
+    assert "required field 'from'" in joined
+    assert "required field 'smtp_host'" in joined
+
+
+def test_email_route_invalid_tls_ssl_combination(tmp_path):
+    """STARTTLS and SMTP SSL cannot both be enabled."""
+    config = _make_config(
+        tmp_path,
+        {
+            "notifications": {
+                "routes": [
+                    {
+                        "name": "mail",
+                        "type": "email",
+                        "to": "ops@example.com",
+                        "from": "noreply@example.com",
+                        "smtp_host": "smtp.example.com",
+                        "smtp_starttls": True,
+                        "smtp_ssl": True,
+                    }
+                ]
+            }
+        },
+    )
+    service = NotificationService(config=config)
+    resolution = service.resolve_routes(event=EVENT_JOB_FAILED)
+    assert len(resolution.routes) == 0
+    assert len(resolution.errors) == 1
+    assert "cannot enable both smtp_starttls and smtp_ssl" in resolution.errors[0]
+
+
+def test_email_route_invalid_auth_pair(tmp_path):
+    """Username/password auth must be configured together."""
+    config = _make_config(
+        tmp_path,
+        {
+            "notifications": {
+                "routes": [
+                    {
+                        "name": "mail",
+                        "type": "email",
+                        "to": "ops@example.com",
+                        "from": "noreply@example.com",
+                        "smtp_host": "smtp.example.com",
+                        "smtp_username": "user-only",
+                    }
+                ]
+            }
+        },
+    )
+    service = NotificationService(config=config)
+    resolution = service.resolve_routes(event=EVENT_JOB_FAILED)
+    assert len(resolution.routes) == 0
+    assert len(resolution.errors) == 1
+    assert "smtp_username and smtp_password together" in resolution.errors[0]
+
+
+def test_email_route_rejects_url_and_headers(tmp_path):
+    """Email routes should not define webhook fields."""
+    config = _make_config(
+        tmp_path,
+        {
+            "notifications": {
+                "routes": [
+                    {
+                        "name": "mail",
+                        "type": "email",
+                        "to": "ops@example.com",
+                        "from": "noreply@example.com",
+                        "smtp_host": "smtp.example.com",
+                        "url": "https://example.com/hook",
+                    },
+                    {
+                        "name": "mail2",
+                        "type": "email",
+                        "to": "ops@example.com",
+                        "from": "noreply@example.com",
+                        "smtp_host": "smtp.example.com",
+                        "headers": {"X-Test": "1"},
+                    },
+                ]
+            }
+        },
+    )
+    service = NotificationService(config=config)
+    resolution = service.resolve_routes(event=EVENT_JOB_FAILED)
+    assert len(resolution.routes) == 0
+    assert len(resolution.errors) == 2
+    assert "must not define field 'url'" in resolution.errors[0]
+    assert "must not define field 'headers'" in resolution.errors[1]
+
+
+def test_email_route_env_interpolation_success(tmp_path, monkeypatch):
+    """Email fields support environment variable interpolation."""
+    monkeypatch.setenv("MAIL_TO", "ops@example.com,ml@example.com")
+    monkeypatch.setenv("MAIL_FROM", "noreply@example.com")
+    monkeypatch.setenv("SMTP_HOST", "smtp.example.com")
+    monkeypatch.setenv("SMTP_PORT", "1025")
+    monkeypatch.setenv("SMTP_STARTTLS", "false")
+    monkeypatch.setenv("SMTP_SSL", "true")
+    monkeypatch.setenv("SMTP_USER", "demo-user")
+    monkeypatch.setenv("SMTP_PASS", "demo-pass")
+    config = _make_config(
+        tmp_path,
+        {
+            "notifications": {
+                "routes": [
+                    {
+                        "name": "mail",
+                        "type": "email",
+                        "to": "${MAIL_TO}",
+                        "from": "${MAIL_FROM}",
+                        "smtp_host": "${SMTP_HOST}",
+                        "smtp_port": "${SMTP_PORT}",
+                        "smtp_starttls": "${SMTP_STARTTLS}",
+                        "smtp_ssl": "${SMTP_SSL}",
+                        "smtp_username": "${SMTP_USER}",
+                        "smtp_password": "${SMTP_PASS}",
+                    }
+                ]
+            }
+        },
+    )
+    service = NotificationService(config=config)
+    resolution = service.resolve_routes(event=EVENT_JOB_FAILED)
+    assert resolution.errors == []
+    route = resolution.routes[0]
+    assert route.email_to == ["ops@example.com", "ml@example.com"]
+    assert route.email_from == "noreply@example.com"
+    assert route.smtp_host == "smtp.example.com"
+    assert route.smtp_port == 1025
+    assert route.smtp_starttls is False
+    assert route.smtp_ssl is True
+    assert route.smtp_username == "demo-user"
+    assert route.smtp_password == "demo-pass"
+
+
+def test_email_route_env_interpolation_missing_var(tmp_path, monkeypatch):
+    """Missing env interpolation in email fields should produce route error."""
+    monkeypatch.delenv("MISSING_SMTP_HOST", raising=False)
+    config = _make_config(
+        tmp_path,
+        {
+            "notifications": {
+                "routes": [
+                    {
+                        "name": "mail",
+                        "type": "email",
+                        "to": "ops@example.com",
+                        "from": "noreply@example.com",
+                        "smtp_host": "${MISSING_SMTP_HOST}",
+                    }
+                ]
+            }
+        },
+    )
+    service = NotificationService(config=config)
+    resolution = service.resolve_routes(event=EVENT_JOB_FAILED)
+    assert len(resolution.routes) == 0
+    assert len(resolution.errors) == 1
+    assert "Missing environment variable" in resolution.errors[0]
+
+
+def test_email_dispatch_dry_run_skips_smtp(tmp_path, monkeypatch):
+    """Dry-run email dispatch should not call SMTP."""
+    config = _make_config(
+        tmp_path,
+        {
+            "notifications": {
+                "routes": [
+                    {
+                        "name": "mail",
+                        "type": "email",
+                        "to": "ops@example.com",
+                        "from": "noreply@example.com",
+                        "smtp_host": "smtp.example.com",
+                    }
+                ]
+            }
+        },
+    )
+    service = NotificationService(config=config)
+    routes = service.resolve_routes(event=None).routes
+    payload = service.build_test_payload()
+
+    class _FailSMTP:
+        def __init__(self, *_args, **_kwargs):
+            raise AssertionError("SMTP should not be called in dry-run mode")
+
+    import slurmkit.notifications as notifications_module
+
+    monkeypatch.setattr(notifications_module.smtplib, "SMTP", _FailSMTP)
+
+    results = service.dispatch(payload=payload, routes=routes, dry_run=True)
+    assert len(results) == 1
+    assert results[0].success is True
+    assert results[0].dry_run is True
+    assert results[0].attempts == 0
+
+
+def test_email_dispatch_smtp_success(tmp_path, monkeypatch):
+    """Email dispatch should send through SMTP and mark success."""
+    config = _make_config(
+        tmp_path,
+        {
+            "notifications": {
+                "routes": [
+                    {
+                        "name": "mail",
+                        "type": "email",
+                        "to": "ops@example.com",
+                        "from": "noreply@example.com",
+                        "smtp_host": "smtp.example.com",
+                        "smtp_username": "user",
+                        "smtp_password": "pass",
+                        "smtp_starttls": True,
+                    }
+                ]
+            }
+        },
+    )
+    service = NotificationService(config=config)
+    routes = service.resolve_routes(event=None).routes
+    payload = service.build_test_payload()
+    calls = {"starttls": 0, "login": 0, "send": 0}
+
+    class _SMTP:
+        def __init__(self, *_args, **_kwargs):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def ehlo(self):
+            return None
+
+        def starttls(self):
+            calls["starttls"] += 1
+
+        def login(self, *_args):
+            calls["login"] += 1
+
+        def send_message(self, *_args):
+            calls["send"] += 1
+
+    import slurmkit.notifications as notifications_module
+
+    monkeypatch.setattr(notifications_module.smtplib, "SMTP", _SMTP)
+    monkeypatch.setattr(notifications_module.time, "sleep", lambda *_args, **_kwargs: None)
+
+    results = service.dispatch(payload=payload, routes=routes, dry_run=False)
+    assert len(results) == 1
+    assert results[0].success is True
+    assert results[0].attempts == 1
+    assert calls["starttls"] == 1
+    assert calls["login"] == 1
+    assert calls["send"] == 1
+
+
+def test_email_dispatch_retries_then_succeeds(tmp_path, monkeypatch):
+    """Transient email send failures should retry and eventually succeed."""
+    config = _make_config(
+        tmp_path,
+        {
+            "notifications": {
+                "defaults": {"max_attempts": 3, "backoff_seconds": 0.01},
+                "routes": [
+                    {
+                        "name": "mail",
+                        "type": "email",
+                        "to": "ops@example.com",
+                        "from": "noreply@example.com",
+                        "smtp_host": "smtp.example.com",
+                    }
+                ],
+            }
+        },
+    )
+    service = NotificationService(config=config)
+    routes = service.resolve_routes(event=None).routes
+    payload = service.build_test_payload()
+    calls = {"send": 0}
+
+    class _SMTP:
+        def __init__(self, *_args, **_kwargs):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def ehlo(self):
+            return None
+
+        def starttls(self):
+            return None
+
+        def send_message(self, *_args):
+            calls["send"] += 1
+            if calls["send"] == 1:
+                raise OSError("temporary network issue")
+
+    import slurmkit.notifications as notifications_module
+
+    monkeypatch.setattr(notifications_module.smtplib, "SMTP", _SMTP)
+    monkeypatch.setattr(notifications_module.time, "sleep", lambda *_args, **_kwargs: None)
+
+    results = service.dispatch(payload=payload, routes=routes, dry_run=False)
+    assert len(results) == 1
+    assert results[0].success is True
+    assert results[0].attempts == 2
+
+
+def test_email_dispatch_permanent_failure(tmp_path, monkeypatch):
+    """Permanent SMTP failures should return failed DeliveryResult after retries."""
+    config = _make_config(
+        tmp_path,
+        {
+            "notifications": {
+                "defaults": {"max_attempts": 2, "backoff_seconds": 0.01},
+                "routes": [
+                    {
+                        "name": "mail",
+                        "type": "email",
+                        "to": "ops@example.com",
+                        "from": "noreply@example.com",
+                        "smtp_host": "smtp.example.com",
+                    }
+                ],
+            }
+        },
+    )
+    service = NotificationService(config=config)
+    routes = service.resolve_routes(event=None).routes
+    payload = service.build_test_payload()
+
+    class _SMTP:
+        def __init__(self, *_args, **_kwargs):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def ehlo(self):
+            return None
+
+        def starttls(self):
+            return None
+
+        def send_message(self, *_args):
+            raise smtplib.SMTPException("permanent failure")
+
+    import slurmkit.notifications as notifications_module
+
+    monkeypatch.setattr(notifications_module.smtplib, "SMTP", _SMTP)
+    monkeypatch.setattr(notifications_module.time, "sleep", lambda *_args, **_kwargs: None)
+
+    results = service.dispatch(payload=payload, routes=routes, dry_run=False)
+    assert len(results) == 1
+    assert results[0].success is False
+    assert results[0].attempts == 2
+    assert "permanent failure" in (results[0].error or "")

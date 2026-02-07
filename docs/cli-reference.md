@@ -365,7 +365,7 @@ slurmkit sync --push
 
 ### slurmkit notify
 
-Send job and collection lifecycle notifications to configured webhook routes.
+Send job and collection lifecycle notifications to configured routes (`webhook`, `slack`, `discord`, `email`).
 
 #### notify job
 
@@ -382,7 +382,7 @@ slurmkit notify job [options]
 | `--route NAME` | Route name filter (repeatable) |
 | `--tail-lines N` | Override failure output tail line count |
 | `--strict` | Require all attempted routes to succeed |
-| `--dry-run` | Preview payload/routes without sending HTTP |
+| `--dry-run` | Preview payload/routes without sending deliveries |
 
 Examples:
 
@@ -403,7 +403,7 @@ slurmkit notify test [options]
 |--------|-------------|
 | `--route NAME` | Route name filter (repeatable) |
 | `--strict` | Require all attempted routes to succeed |
-| `--dry-run` | Preview payload/routes without sending HTTP |
+| `--dry-run` | Preview payload/routes without sending deliveries |
 
 Examples:
 
@@ -411,6 +411,7 @@ Examples:
 slurmkit notify test
 slurmkit notify test --route team_slack
 slurmkit notify test --dry-run
+slurmkit notify test --route team_email --dry-run
 ```
 
 #### notify collection-final
@@ -425,7 +426,7 @@ slurmkit notify collection-final [options]
 | `--collection NAME` | Optional collection name (otherwise resolved by job ID) |
 | `--route NAME` | Route name filter (repeatable) |
 | `--strict` | Require all attempted routes to succeed |
-| `--dry-run` | Preview payload/routes without sending HTTP |
+| `--dry-run` | Preview payload/routes without sending deliveries |
 | `--force` | Bypass deduplication for repeated terminal snapshots |
 | `--no-refresh` | Skip SLURM refresh before finality check |
 

@@ -191,9 +191,12 @@ fi
 step "7" "Notification demos (optional)"
 
 echo "This can demo: notify test, notify job, and notify collection-final."
-echo "For live webhook delivery (non-dry-run), ensure route URL env vars are configured."
+echo "For live delivery (non-dry-run), ensure route credentials are configured."
 echo "Example:"
 echo "  export DEMO_WEBHOOK_URL='https://example.com/your-webhook'"
+echo "  # or for local email testing:"
+echo "  #   python -m aiosmtpd -n -l 127.0.0.1:1025"
+echo "  #   export TEST_SMTP_HOST=127.0.0.1 TEST_SMTP_PORT=1025"
 echo ""
 read -p "Run notification demo commands now? [y/N]: " notify_choice
 

@@ -41,7 +41,7 @@ Initialize config if needed:
 slurmkit init
 ```
 
-Run the guided quickstart (includes optional notification demos and lets you choose dry-run vs live webhook send):
+Run the guided quickstart (includes optional notification demos and lets you choose dry-run vs live delivery):
 
 ```bash
 chmod +x quickstart.sh
@@ -70,6 +70,51 @@ notifications:
       type: webhook
       url: "${DEMO_WEBHOOK_URL}"
       events: [job_failed, collection_failed, collection_completed]
+```
+
+## Email Setup (Local SMTP, No Real Provider Needed)
+
+Use a local SMTP server for end-to-end email notification tests:
+
+```bash
+pip install aiosmtpd
+python -m aiosmtpd -n -l 127.0.0.1:1025
+```
+
+In another terminal:
+
+```bash
+cd examples/demo_project
+source /Users/awni/Documents/project-code/slurmkit/.venv/bin/activate
+
+export TEST_EMAIL_TO="you@example.com"
+export TEST_EMAIL_FROM="slurmkit@example.com"
+export TEST_SMTP_HOST="127.0.0.1"
+export TEST_SMTP_PORT="1025"
+```
+
+Add/enable an email route in `.slurm-kit/config.yaml`:
+
+```yaml
+notifications:
+  routes:
+    - name: local_email
+      type: email
+      enabled: true
+      events: [test_notification, job_failed, collection_failed, collection_completed]
+      to: "${TEST_EMAIL_TO}"
+      from: "${TEST_EMAIL_FROM}"
+      smtp_host: "${TEST_SMTP_HOST}"
+      smtp_port: "${TEST_SMTP_PORT}"
+      smtp_starttls: false
+      smtp_ssl: false
+```
+
+Then verify route resolution and live delivery:
+
+```bash
+slurmkit notify test --route local_email --dry-run
+slurmkit notify test --route local_email
 ```
 
 ## Local Dummy Setup (No SLURM Required)
@@ -132,6 +177,8 @@ Use `setup_dummy_jobs.py` output collections:
 ```bash
 slurmkit notify test --dry-run
 slurmkit notify test
+slurmkit notify test --route local_email --dry-run
+slurmkit notify test --route local_email
 ```
 
 ### 2) Job-level notification
@@ -202,4 +249,4 @@ trap 'rc=$?; slurmkit notify job --job-id "${SLURM_JOB_ID}" --exit-code "${rc}";
 
 - `setup_dummy_jobs.py` is for local testing only. It creates synthetic job IDs/states/logs.
 - `clean wandb`, full `status/update` behavior, and realistic `sync --push` are best validated in real environments.
-- Email transport is not currently supported in notifications.
+- Notifications support webhook, Slack, Discord, and SMTP email routes; use `--dry-run` first before live sends.

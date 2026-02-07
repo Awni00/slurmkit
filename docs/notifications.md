@@ -1,13 +1,12 @@
 # Notifications
 
-`slurmkit` supports webhook-based notifications for job and collection lifecycle events.
+`slurmkit` supports webhook/chat and SMTP email notifications for job and collection lifecycle events.
 
 Supported transport types:
 - `webhook`
 - `slack`
 - `discord`
-
-Email transport is not currently supported.
+- `email` (SMTP)
 
 Default behavior remains failure-first:
 - `notify job` defaults to `--on failed`
@@ -52,11 +51,29 @@ notifications:
       headers:
         Authorization: "Bearer ${OPS_WEBHOOK_TOKEN}"
       events: [job_failed, collection_failed, collection_completed]
+
+    - name: team_email
+      type: email
+      to: ["ops@example.com", "ml@example.com"]
+      from: "${SLURMKIT_EMAIL_FROM}"
+      smtp_host: "${SMTP_HOST}"
+      smtp_port: 587
+      smtp_username: "${SMTP_USER}"
+      smtp_password: "${SMTP_PASSWORD}"
+      smtp_starttls: true
+      smtp_ssl: false
+      events: [job_failed, collection_failed]
 ```
 
 Route-level settings override `notifications.defaults`.
 
-`url` and `headers` support `${ENV_VAR}` interpolation. Missing env vars are reported as route configuration errors at runtime.
+`url`, `headers`, and email fields support `${ENV_VAR}` interpolation. Missing env vars are reported as route configuration errors at runtime.
+
+For `type: email`:
+- required fields: `to`, `from`, `smtp_host`
+- `to` supports string, comma-separated string, or list of strings
+- `smtp_starttls` and `smtp_ssl` cannot both be `true`
+- `smtp_username` and `smtp_password` must be set together (or both omitted)
 
 ## Commands
 
@@ -66,6 +83,9 @@ Route-level settings override `notifications.defaults`.
 slurmkit notify test
 slurmkit notify test --route team_slack
 slurmkit notify test --dry-run
+slurmkit notify test --route team_email --dry-run
+# then run live (no --dry-run) once SMTP/env vars are configured
+slurmkit notify test --route team_email
 ```
 
 ### Send job notification
@@ -141,3 +161,5 @@ Collection-final payload additionally includes:
 - optional `ai_summary`
 
 For `slack`/`discord`, slurmkit sends a human-readable summary with key metadata.
+
+For `email`, slurmkit sends plain-text emails through SMTP with built-in subject/body formatting.

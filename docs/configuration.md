@@ -111,7 +111,7 @@ notifications:
 
   routes:
     - name: team_slack
-      type: slack            # slack | discord | webhook
+      type: slack            # slack | discord | webhook | email
       url: "${SLACK_WEBHOOK_URL}"
       enabled: true
       events: [job_failed, collection_failed]
@@ -119,6 +119,18 @@ notifications:
       timeout_seconds: 5
       max_attempts: 3
       backoff_seconds: 0.5
+
+    - name: team_email
+      type: email
+      to: ["ops@example.com", "ml@example.com"]
+      from: "${SLURMKIT_EMAIL_FROM}"
+      smtp_host: "${SMTP_HOST}"
+      smtp_port: 587
+      smtp_username: "${SMTP_USER}"
+      smtp_password: "${SMTP_PASSWORD}"
+      smtp_starttls: true
+      smtp_ssl: false
+      events: [job_failed, collection_failed]
 
 # =============================================================================
 # W&B Settings (Optional)
@@ -239,14 +251,23 @@ Use `notifications.routes` to define where `slurmkit notify` sends events.
 ### Route Fields
 
 - `name` - Unique route name used by `slurmkit notify --route ...`
-- `type` - `webhook`, `slack`, or `discord`
-- `url` - Destination URL; supports `${ENV_VAR}` interpolation
+- `type` - `webhook`, `slack`, `discord`, or `email`
+- `url` - Destination URL for `webhook`/`slack`/`discord`; supports `${ENV_VAR}` interpolation
 - `enabled` - Optional boolean (default: `true`)
 - `events` - Optional list of subscribed events
-- `headers` - Optional HTTP headers map; supports `${ENV_VAR}` interpolation
+- `headers` - Optional HTTP headers map for `webhook`; supports `${ENV_VAR}` interpolation
 - `timeout_seconds` - Optional request timeout override
 - `max_attempts` - Optional retry attempts override
 - `backoff_seconds` - Optional retry backoff override
+
+Email-specific route fields:
+- `to` - Required recipient list (string, comma-separated string, or list)
+- `from` - Required sender address
+- `smtp_host` - Required SMTP host
+- `smtp_port` - Optional SMTP port (default: `587`)
+- `smtp_username` / `smtp_password` - Optional auth pair (must be set together)
+- `smtp_starttls` - Optional boolean (default: `true`)
+- `smtp_ssl` - Optional boolean (default: `false`)
 
 Supported events:
 - `job_failed`
@@ -274,7 +295,7 @@ When AI callback execution fails, deterministic report delivery still proceeds a
 
 ### Environment Variable Interpolation
 
-`url` and `headers` support `${VAR_NAME}` placeholders:
+Webhook fields support `${VAR_NAME}` placeholders:
 
 ```yaml
 notifications:
@@ -284,6 +305,20 @@ notifications:
       url: "${NOTIFY_WEBHOOK_URL}"
       headers:
         Authorization: "Bearer ${NOTIFY_WEBHOOK_TOKEN}"
+```
+
+Email SMTP fields support the same interpolation:
+
+```yaml
+notifications:
+  routes:
+    - name: mail_alerts
+      type: email
+      to: "${EMAIL_RECIPIENTS}"
+      from: "${EMAIL_FROM}"
+      smtp_host: "${SMTP_HOST}"
+      smtp_username: "${SMTP_USER}"
+      smtp_password: "${SMTP_PASSWORD}"
 ```
 
 If any referenced variable is missing, that route is treated as a route-level configuration error at runtime.

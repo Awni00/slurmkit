@@ -110,26 +110,85 @@ def cmd_init(args: Any) -> int:
     notification_route = None
     if enable_notifications:
         route_type = input("  Route type [webhook]: ").strip().lower() or "webhook"
-        if route_type not in ("webhook", "slack", "discord"):
+        if route_type not in ("webhook", "slack", "discord", "email"):
             print("  Invalid route type. Falling back to 'webhook'.")
             route_type = "webhook"
 
         default_route_name = f"{route_type}_default"
         route_name = input(f"  Route name [{default_route_name}]: ").strip() or default_route_name
-        route_url = input("  Route URL (supports ${ENV_VAR}): ").strip()
-        if not route_url:
-            print("  Empty route URL. Notifications setup skipped.")
+        if route_type == "email":
+            recipients_raw = input(
+                "  Email recipient(s) (comma-separated, supports ${ENV_VAR}): "
+            ).strip()
+            from_address = input("  From address (supports ${ENV_VAR}): ").strip()
+            smtp_host = input("  SMTP host (supports ${ENV_VAR}): ").strip()
+            smtp_port_raw = input("  SMTP port [587]: ").strip() or "587"
+            smtp_username = input("  SMTP username (optional, supports ${ENV_VAR}): ").strip()
+            smtp_password = input("  SMTP password (optional, supports ${ENV_VAR}): ").strip()
+            use_starttls_raw = input("  Use STARTTLS? [Y/n]: ").strip().lower()
+            use_ssl_raw = input("  Use SMTP SSL? [y/N]: ").strip().lower()
+
+            if not recipients_raw or not from_address or not smtp_host:
+                print("  Missing required email fields. Notifications setup skipped.")
+            else:
+                try:
+                    smtp_port = int(smtp_port_raw)
+                    if smtp_port <= 0:
+                        raise ValueError
+                except ValueError:
+                    print("  Invalid SMTP port. Falling back to 587.")
+                    smtp_port = 587
+
+                smtp_starttls = use_starttls_raw not in ("n", "no", "0", "false")
+                smtp_ssl = use_ssl_raw in ("y", "yes", "1", "true")
+                if smtp_starttls and smtp_ssl:
+                    print("  STARTTLS and SMTP SSL cannot both be enabled. Using STARTTLS only.")
+                    smtp_ssl = False
+
+                if bool(smtp_username) != bool(smtp_password):
+                    print("  SMTP username/password must both be set. Notifications setup skipped.")
+                    smtp_username = ""
+                    smtp_password = ""
+                    recipients = []
+                else:
+                    recipients = [entry.strip() for entry in recipients_raw.split(",") if entry.strip()]
+
+                if not recipients:
+                    print("  No valid recipients parsed. Notifications setup skipped.")
+                else:
+                    events_raw = input("  Events (comma-separated) [job_failed]: ").strip() or "job_failed"
+                    events = [event.strip() for event in events_raw.split(",") if event.strip()]
+                    notification_route = {
+                        "name": route_name,
+                        "type": route_type,
+                        "enabled": True,
+                        "events": events or ["job_failed"],
+                        "to": recipients,
+                        "from": from_address,
+                        "smtp_host": smtp_host,
+                        "smtp_port": smtp_port,
+                        "smtp_starttls": smtp_starttls,
+                        "smtp_ssl": smtp_ssl,
+                    }
+                    if smtp_username:
+                        notification_route["smtp_username"] = smtp_username
+                    if smtp_password:
+                        notification_route["smtp_password"] = smtp_password
         else:
-            events_raw = input("  Events (comma-separated) [job_failed]: ").strip() or "job_failed"
-            events = [event.strip() for event in events_raw.split(",") if event.strip()]
-            notification_route = {
-                "name": route_name,
-                "type": route_type,
-                "url": route_url,
-                "enabled": True,
-                "events": events or ["job_failed"],
-                "headers": {},
-            }
+            route_url = input("  Route URL (supports ${ENV_VAR}): ").strip()
+            if not route_url:
+                print("  Empty route URL. Notifications setup skipped.")
+            else:
+                events_raw = input("  Events (comma-separated) [job_failed]: ").strip() or "job_failed"
+                events = [event.strip() for event in events_raw.split(",") if event.strip()]
+                notification_route = {
+                    "name": route_name,
+                    "type": route_type,
+                    "url": route_url,
+                    "enabled": True,
+                    "events": events or ["job_failed"],
+                    "headers": {},
+                }
 
     # Build config
     config_data = {

@@ -444,3 +444,50 @@ def test_cmd_notify_collection_final_strict_vs_non_strict(tmp_path, monkeypatch)
 
     assert commands.cmd_notify_collection_final(_args(job_id="100", strict=False)) == 0
     assert commands.cmd_notify_collection_final(_args(job_id="100", strict=True, force=True)) == 1
+
+
+def test_cmd_notify_collection_final_with_email_route_output(tmp_path, monkeypatch, capsys):
+    """Collection-final command should print email route delivery lines."""
+    config = _make_config(
+        tmp_path,
+        {
+            "collections_dir": ".job-collections/",
+            "notifications": {
+                "routes": [
+                    {
+                        "name": "team_email",
+                        "type": "email",
+                        "to": "ops@example.com",
+                        "from": "noreply@example.com",
+                        "smtp_host": "smtp.example.com",
+                        "events": ["collection_completed"],
+                    }
+                ]
+            },
+        },
+    )
+    manager = CollectionManager(config=config)
+    c = manager.create("exp")
+    c.add_job(job_name="job", job_id="100", state="COMPLETED")
+    manager.save(c)
+    service = NotificationService(config=config)
+
+    def fake_dispatch(payload, routes, dry_run=False):
+        return [
+            DeliveryResult(
+                route_name=routes[0].name,
+                route_type=routes[0].route_type,
+                success=True,
+                attempts=0,
+                dry_run=True,
+            )
+        ]
+
+    monkeypatch.setattr(service, "dispatch", fake_dispatch)
+    monkeypatch.setattr(commands, "get_configured_config", lambda _args: config)
+    monkeypatch.setattr(commands, "NotificationService", lambda config=None: service)
+
+    exit_code = commands.cmd_notify_collection_final(_args(job_id="100", dry_run=True))
+    out = capsys.readouterr().out
+    assert exit_code == 0
+    assert "team_email (email)" in out

@@ -202,3 +202,58 @@ def test_cmd_notify_test_dry_run_success(monkeypatch):
 
     args = Namespace(route=None, strict=False, dry_run=True)
     assert commands.cmd_notify_test(args) == 0
+
+
+def test_cmd_notify_test_with_email_route_output(monkeypatch, capsys):
+    """notify test should include email routes in delivery output."""
+    fake_service = _FakeService()
+    fake_service.route_resolution = RouteResolution(
+        routes=[Namespace(name="team_email", route_type="email")],
+        errors=[],
+        skipped=[],
+    )
+    fake_service.delivery_results = [
+        DeliveryResult(route_name="team_email", route_type="email", success=True, attempts=0, dry_run=True)
+    ]
+
+    monkeypatch.setattr(commands, "get_configured_config", lambda _args: object())
+    monkeypatch.setattr(commands, "NotificationService", lambda config=None: fake_service)
+
+    args = Namespace(route=None, strict=False, dry_run=True)
+    exit_code = commands.cmd_notify_test(args)
+    out = capsys.readouterr().out
+
+    assert exit_code == 0
+    assert "team_email (email)" in out
+
+
+def test_cmd_notify_job_with_email_route_output(monkeypatch, capsys):
+    """notify job should include email routes in delivery output."""
+    fake_service = _FakeService()
+    fake_service.route_resolution = RouteResolution(
+        routes=[Namespace(name="team_email", route_type="email")],
+        errors=[],
+        skipped=[],
+    )
+    fake_service.delivery_results = [
+        DeliveryResult(route_name="team_email", route_type="email", success=True, attempts=0, dry_run=True)
+    ]
+
+    monkeypatch.setattr(commands, "get_configured_config", lambda _args: object())
+    monkeypatch.setattr(commands, "NotificationService", lambda config=None: fake_service)
+
+    args = Namespace(
+        job_id="123",
+        collection=None,
+        exit_code=1,
+        on="failed",
+        route=None,
+        tail_lines=None,
+        strict=False,
+        dry_run=True,
+    )
+    exit_code = commands.cmd_notify_job(args)
+    out = capsys.readouterr().out
+
+    assert exit_code == 0
+    assert "team_email (email)" in out

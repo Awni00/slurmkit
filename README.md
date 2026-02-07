@@ -198,6 +198,17 @@ notifications:
       type: slack
       url: "${SLACK_WEBHOOK_URL}"
       events: [job_failed, collection_failed]
+    - name: team_email
+      type: email
+      to: ["ops@example.com", "ml@example.com"]
+      from: "${SLURMKIT_EMAIL_FROM}"
+      smtp_host: "${SMTP_HOST}"
+      smtp_port: 587
+      smtp_username: "${SMTP_USER}"
+      smtp_password: "${SMTP_PASSWORD}"
+      smtp_starttls: true
+      smtp_ssl: false
+      events: [job_failed, collection_failed]
 ```
 
 ### Environment Variables
@@ -259,11 +270,12 @@ slurmkit collection update my_exp
 
 ### Notifications
 
-Send job lifecycle notifications to Slack, Discord, or generic webhooks:
+Send job lifecycle notifications to Slack, Discord, email, or generic webhooks:
 
 ```bash
 # Validate route setup
 slurmkit notify test
+slurmkit notify test --route team_email --dry-run
 
 # Typical end-of-job call from script (default: notify only on failure)
 slurmkit notify job --job-id "$SLURM_JOB_ID" --exit-code "$rc"
