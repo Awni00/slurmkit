@@ -106,3 +106,49 @@ def test_collection_show_report_supports_primary_and_history_columns():
 
     assert "Primary Job ID" in report.jobs_table.headers
     assert "History" in report.jobs_table.headers
+    assert report.summary_title == (
+        "Summary: 1 primary jobs | 2 submitted SLURM jobs (incl. resubmissions)"
+    )
+
+
+def test_collection_show_report_summary_counts_unsubmitted_primaries():
+    """Summary counts should separate primary rows from submitted attempts."""
+
+    class _Collection:
+        name = "exp2"
+        description = "demo"
+        created_at = "2026-02-07T10:00:00"
+        updated_at = "2026-02-07T11:00:00"
+        cluster = "cluster-a"
+        parameters = {}
+
+    report = build_collection_show_report(
+        collection=_Collection(),
+        jobs=[
+            {
+                "job_name": "job_submitted",
+                "primary_job_id": "200",
+                "resubmissions_count": 2,
+            },
+            {
+                "job_name": "job_not_submitted",
+                "primary_job_id": None,
+                "resubmissions_count": 0,
+            },
+        ],
+        summary={
+            "total": 2,
+            "completed": 0,
+            "failed": 0,
+            "running": 0,
+            "pending": 0,
+            "unknown": 0,
+            "not_submitted": 1,
+        },
+        attempt_mode="latest",
+        submission_group=None,
+    )
+
+    assert report.summary_title == (
+        "Summary: 2 primary jobs | 3 submitted SLURM jobs (incl. resubmissions)"
+    )

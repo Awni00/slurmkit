@@ -19,6 +19,23 @@ def _format_pct(value: float) -> str:
     return f"{value * 100.0:.1f}"
 
 
+def _has_submitted_job_id(job_id: Any) -> bool:
+    if job_id is None:
+        return False
+    value = str(job_id).strip()
+    if not value:
+        return False
+    return value.upper() not in {"N/A", "NONE", "NULL"}
+
+
+def _to_non_negative_int(value: Any) -> int:
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return 0
+    return parsed if parsed > 0 else 0
+
+
 def build_collection_show_report(
     *,
     collection: Any,
@@ -31,6 +48,14 @@ def build_collection_show_report(
 ) -> CollectionShowReport:
     """Build view-model for collection show output."""
     total = max(summary.get("total", 0), 1)
+    primary_jobs_count = len(jobs)
+    submitted_primary_count = sum(
+        1 for job in jobs if _has_submitted_job_id(job.get("primary_job_id"))
+    )
+    resubmitted_jobs_count = sum(
+        _to_non_negative_int(job.get("resubmissions_count", 0)) for job in jobs
+    )
+    submitted_slurm_jobs_count = submitted_primary_count + resubmitted_jobs_count
 
     metadata = [
         ("Collection", str(collection.name)),
@@ -115,7 +140,12 @@ def build_collection_show_report(
         title=f"Collection: {collection.name}",
         metadata=metadata,
         parameters_yaml=parameters_yaml,
-        summary_title=f"Summary: {summary.get('total', 0)} jobs",
+        summary_title=(
+            "Summary: "
+            f"{primary_jobs_count} primary jobs | "
+            f"{submitted_slurm_jobs_count} submitted SLURM jobs "
+            "(incl. resubmissions)"
+        ),
         summary_metrics=summary_metrics,
         jobs_table=jobs_table,
     )
