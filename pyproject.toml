@@ -48,6 +48,14 @@ docs = [
     "mkdocs-material>=9.5",
     "mkdocstrings[python]>=0.24",
 ]
+all = [
+    "rich>=13.7",
+    "pytest>=7.0",
+    "pytest-cov>=4.0",
+    "mkdocs>=1.5",
+    "mkdocs-material>=9.5",
+    "mkdocstrings[python]>=0.24",
+]
 
 [project.scripts]
 slurmkit = "slurmkit.cli.main:main"

@@ -31,10 +31,20 @@ A CLI toolkit for managing and generating SLURM jobs.
 
 ## Installation
 
-### From Source
+### Install Latest From GitHub
 
 ```bash
 pip install git+https://github.com/Awni00/slurmkit.git
+# include all optional extras (ui + dev + docs)
+pip install "slurmkit[all] @ git+https://github.com/Awni00/slurmkit.git"
+```
+
+### Clone and Install (Recommended for Development)
+
+```bash
+git clone https://github.com/Awni00/slurmkit.git
+cd slurmkit
+pip install -e ".[all]"
 ```
 <!--
 ### From PyPI
@@ -56,7 +66,8 @@ pip install slurmkit
 
 **Optional:**
 - wandb (for W&B cleanup features)
-- rich (enhanced CLI UI; install with `pip install slurmkit[ui]`)
+- rich (enhanced CLI UI; install with `pip install -e ".[ui]"` from a clone)
+- `all` extra for optional groups (`ui`, `dev`, `docs`)
 
 ## Quick Start
 
@@ -124,6 +135,10 @@ slurmkit generate experiments/exp1/job_spec.yaml --collection exp1
 ### 4. Submit Jobs
 
 ```bash
+# Preview before actual submission
+slurmkit submit --collection exp1 --dry-run
+
+# Submit to SLURM
 slurmkit submit --collection exp1
 ```
 
@@ -142,6 +157,56 @@ slurmkit --ui rich collection analyze exp1
 # Resubmit failed jobs
 slurmkit resubmit --collection exp1 --filter failed
 ```
+
+## Testing and Showcase Workflows
+
+### A) Local Demo (No SLURM Required)
+
+Use the bundled demo project for a deterministic feature showcase:
+
+```bash
+cd examples/demo_project
+python -m venv .venv
+source .venv/bin/activate
+pip install -e ../..
+./setup_dummy_jobs.py --include-non-terminal
+```
+
+Then run:
+
+```bash
+slurmkit collection list
+slurmkit collection show demo_terminal_failed
+slurmkit collection analyze demo_terminal_failed
+# Optional richer formatting (requires rich extra):
+slurmkit --ui rich collection analyze demo_terminal_failed
+slurmkit notify test --dry-run
+slurmkit notify collection-final --collection demo_terminal_failed --job-id 990002 --no-refresh --dry-run
+```
+
+### B) Real Cluster Workflow
+
+```bash
+slurmkit generate experiments/exp1/job_spec.yaml --collection exp1
+slurmkit submit --collection exp1 --dry-run
+slurmkit submit --collection exp1
+slurmkit status exp1
+slurmkit collection update exp1
+slurmkit collection show exp1
+slurmkit collection analyze exp1 --attempt-mode latest
+slurmkit resubmit --collection exp1 --filter failed --dry-run
+```
+
+### C) Feature Checklist
+
+| Goal | Command | Success signal |
+|------|---------|----------------|
+| Initialize config | `slurmkit init` | `.slurm-kit/config.yaml` created |
+| Generate scripts | `slurmkit generate ... --collection exp1` | Job scripts written and collection updated |
+| Preview submission | `slurmkit submit --collection exp1 --dry-run` | Candidate jobs listed with no submit |
+| Inspect collection | `slurmkit collection show exp1` | Summary + jobs table rendered |
+| Analyze outcomes | `slurmkit collection analyze exp1` | Parameter tables and risky/stable sections shown |
+| Validate notifications | `slurmkit notify test --dry-run` | Route resolution and payload preview |
 
 ## Commands
 
@@ -168,10 +233,12 @@ Configuration is stored in `.slurm-kit/config.yaml`:
 ```yaml
 jobs_dir: jobs/
 collections_dir: .job-collections/
+sync_dir: .slurm-kit/sync/
 
 output_patterns:
   - "{job_name}.{job_id}.out"
   - "{job_name}.{job_id}.*.out"
+  - "slurm-{job_id}.out"
 
 slurm_defaults:
   partition: gpu
