@@ -1180,7 +1180,16 @@ def cmd_collection_analyze(args: Any) -> int:
             print(f"Skipped requested params: {', '.join(skipped)}")
         return 0
 
-    for param_block in parameters:
+    varying_parameters = [p for p in parameters if len(p.get("values", [])) >= 2]
+    varying_param_names = {p["param"] for p in varying_parameters}
+
+    if not varying_parameters:
+        print("\nNo parameter breakdown shown: all analyzed parameters have only one distinct value.")
+        if skipped:
+            print(f"Skipped requested params: {', '.join(skipped)}")
+        return 0
+
+    for param_block in varying_parameters:
         param = param_block["param"]
         rows = []
         for value_entry in param_block["values"]:
@@ -1244,8 +1253,11 @@ def cmd_collection_analyze(args: Any) -> int:
             )
         )
 
-    _render_top_values("Top risky values", analysis["top_risky_values"], "failure_rate")
-    _render_top_values("Top stable values", analysis["top_stable_values"], "completion_rate")
+    top_risky_display = [e for e in analysis["top_risky_values"] if e["param"] in varying_param_names]
+    top_stable_display = [e for e in analysis["top_stable_values"] if e["param"] in varying_param_names]
+
+    _render_top_values("Top risky values", top_risky_display, "failure_rate")
+    _render_top_values("Top stable values", top_stable_display, "completion_rate")
 
     print("\nNotes:")
     print(f"  - Low N marks groups with n < min_support ({args.min_support}).")
