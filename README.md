@@ -10,6 +10,7 @@
 <p align="center">
   <a href="#installation">Install</a> •
   <a href="#quick-start">Quick Start</a> •
+  <a href="#features">Features</a> •
   <a href="https://awni00.github.io/slurmkit">Docs</a> •
   <a href="https://deepwiki.com/Awni00/slurmkit">DeepWiki</a>
 </p>
@@ -330,6 +331,27 @@ your-project/
 ```
 
 ## Features
+
+Key features at a glance:
+
+**1) Job Creation**
+
+- Generate parameterized job scripts and attach them to a collection: `slurmkit generate job_spec.yaml --collection exp1`
+- Preview generation and submission safely: `slurmkit generate ... --dry-run`, `slurmkit submit ... --dry-run`
+- Submit only unsubmitted collection jobs (default): `slurmkit submit --collection exp1 --filter unsubmitted`
+
+**2) Collection Tracking and Analysis**
+
+- Create, inspect, and refresh collections: `slurmkit collection create exp1`, `slurmkit collection show exp1`, `slurmkit collection update exp1`
+- Analyze outcomes by parameter values and latest attempts: `slurmkit collection analyze exp1 --attempt-mode latest --top-k 10`
+- Inspect resubmission waves and attempt history: `slurmkit collection groups exp1`, `slurmkit collection show exp1 --show-history`
+- Resubmit failed jobs with optional selection and parameter callbacks to programatically specify which jobs are submitted and whether to include additional parameters in resubmission (e.g., checkpoint dir): `slurmkit resubmit --collection exp1 --filter failed --select-file callbacks.py --extra-params-file extra.py`
+
+**3) Notifications and Cross-Cluster Sync**
+
+- Validate routes and send job notifications: `slurmkit notify test`, `slurmkit notify job ...`
+- Send one final collection-level summary when a collection reaches terminal state: `slurmkit notify collection-final ...`
+- Sync collection/job state across clusters via git-backed files: `slurmkit sync --push`
 
 ### Job Collections
 
