@@ -830,7 +830,7 @@ def cmd_submit(args: Any) -> int:
         collection = manager.load(args.collection)
 
         # Filter jobs
-        if args.filter == "pending":
+        if args.filter == "unsubmitted":
             jobs = collection.filter_jobs(submitted=False)
         else:
             jobs = collection.jobs

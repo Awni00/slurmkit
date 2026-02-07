@@ -210,7 +210,7 @@ slurmkit generate job_spec.yaml --collection my_experiment
 
 ### 2. Submit Jobs
 
-Submit all pending (unsubmitted) jobs:
+Submit all unsubmitted jobs:
 
 ```bash
 slurmkit submit --collection my_experiment

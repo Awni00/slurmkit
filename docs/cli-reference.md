@@ -201,7 +201,7 @@ slurmkit submit --collection NAME [options]
 | Option | Description |
 |--------|-------------|
 | `--collection NAME` | Submit from or add to collection |
-| `--filter FILTER` | For collection: `pending` or `all` |
+| `--filter FILTER` | For collection: `unsubmitted` or `all` |
 | `--delay SECONDS` | Delay between submissions |
 | `--dry-run` | Show what would be submitted |
 | `-y, --yes` | Skip confirmation |

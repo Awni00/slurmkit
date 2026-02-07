@@ -300,9 +300,9 @@ For more information on a command, run: slurmkit <command> --help
     )
     submit_parser.add_argument(
         "--filter",
-        choices=["pending", "all"],
-        default="pending",
-        help="For collection mode: which jobs to submit (default: pending)",
+        choices=["unsubmitted", "all"],
+        default="unsubmitted",
+        help="For collection mode: which jobs to submit (default: unsubmitted)",
     )
     submit_parser.add_argument(
         "--delay",
