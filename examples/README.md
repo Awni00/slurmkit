@@ -55,7 +55,7 @@ slurmkit generate experiments/hyperparameter_sweep/job_spec.yaml --collection te
 ls jobs/hyperparameter_sweep/job_scripts/
 
 # Test without submitting
-slurmkit status --dry-run
+slurmkit status
 ```
 
 ### 3. As a Template
