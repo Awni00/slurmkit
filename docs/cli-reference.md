@@ -236,6 +236,11 @@ slurmkit resubmit --collection NAME [options]
 | `--filter FILTER` | For collection: `failed` or `all` |
 | `--template FILE` | Modified template for resubmission |
 | `--extra-params K=V,...` | Extra template parameters |
+| `--extra-params-file FILE` | Python file with `get_extra_params(context) -> dict` |
+| `--extra-params-function NAME` | Function name in `--extra-params-file` (default: `get_extra_params`) |
+| `--select-file FILE` | Python file with `should_resubmit(context) -> bool` |
+| `--select-function NAME` | Function name in `--select-file` (default: `should_resubmit`) |
+| `--submission-group NAME` | Submission group label (default: auto-generated `resubmit_YYYYMMDD_HHMMSS`) |
 | `--jobs-dir PATH` | Override jobs directory |
 | `--dry-run` | Show what would be resubmitted |
 | `-y, --yes` | Skip confirmation |
@@ -246,6 +251,8 @@ slurmkit resubmit --collection NAME [options]
 slurmkit resubmit 12345678
 slurmkit resubmit --collection my_exp --filter failed
 slurmkit resubmit --collection my_exp --extra-params "checkpoint=last.pt"
+slurmkit resubmit --collection my_exp --submission-group retry_after_fix
+slurmkit resubmit --collection my_exp --select-file callbacks.py --select-function should_resubmit
 ```
 
 ---
@@ -269,13 +276,17 @@ slurmkit collection list
 #### collection show
 
 ```bash
-slurmkit collection show <name> [--format FORMAT] [--state STATE]
+slurmkit collection show <name> [options]
 ```
 
 | Option | Description |
 |--------|-------------|
 | `--format FORMAT` | Output: `table`, `json`, `yaml` |
 | `--state STATE` | Filter: `all`, `pending`, `running`, `completed`, `failed` |
+| `--attempt-mode MODE` | `primary` or `latest` effective attempt (default: `latest`) |
+| `--submission-group NAME` | Restrict to jobs that have resubmissions in this group |
+| `--show-primary` | Include primary job id/state columns in table output |
+| `--show-history` | Include compact attempt history in table output |
 
 #### collection update
 
@@ -300,7 +311,20 @@ Analyze how job states vary across parameter values.
 | `--min-support N` | Minimum sample size for top risky/stable summaries (default: 3) |
 | `--param KEY` | Analyze only selected parameter key(s); repeatable |
 | `--attempt-mode MODE` | Use `primary` or `latest` attempt state (default: `primary`) |
+| `--submission-group NAME` | Restrict to a submission group and analyze latest attempt within group |
 | `--top-k N` | Number of rows in risky/stable summaries (default: 10) |
+
+#### collection groups
+
+```bash
+slurmkit collection groups <name> [--format FORMAT]
+```
+
+List submission groups and job counts in a collection.
+
+| Option | Description |
+|--------|-------------|
+| `--format FORMAT` | Output: `table`, `json`, `yaml` |
 
 #### collection delete
 
@@ -332,9 +356,13 @@ slurmkit collection remove <name> <job_id> [job_id...]
 slurmkit collection create my_exp --description "Training sweep"
 slurmkit collection list
 slurmkit collection show my_exp --state failed
+slurmkit collection show my_exp --attempt-mode latest --show-primary --show-history
+slurmkit collection show my_exp --submission-group retry_after_fix
 slurmkit collection update my_exp
 slurmkit collection analyze my_exp --min-support 5 --param algo --param learning_rate
 slurmkit collection analyze my_exp --attempt-mode latest --format json
+slurmkit collection analyze my_exp --submission-group retry_after_fix
+slurmkit collection groups my_exp
 slurmkit --ui rich collection show my_exp
 slurmkit --ui auto collection analyze my_exp
 slurmkit collection delete my_exp --keep-outputs

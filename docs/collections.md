@@ -88,7 +88,11 @@ slurmkit collection show my_experiment
 Options:
 - `--format json` - Output as JSON
 - `--format yaml` - Output as YAML
-- `--state failed` - Filter by state
+- `--state failed` - Filter by effective state
+- `--attempt-mode latest` - Effective attempt semantics (`latest` is default)
+- `--submission-group retry_after_fix` - Restrict to jobs in a submission group
+- `--show-primary` - Include primary submission state/id columns
+- `--show-history` - Include compact attempt history in table mode
 
 ### Update Job States
 
@@ -112,6 +116,7 @@ Options:
 - `--min-support N` - Minimum sample size for risky/stable summaries (default: 3)
 - `--param KEY` - Restrict analysis to specific parameter keys (repeatable)
 - `--attempt-mode latest` - Use latest resubmission state instead of primary job state
+- `--submission-group NAME` - Analyze latest attempt within a specific submission group
 - `--top-k N` - Number of entries in top risky/stable lists (default: 10)
 
 Examples:
@@ -122,6 +127,9 @@ slurmkit collection analyze my_experiment --param algo --param learning_rate
 
 # Use latest retry outcome and stricter support threshold
 slurmkit collection analyze my_experiment --attempt-mode latest --min-support 5
+
+# Analyze a specific resubmission group
+slurmkit collection analyze my_experiment --submission-group retry_after_fix
 
 # Machine-readable output
 slurmkit collection analyze my_experiment --format json
@@ -158,6 +166,21 @@ slurmkit collection add my_experiment 12345678 12345679
 ```bash
 slurmkit collection remove my_experiment 12345678
 ```
+
+### List Submission Groups
+
+```bash
+slurmkit collection groups my_experiment
+```
+
+This reports:
+- `submission_group`
+- `slurm_job_count`
+- `parent_job_count`
+- `first_submitted_at`
+- `last_submitted_at`
+
+Historical resubmissions without explicit group labels are reported as `legacy_ungrouped`.
 
 ## Default Collection
 
@@ -224,6 +247,20 @@ With extra parameters (e.g., resume from checkpoint):
 ```bash
 slurmkit resubmit --collection my_experiment --filter failed \
     --extra-params "checkpoint=checkpoints/last.pt"
+```
+
+Each resubmit invocation records a `submission_group`.
+- Explicit: `--submission-group retry_after_fix`
+- Default: auto-generated `resubmit_YYYYMMDD_HHMMSS`
+
+You can also use Python callbacks:
+
+```bash
+slurmkit resubmit --collection my_experiment \
+  --select-file callbacks.py \
+  --select-function should_resubmit \
+  --extra-params-file callbacks.py \
+  --extra-params-function get_extra_params
 ```
 
 ## Notifications Integration

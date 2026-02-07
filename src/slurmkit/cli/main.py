@@ -355,6 +355,33 @@ For more information on a command, run: slurmkit <command> --help
         help="Extra template parameters for resubmission",
     )
     resubmit_parser.add_argument(
+        "--extra-params-file",
+        metavar="FILE",
+        help="Python file with get_extra_params(context)->dict callback",
+    )
+    resubmit_parser.add_argument(
+        "--extra-params-function",
+        metavar="NAME",
+        default="get_extra_params",
+        help="Callback function name in --extra-params-file (default: get_extra_params)",
+    )
+    resubmit_parser.add_argument(
+        "--select-file",
+        metavar="FILE",
+        help="Python file with should_resubmit(context)->bool callback",
+    )
+    resubmit_parser.add_argument(
+        "--select-function",
+        metavar="NAME",
+        default="should_resubmit",
+        help="Callback function name in --select-file (default: should_resubmit)",
+    )
+    resubmit_parser.add_argument(
+        "--submission-group",
+        metavar="NAME",
+        help="Submission group label (default: auto-generated per resubmit command)",
+    )
+    resubmit_parser.add_argument(
         "--jobs-dir",
         metavar="PATH",
         help="Override jobs directory",
@@ -425,6 +452,27 @@ For more information on a command, run: slurmkit <command> --help
         help="Filter by job state (default: all)",
     )
     coll_show_parser.add_argument(
+        "--attempt-mode",
+        choices=["primary", "latest"],
+        default="latest",
+        help="Show primary submission state or latest attempt state (default: latest)",
+    )
+    coll_show_parser.add_argument(
+        "--submission-group",
+        metavar="NAME",
+        help="Show only jobs that have a resubmission in this submission group",
+    )
+    coll_show_parser.add_argument(
+        "--show-primary",
+        action="store_true",
+        help="Include primary submission Job ID/State columns",
+    )
+    coll_show_parser.add_argument(
+        "--show-history",
+        action="store_true",
+        help="Include compact attempt history column",
+    )
+    coll_show_parser.add_argument(
         "--no-refresh",
         action="store_true",
         help="Don't refresh job states from SLURM before displaying (faster but may show stale data)",
@@ -470,11 +518,33 @@ For more information on a command, run: slurmkit <command> --help
         help="Use primary job states or latest resubmission states (default: primary)",
     )
     coll_analyze_parser.add_argument(
+        "--submission-group",
+        metavar="NAME",
+        help="Analyze only jobs with resubmissions in this submission group "
+             "(uses latest attempt within the group)",
+    )
+    coll_analyze_parser.add_argument(
         "--top-k",
         type=int,
         default=10,
         metavar="N",
         help="Number of entries to show for risky/stable summaries (default: 10)",
+    )
+
+    # collection groups
+    coll_groups_parser = collection_subparsers.add_parser(
+        "groups",
+        help="List submission groups and counts",
+    )
+    coll_groups_parser.add_argument(
+        "name",
+        help="Collection name",
+    )
+    coll_groups_parser.add_argument(
+        "--format",
+        choices=["table", "json", "yaml"],
+        default="table",
+        help="Output format (default: table)",
     )
 
     # collection update
@@ -753,6 +823,8 @@ def main(argv: Optional[List[str]] = None) -> int:
                 return commands.cmd_collection_show(args)
             elif args.collection_action == "analyze":
                 return commands.cmd_collection_analyze(args)
+            elif args.collection_action == "groups":
+                return commands.cmd_collection_groups(args)
             elif args.collection_action == "update":
                 return commands.cmd_collection_update(args)
             elif args.collection_action == "delete":

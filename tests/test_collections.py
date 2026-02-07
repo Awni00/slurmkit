@@ -9,6 +9,7 @@ from slurmkit.collections import (
     Collection,
     CollectionManager,
     DEFAULT_COLLECTION_NAME,
+    LEGACY_SUBMISSION_GROUP,
 )
 
 
@@ -104,6 +105,20 @@ class TestCollection:
         assert "git_branch" in job["resubmissions"][0]
         assert "git_commit_id" in job["resubmissions"][0]
 
+    def test_add_resubmission_submission_group(self):
+        """Test submission group is persisted on resubmission records."""
+        collection = Collection("test")
+        collection.add_job(job_name="job1", job_id="12345", state="FAILED")
+
+        collection.add_resubmission(
+            "job1",
+            job_id="12346",
+            submission_group="resubmit_20260207_170000",
+        )
+
+        job = collection.get_job("job1")
+        assert job["resubmissions"][0]["submission_group"] == "resubmit_20260207_170000"
+
     def test_filter_jobs_by_state(self):
         """Test filtering jobs by state."""
         collection = Collection("test")
@@ -147,6 +162,51 @@ class TestCollection:
         assert summary["failed"] == 1
         assert summary["running"] == 1
         assert summary["not_submitted"] == 1
+
+    def test_get_effective_jobs_latest(self):
+        """Latest mode should expose latest resubmission as effective fields."""
+        collection = Collection("test")
+        collection.add_job(job_name="job1", job_id="1", state="FAILED")
+        collection.add_resubmission("job1", job_id="2")
+        collection.get_job("job1")["resubmissions"][-1]["state"] = "COMPLETED"
+
+        effective = collection.get_effective_jobs(attempt_mode="latest")
+        assert len(effective) == 1
+        row = effective[0]
+        assert row["effective_job_id"] == "2"
+        assert row["effective_state"] == "completed"
+        assert row["effective_is_primary"] is False
+
+    def test_get_effective_jobs_submission_group(self):
+        """Submission-group mode should include only jobs in group using group-latest state."""
+        collection = Collection("test")
+        collection.add_job(job_name="job1", job_id="1", state="FAILED")
+        collection.add_job(job_name="job2", job_id="3", state="FAILED")
+        collection.add_resubmission("job1", job_id="2", submission_group="g1")
+        collection.add_resubmission("job2", job_id="4", submission_group="g2")
+        collection.get_job("job1")["resubmissions"][-1]["state"] = "COMPLETED"
+        collection.get_job("job2")["resubmissions"][-1]["state"] = "FAILED"
+
+        effective = collection.get_effective_jobs(submission_group="g1")
+        assert len(effective) == 1
+        assert effective[0]["job_name"] == "job1"
+        assert effective[0]["effective_submission_group"] == "g1"
+        assert effective[0]["effective_state"] == "completed"
+
+    def test_get_submission_groups_summary(self):
+        """Group summary should include counts, timestamps, and legacy bucket."""
+        collection = Collection("test")
+        collection.add_job(job_name="job1", job_id="1", state="FAILED")
+        collection.add_resubmission("job1", job_id="2", submission_group="g1")
+        collection.add_resubmission("job1", job_id="3")
+        collection.get_job("job1")["resubmissions"][0]["submitted_at"] = "2026-02-07T17:00:00"
+        collection.get_job("job1")["resubmissions"][1]["submitted_at"] = "2026-02-07T18:00:00"
+
+        groups = collection.get_submission_groups_summary()
+        groups_by_name = {entry["submission_group"]: entry for entry in groups}
+        assert groups_by_name["g1"]["slurm_job_count"] == 1
+        assert groups_by_name["g1"]["parent_job_count"] == 1
+        assert groups_by_name[LEGACY_SUBMISSION_GROUP]["slurm_job_count"] == 1
 
     def test_to_dict_from_dict(self):
         """Test serialization and deserialization."""
@@ -219,6 +279,24 @@ class TestCollection:
         latest_value = latest["parameters"][0]["values"][0]
         assert primary_value["counts"]["failed"] == 1
         assert latest_value["counts"]["completed"] == 1
+
+    def test_analyze_status_by_params_submission_group_uses_group_latest(self):
+        """Submission-group analysis should use latest state within selected group."""
+        collection = Collection("test")
+        collection.add_job(job_name="a", parameters={"algo": "x"}, state="FAILED")
+        collection.add_resubmission("a", job_id="101", submission_group="g1")
+        collection.get_job("a")["resubmissions"][-1]["state"] = "COMPLETED"
+
+        analysis = collection.analyze_status_by_params(
+            attempt_mode="primary",
+            submission_group="g1",
+            min_support=1,
+        )
+
+        value = analysis["parameters"][0]["values"][0]
+        assert value["counts"]["completed"] == 1
+        assert analysis["metadata"]["attempt_mode"] == "latest"
+        assert analysis["metadata"]["submission_group"] == "g1"
 
     def test_analyze_status_by_params_filter_and_skipped(self):
         """Test selected parameter filtering and skipped param reporting."""

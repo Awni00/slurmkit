@@ -19,6 +19,7 @@ class _FakeCollection:
     def analyze_status_by_params(
         self,
         attempt_mode="primary",
+        submission_group=None,
         min_support=3,
         selected_params=None,
         top_k=10,
@@ -47,6 +48,7 @@ class _FakeCollection:
             "metadata": {
                 "min_support": min_support,
                 "attempt_mode": attempt_mode,
+                "submission_group": submission_group,
                 "selected_params": selected_params or [],
                 "skipped_params": [],
             },
@@ -61,6 +63,7 @@ class _FakeCollectionWithAnalysis(_FakeCollection):
     def analyze_status_by_params(
         self,
         attempt_mode="primary",
+        submission_group=None,
         min_support=3,
         selected_params=None,
         top_k=10,
@@ -198,6 +201,7 @@ def _analysis_payload_mixed_params():
         "metadata": {
             "min_support": 1,
             "attempt_mode": "primary",
+            "submission_group": None,
             "selected_params": [],
             "skipped_params": [],
         },
@@ -264,6 +268,7 @@ def _analysis_payload_all_single_value():
         "metadata": {
             "min_support": 1,
             "attempt_mode": "primary",
+            "submission_group": None,
             "selected_params": ["algo", "missing"],
             "skipped_params": ["missing"],
         },
@@ -304,6 +309,7 @@ def test_collection_analyze_parser_args():
     assert args.min_support == 5
     assert args.param == ["algo", "lr"]
     assert args.attempt_mode == "latest"
+    assert args.submission_group is None
     assert args.top_k == 7
 
 
@@ -322,6 +328,7 @@ def test_cmd_collection_analyze_json_no_refresh(monkeypatch, capsys):
         min_support=3,
         param=None,
         attempt_mode="primary",
+        submission_group=None,
         top_k=10,
     )
     exit_code = commands.cmd_collection_analyze(args)
@@ -349,6 +356,7 @@ def test_cmd_collection_analyze_table_filters_single_value_params(monkeypatch, c
         min_support=1,
         param=None,
         attempt_mode="primary",
+        submission_group=None,
         top_k=10,
     )
     exit_code = commands.cmd_collection_analyze(args)
@@ -377,6 +385,7 @@ def test_cmd_collection_analyze_table_all_single_value_params(monkeypatch, capsy
         min_support=1,
         param=["algo", "missing"],
         attempt_mode="primary",
+        submission_group=None,
         top_k=10,
     )
     exit_code = commands.cmd_collection_analyze(args)
@@ -404,6 +413,7 @@ def test_cmd_collection_analyze_json_keeps_single_value_params(monkeypatch, caps
         min_support=1,
         param=None,
         attempt_mode="primary",
+        submission_group=None,
         top_k=10,
     )
     exit_code = commands.cmd_collection_analyze(args)
@@ -428,6 +438,7 @@ def test_cmd_collection_analyze_rejects_invalid_min_support(monkeypatch, capsys)
         min_support=0,
         param=None,
         attempt_mode="primary",
+        submission_group=None,
         top_k=10,
     )
     exit_code = commands.cmd_collection_analyze(args)
@@ -454,6 +465,7 @@ def test_cmd_collection_analyze_rich_mode_missing_dependency(monkeypatch, capsys
         min_support=1,
         param=None,
         attempt_mode="primary",
+        submission_group=None,
         top_k=10,
         ui="rich",
     )

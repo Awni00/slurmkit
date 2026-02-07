@@ -6,6 +6,7 @@ import pytest
 
 from slurmkit.cli.ui.context import UIResolutionError, resolve_ui_context
 from slurmkit.cli.ui.plain import PlainBackend
+from slurmkit.cli.ui.reports import build_collection_show_report
 
 
 class _FakeConfig:
@@ -60,3 +61,48 @@ def test_plain_backend_status_color_toggle():
     styled = backend_color.style_status("FAILED")
     assert styled != "FAILED"
     assert "\033[" in styled
+
+
+def test_collection_show_report_supports_primary_and_history_columns():
+    """Collection show report should include optional primary/history columns."""
+    class _Collection:
+        name = "exp1"
+        description = "demo"
+        created_at = "2026-02-07T10:00:00"
+        updated_at = "2026-02-07T11:00:00"
+        cluster = "cluster-a"
+        parameters = {}
+
+    report = build_collection_show_report(
+        collection=_Collection(),
+        jobs=[
+            {
+                "job_name": "job_a",
+                "effective_job_id": "101",
+                "effective_state_raw": "COMPLETED",
+                "effective_attempt_label": "resubmission #1",
+                "effective_submission_group": "g1",
+                "resubmissions_count": 1,
+                "effective_hostname": "cluster-a",
+                "primary_job_id": "100",
+                "primary_state_raw": "FAILED",
+                "attempt_history": ["100(FAILED)", "101(COMPLETED)"],
+            }
+        ],
+        summary={
+            "total": 1,
+            "completed": 1,
+            "failed": 0,
+            "running": 0,
+            "pending": 0,
+            "unknown": 0,
+            "not_submitted": 0,
+        },
+        attempt_mode="latest",
+        submission_group="g1",
+        show_primary=True,
+        show_history=True,
+    )
+
+    assert "Primary Job ID" in report.jobs_table.headers
+    assert "History" in report.jobs_table.headers

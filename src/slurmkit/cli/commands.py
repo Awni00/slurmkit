@@ -7,13 +7,15 @@ This module contains the implementation of each CLI command.
 from __future__ import annotations
 
 import json
+import importlib.util
 import os
 import subprocess
 import sys
 import time
+import uuid
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import yaml
 import pandas as pd
@@ -33,6 +35,7 @@ from slurmkit.collections import (
     Collection,
     CollectionManager,
     DEFAULT_COLLECTION_NAME,
+    LEGACY_SUBMISSION_GROUP,
 )
 from slurmkit.slurm import (
     find_job_output,
@@ -79,6 +82,59 @@ def get_configured_config(args: Any) -> Config:
     """Get Config instance with CLI overrides."""
     config_path = getattr(args, "config", None)
     return get_config(config_path=config_path, reload=True)
+
+
+def _parse_key_value_pairs(raw: Optional[str]) -> Dict[str, str]:
+    """Parse KEY=VAL comma-separated pairs."""
+    parsed: Dict[str, str] = {}
+    if not raw:
+        return parsed
+    for item in raw.split(","):
+        if "=" not in item:
+            continue
+        key, value = item.split("=", 1)
+        key = key.strip()
+        if key:
+            parsed[key] = value.strip()
+    return parsed
+
+
+def _load_python_callback(
+    file_path: Optional[str],
+    function_name: str,
+    *,
+    callback_kind: str,
+) -> Optional[Callable[[Dict[str, Any]], Any]]:
+    """
+    Load callback from a Python file.
+
+    callback_kind is used in error messages only.
+    """
+    if not file_path:
+        return None
+
+    path = Path(file_path)
+    if not path.exists():
+        raise FileNotFoundError(f"{callback_kind} file not found: {path}")
+
+    module_name = f"slurmkit_cli_cb_{callback_kind}_{uuid.uuid4().hex}"
+    spec = importlib.util.spec_from_file_location(module_name, path)
+    if spec is None or spec.loader is None:
+        raise ImportError(f"Could not load module from {path}")
+
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[module_name] = module
+    spec.loader.exec_module(module)
+
+    if not hasattr(module, function_name):
+        raise AttributeError(
+            f"{callback_kind} function '{function_name}' not found in {path}"
+        )
+    callback = getattr(module, function_name)
+    if not callable(callback):
+        raise TypeError(f"{callback_kind} '{function_name}' in {path} is not callable")
+
+    return callback
 
 
 # =============================================================================
@@ -891,7 +947,9 @@ def cmd_resubmit(args: Any) -> int:
     else:
         jobs_dir = config.get_path("jobs_dir")
 
-    jobs_to_resubmit = []
+    jobs_to_consider = []
+    collection_for_tracking: Optional[Collection] = None
+    submission_group = args.submission_group or datetime.now().strftime("resubmit_%Y%m%d_%H%M%S")
 
     if args.collection:
         # Resubmit from collection
@@ -900,20 +958,25 @@ def cmd_resubmit(args: Any) -> int:
             return 1
 
         collection = manager.load(args.collection)
+        collection_for_tracking = collection
 
         # Refresh states first
         collection.refresh_states()
+        manager.save(collection)
 
         # Filter jobs
         if args.filter == "failed":
-            jobs = collection.filter_jobs(state="failed")
+            jobs = [
+                row["job"]
+                for row in collection.get_effective_jobs(attempt_mode="latest", state="failed")
+            ]
         else:
             jobs = collection.jobs
 
         for job in jobs:
             script_path = job.get("script_path")
             if script_path:
-                jobs_to_resubmit.append({
+                jobs_to_consider.append({
                     "job_name": job.get("job_name"),
                     "script_path": Path(script_path),
                     "original_job_id": job.get("job_id"),
@@ -925,10 +988,11 @@ def cmd_resubmit(args: Any) -> int:
         for job_id in args.job_ids:
             script_path = infer_script_path(job_id, jobs_dir, config)
             if script_path:
-                jobs_to_resubmit.append({
+                jobs_to_consider.append({
                     "job_name": script_path.stem,
                     "script_path": script_path,
                     "original_job_id": job_id,
+                    "collection_job": None,
                 })
             else:
                 print(f"Warning: Could not find script for job {job_id}")
@@ -937,27 +1001,115 @@ def cmd_resubmit(args: Any) -> int:
         print("Error: Specify job IDs or --collection.")
         return 1
 
-    if not jobs_to_resubmit:
+    if not jobs_to_consider:
         print("No jobs to resubmit.")
         return 0
 
-    # Parse extra params
-    extra_params = {}
-    if args.extra_params:
-        for item in args.extra_params.split(","):
-            if "=" in item:
-                key, value = item.split("=", 1)
-                extra_params[key.strip()] = value.strip()
+    static_extra_params = _parse_key_value_pairs(args.extra_params)
+
+    try:
+        extra_params_callback = _load_python_callback(
+            getattr(args, "extra_params_file", None),
+            getattr(args, "extra_params_function", "get_extra_params"),
+            callback_kind="extra_params",
+        )
+        select_callback = _load_python_callback(
+            getattr(args, "select_file", None),
+            getattr(args, "select_function", "should_resubmit"),
+            callback_kind="selection",
+        )
+    except Exception as exc:
+        print(f"Error: {exc}")
+        return 1
+
+    jobs_to_resubmit = []
+    skipped_jobs = []
+    for job in jobs_to_consider:
+        callback_context = {
+            "job_name": job["job_name"],
+            "script_path": str(job["script_path"]),
+            "original_job_id": job.get("original_job_id"),
+            "collection_name": args.collection,
+            "collection_job": job.get("collection_job"),
+            "submission_group": submission_group,
+            "static_extra_params": static_extra_params.copy(),
+        }
+
+        reason = None
+        if select_callback is not None:
+            try:
+                decision = select_callback(callback_context.copy())
+            except Exception as exc:
+                print(f"Error: selection callback failed for '{job['job_name']}': {exc}")
+                return 1
+
+            if isinstance(decision, bool):
+                include_job = decision
+            elif (
+                isinstance(decision, tuple)
+                and len(decision) == 2
+                and isinstance(decision[0], bool)
+            ):
+                include_job = decision[0]
+                reason = "" if decision[1] is None else str(decision[1])
+            else:
+                print(
+                    "Error: selection callback must return bool or (bool, reason), "
+                    f"got {type(decision).__name__} for '{job['job_name']}'."
+                )
+                return 1
+
+            if not include_job:
+                skipped_jobs.append({**job, "reason": reason})
+                continue
+
+        dynamic_extra_params: Dict[str, Any] = {}
+        if extra_params_callback is not None:
+            try:
+                callback_result = extra_params_callback(callback_context.copy())
+            except Exception as exc:
+                print(f"Error: extra params callback failed for '{job['job_name']}': {exc}")
+                return 1
+
+            if callback_result is None:
+                callback_result = {}
+            if not isinstance(callback_result, dict):
+                print(
+                    "Error: extra params callback must return a dict, "
+                    f"got {type(callback_result).__name__} for '{job['job_name']}'."
+                )
+                return 1
+            dynamic_extra_params = dict(callback_result)
+
+        resolved_extra_params = dict(dynamic_extra_params)
+        resolved_extra_params.update(static_extra_params)
+
+        jobs_to_resubmit.append({
+            **job,
+            "resolved_extra_params": resolved_extra_params,
+        })
 
     # Display jobs
+    print(f"Submission group: {submission_group}")
     print(f"Will resubmit {len(jobs_to_resubmit)} job(s):")
     print_separator()
     for job in jobs_to_resubmit:
         print(f"  {job['job_name']} (original ID: {job['original_job_id']})")
         print(f"    Script: {job['script_path']}")
-    if extra_params:
-        print(f"\nExtra parameters: {extra_params}")
+        if job.get("resolved_extra_params"):
+            print(f"    Extra parameters: {job['resolved_extra_params']}")
+    if skipped_jobs:
+        print(f"\nSkipped {len(skipped_jobs)} job(s) due to selection callback:")
+        for job in skipped_jobs:
+            if job.get("reason"):
+                print(f"  {job['job_name']}: {job['reason']}")
+            else:
+                print(f"  {job['job_name']}")
     print_separator()
+
+    if not jobs_to_resubmit:
+        print("No jobs to resubmit after applying selection logic.")
+        return 0
 
     if args.dry_run:
         print("\n[DRY RUN] No jobs were resubmitted.")
@@ -968,11 +1120,6 @@ def cmd_resubmit(args: Any) -> int:
         if not prompt_yes_no(f"\nResubmit these {len(jobs_to_resubmit)} job(s)? [y/N]: "):
             print("Aborted.")
             return 0
-
-    # Get collection for tracking
-    collection = None
-    if args.collection:
-        collection = manager.load(args.collection)
 
     # Resubmit jobs
     resubmitted = 0
@@ -990,18 +1137,19 @@ def cmd_resubmit(args: Any) -> int:
             resubmitted += 1
 
             # Record resubmission in collection
-            if collection:
-                collection.add_resubmission(
+            if collection_for_tracking:
+                collection_for_tracking.add_resubmission(
                     job["job_name"],
                     job_id=job_id,
-                    extra_params=extra_params if extra_params else None,
+                    extra_params=job.get("resolved_extra_params") or None,
+                    submission_group=submission_group,
                 )
         else:
             print(f"Failed: {job['job_name']} -> {message}", file=sys.stderr)
 
     # Save collection
-    if collection:
-        manager.save(collection)
+    if collection_for_tracking:
+        manager.save(collection_for_tracking)
 
     print(f"\nResubmitted {resubmitted}/{len(jobs_to_resubmit)} job(s).")
     return 0
@@ -1078,24 +1226,47 @@ def cmd_collection_show(args: Any) -> int:
         collection.refresh_states()
         manager.save(collection)
 
-    # Apply state filter
-    if args.state != "all":
-        jobs = collection.filter_jobs(state=args.state)
-    else:
-        jobs = collection.jobs
+    state_filter = None if args.state == "all" else args.state
+    effective_jobs = collection.get_effective_jobs(
+        attempt_mode=args.attempt_mode,
+        submission_group=args.submission_group,
+        state=state_filter,
+    )
+    effective_summary = collection.get_effective_summary(
+        attempt_mode=args.attempt_mode,
+        submission_group=args.submission_group,
+    )
+
+    serialized_jobs = []
+    for row in effective_jobs:
+        serialized = dict(row["job"])
+        serialized["effective_job_id"] = row.get("effective_job_id")
+        serialized["effective_state"] = row.get("effective_state_raw")
+        serialized["effective_state_normalized"] = row.get("effective_state")
+        serialized["effective_hostname"] = row.get("effective_hostname")
+        serialized["effective_attempt_label"] = row.get("effective_attempt_label")
+        serialized["effective_attempt_index"] = row.get("effective_attempt_index")
+        serialized["effective_submission_group"] = row.get("effective_submission_group")
+        if getattr(args, "show_history", False):
+            serialized["effective_attempt_history"] = row.get("attempt_history", [])
+        serialized_jobs.append(serialized)
 
     # Output format
     if args.format == "json":
         data = collection.to_dict()
-        if args.state != "all":
-            data["jobs"] = jobs
+        data["jobs"] = serialized_jobs
+        data["effective_summary"] = effective_summary
+        data["effective_attempt_mode"] = args.attempt_mode
+        data["effective_submission_group"] = args.submission_group
         print(json.dumps(data, indent=2, default=str))
         return 0
 
     elif args.format == "yaml":
         data = collection.to_dict()
-        if args.state != "all":
-            data["jobs"] = jobs
+        data["jobs"] = serialized_jobs
+        data["effective_summary"] = effective_summary
+        data["effective_attempt_mode"] = args.attempt_mode
+        data["effective_submission_group"] = args.submission_group
         print(yaml.dump(data, default_flow_style=False, sort_keys=False))
         return 0
 
@@ -1106,7 +1277,15 @@ def cmd_collection_show(args: Any) -> int:
         print(f"Error: {exc}")
         return 1
 
-    report = build_collection_show_report(collection=collection, jobs=jobs)
+    report = build_collection_show_report(
+        collection=collection,
+        jobs=effective_jobs,
+        summary=effective_summary,
+        attempt_mode=args.attempt_mode,
+        submission_group=args.submission_group,
+        show_primary=getattr(args, "show_primary", False),
+        show_history=getattr(args, "show_history", False),
+    )
     render_collection_show_report(report, backend)
 
     return 0
@@ -1137,6 +1316,7 @@ def cmd_collection_analyze(args: Any) -> int:
 
     analysis = collection.analyze_status_by_params(
         attempt_mode=args.attempt_mode,
+        submission_group=args.submission_group,
         min_support=args.min_support,
         selected_params=args.param,
         top_k=args.top_k,
@@ -1156,13 +1336,70 @@ def cmd_collection_analyze(args: Any) -> int:
     report = build_collection_analyze_report(
         collection_name=collection.name,
         analysis=analysis,
-        attempt_mode=args.attempt_mode,
+        attempt_mode=analysis["metadata"]["attempt_mode"],
         min_support=args.min_support,
         top_k=args.top_k,
         selected_params=args.param,
+        submission_group=args.submission_group,
     )
     render_collection_analyze_report(report, backend)
 
+    return 0
+
+
+def cmd_collection_groups(args: Any) -> int:
+    """Show submission group counts for a collection."""
+    config = get_configured_config(args)
+    manager = CollectionManager(config=config)
+
+    if not manager.exists(args.name):
+        print(f"Error: Collection not found: {args.name}")
+        return 1
+
+    collection = manager.load(args.name)
+    groups = collection.get_submission_groups_summary()
+
+    if args.format == "json":
+        print(json.dumps(groups, indent=2, default=str))
+        return 0
+
+    if args.format == "yaml":
+        print(yaml.dump(groups, default_flow_style=False, sort_keys=False))
+        return 0
+
+    print(f"Submission groups for collection: {args.name}")
+    print_separator()
+    if not groups:
+        print("  (no submission groups)")
+        return 0
+
+    rows = []
+    for group in groups:
+        rows.append(
+            [
+                group["submission_group"],
+                group["slurm_job_count"],
+                group["parent_job_count"],
+                group.get("first_submitted_at") or "",
+                group.get("last_submitted_at") or "",
+            ]
+        )
+
+    print(
+        tabulate(
+            rows,
+            headers=[
+                "Submission Group",
+                "SLURM Jobs",
+                "Parent Jobs",
+                "First Submitted",
+                "Last Submitted",
+            ],
+            tablefmt="simple",
+        )
+    )
+    if any(group["submission_group"] == LEGACY_SUBMISSION_GROUP for group in groups):
+        print(f"\nNote: '{LEGACY_SUBMISSION_GROUP}' includes historical resubmissions without a group label.")
     return 0
 
 

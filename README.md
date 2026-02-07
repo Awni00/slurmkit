@@ -151,11 +151,17 @@ slurmkit collection update exp1
 # View collection status
 slurmkit collection show exp1
 
+# View latest effective attempts with primary/history context
+slurmkit collection show exp1 --show-primary --show-history
+
 # Rich UI (if installed)
 slurmkit --ui rich collection analyze exp1
 
 # Resubmit failed jobs
 slurmkit resubmit --collection exp1 --filter failed
+
+# Group-aware retry
+slurmkit resubmit --collection exp1 --filter failed --submission-group retry_after_fix
 ```
 
 ## Testing and Showcase Workflows
@@ -194,6 +200,7 @@ slurmkit status exp1
 slurmkit collection update exp1
 slurmkit collection show exp1
 slurmkit collection analyze exp1 --attempt-mode latest
+slurmkit collection groups exp1
 slurmkit resubmit --collection exp1 --filter failed --dry-run
 ```
 
@@ -337,9 +344,13 @@ slurmkit collection list
 
 # Show details
 slurmkit collection show my_exp --state failed
+slurmkit collection show my_exp --attempt-mode latest --show-primary
 
 # Update states from SLURM
 slurmkit collection update my_exp
+
+# Submission-group summary
+slurmkit collection groups my_exp
 ```
 
 ### Notifications

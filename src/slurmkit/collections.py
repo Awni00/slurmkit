@@ -19,7 +19,7 @@ import subprocess
 from datetime import datetime
 from functools import lru_cache
 from pathlib import Path
-from typing import Any, Dict, Iterator, List, Optional, Union
+from typing import Any, Dict, Iterator, List, Optional, Set, Union
 
 import yaml
 
@@ -39,6 +39,7 @@ JOB_STATE_RUNNING = "running"
 JOB_STATE_COMPLETED = "completed"
 JOB_STATE_FAILED = "failed"
 JOB_STATE_UNKNOWN = "unknown"
+LEGACY_SUBMISSION_GROUP = "legacy_ungrouped"
 
 
 # =============================================================================
@@ -286,6 +287,7 @@ class Collection:
         job_name: str,
         job_id: str,
         extra_params: Optional[Dict[str, Any]] = None,
+        submission_group: Optional[str] = None,
         hostname: Optional[str] = None,
     ) -> bool:
         """
@@ -311,6 +313,7 @@ class Collection:
             "hostname": hostname or socket.gethostname(),
             "submitted_at": datetime.now().isoformat(timespec="seconds"),
             "extra_params": extra_params or {},
+            "submission_group": submission_group,
             "git_branch": git_metadata["git_branch"],
             "git_commit_id": git_metadata["git_commit_id"],
         }
@@ -380,6 +383,216 @@ class Collection:
 
         return result
 
+    def _normalize_attempt_mode(self, attempt_mode: str) -> str:
+        if attempt_mode not in ("primary", "latest"):
+            raise ValueError("attempt_mode must be 'primary' or 'latest'")
+        return attempt_mode
+
+    def _normalize_submission_group(self, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return None
+        group = str(value).strip()
+        return group if group else None
+
+    def _effective_attempt_for_job(
+        self,
+        job: Dict[str, Any],
+        attempt_mode: str = "primary",
+        submission_group: Optional[str] = None,
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Resolve effective attempt metadata for a job.
+
+        Returns None when submission_group is provided and no resubmission
+        in that group exists for the job.
+        """
+        attempt_mode = self._normalize_attempt_mode(attempt_mode)
+        submission_group = self._normalize_submission_group(submission_group)
+        resubmissions = job.get("resubmissions", []) or []
+
+        if submission_group is not None:
+            matched = []
+            for idx, resub in enumerate(resubmissions, start=1):
+                group = self._normalize_submission_group(resub.get("submission_group"))
+                if group is None:
+                    group = LEGACY_SUBMISSION_GROUP
+                if group == submission_group:
+                    matched.append((idx, resub, group))
+            if not matched:
+                return None
+
+            idx, resub, group = matched[-1]
+            return {
+                "job_id": resub.get("job_id"),
+                "state_raw": resub.get("state"),
+                "state": self._normalize_state(resub.get("state")),
+                "hostname": resub.get("hostname"),
+                "submitted_at": resub.get("submitted_at"),
+                "is_primary": False,
+                "attempt_index": idx,
+                "attempt_label": f"resubmission #{idx}",
+                "submission_group": group,
+            }
+
+        if attempt_mode == "latest" and resubmissions:
+            idx = len(resubmissions)
+            resub = resubmissions[-1]
+            group = self._normalize_submission_group(resub.get("submission_group"))
+            if group is None:
+                group = LEGACY_SUBMISSION_GROUP
+            return {
+                "job_id": resub.get("job_id"),
+                "state_raw": resub.get("state"),
+                "state": self._normalize_state(resub.get("state")),
+                "hostname": resub.get("hostname"),
+                "submitted_at": resub.get("submitted_at"),
+                "is_primary": False,
+                "attempt_index": idx,
+                "attempt_label": f"resubmission #{idx}",
+                "submission_group": group,
+            }
+
+        return {
+            "job_id": job.get("job_id"),
+            "state_raw": job.get("state"),
+            "state": self._normalize_state(job.get("state")),
+            "hostname": job.get("hostname"),
+            "submitted_at": job.get("submitted_at"),
+            "is_primary": True,
+            "attempt_index": 0,
+            "attempt_label": "primary",
+            "submission_group": None,
+        }
+
+    def get_effective_jobs(
+        self,
+        attempt_mode: str = "primary",
+        submission_group: Optional[str] = None,
+        state: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
+        """Return job views using effective attempt semantics."""
+        attempt_mode = self._normalize_attempt_mode(attempt_mode)
+        if state is not None and state not in {
+            JOB_STATE_PENDING,
+            JOB_STATE_RUNNING,
+            JOB_STATE_COMPLETED,
+            JOB_STATE_FAILED,
+            JOB_STATE_UNKNOWN,
+        }:
+            raise ValueError("state must be one of pending/running/completed/failed/unknown")
+
+        rows: List[Dict[str, Any]] = []
+        for job in self._jobs:
+            effective = self._effective_attempt_for_job(
+                job,
+                attempt_mode=attempt_mode,
+                submission_group=submission_group,
+            )
+            if effective is None:
+                continue
+            if state is not None and effective["state"] != state:
+                continue
+
+            history: List[str] = []
+            primary_id = str(job.get("job_id") or "N/A")
+            primary_state = str(job.get("state") or "N/A")
+            history.append(f"{primary_id}({primary_state})")
+            for resub in job.get("resubmissions", []) or []:
+                resub_id = str(resub.get("job_id") or "N/A")
+                resub_state = str(resub.get("state") or "N/A")
+                history.append(f"{resub_id}({resub_state})")
+
+            rows.append(
+                {
+                    "job_name": job.get("job_name"),
+                    "parameters": job.get("parameters", {}) or {},
+                    "resubmissions_count": len(job.get("resubmissions", []) or []),
+                    "primary_job_id": job.get("job_id"),
+                    "primary_state_raw": job.get("state"),
+                    "primary_state": self._normalize_state(job.get("state")),
+                    "primary_hostname": job.get("hostname"),
+                    "effective_job_id": effective["job_id"],
+                    "effective_state_raw": effective["state_raw"],
+                    "effective_state": effective["state"],
+                    "effective_hostname": effective["hostname"],
+                    "effective_submitted_at": effective["submitted_at"],
+                    "effective_is_primary": effective["is_primary"],
+                    "effective_attempt_index": effective["attempt_index"],
+                    "effective_attempt_label": effective["attempt_label"],
+                    "effective_submission_group": effective["submission_group"],
+                    "attempt_history": history,
+                    "job": job,
+                }
+            )
+
+        return rows
+
+    def get_effective_summary(
+        self,
+        attempt_mode: str = "primary",
+        submission_group: Optional[str] = None,
+    ) -> Dict[str, int]:
+        """Get state summary for effective attempt semantics."""
+        rows = self.get_effective_jobs(
+            attempt_mode=attempt_mode,
+            submission_group=submission_group,
+        )
+        summary = {
+            "total": len(rows),
+            "pending": 0,
+            "running": 0,
+            "completed": 0,
+            "failed": 0,
+            "unknown": 0,
+            "not_submitted": 0,
+        }
+        for row in rows:
+            effective_job_id = row.get("effective_job_id")
+            if effective_job_id is None:
+                summary["not_submitted"] += 1
+                continue
+            state = row.get("effective_state", JOB_STATE_UNKNOWN)
+            summary[state] = summary.get(state, 0) + 1
+        return summary
+
+    def get_submission_groups_summary(self) -> List[Dict[str, Any]]:
+        """Return aggregate stats for all submission groups in the collection."""
+        grouped: Dict[str, Dict[str, Any]] = {}
+        for job in self._jobs:
+            job_name = str(job.get("job_name", ""))
+            for resub in job.get("resubmissions", []) or []:
+                group = self._normalize_submission_group(resub.get("submission_group"))
+                if group is None:
+                    group = LEGACY_SUBMISSION_GROUP
+                bucket = grouped.setdefault(
+                    group,
+                    {
+                        "submission_group": group,
+                        "slurm_job_count": 0,
+                        "parent_job_names": set(),
+                        "first_submitted_at": None,
+                        "last_submitted_at": None,
+                    },
+                )
+                bucket["slurm_job_count"] += 1
+                casted_names: Set[str] = bucket["parent_job_names"]
+                casted_names.add(job_name)
+                submitted_at = resub.get("submitted_at")
+                if submitted_at:
+                    if bucket["first_submitted_at"] is None or submitted_at < bucket["first_submitted_at"]:
+                        bucket["first_submitted_at"] = submitted_at
+                    if bucket["last_submitted_at"] is None or submitted_at > bucket["last_submitted_at"]:
+                        bucket["last_submitted_at"] = submitted_at
+
+        rows = []
+        for _, values in grouped.items():
+            parent_job_names = values.pop("parent_job_names")
+            values["parent_job_count"] = len(parent_job_names)
+            rows.append(values)
+
+        rows.sort(key=lambda item: str(item["submission_group"]))
+        return rows
+
     def _normalize_state(self, state: Optional[str]) -> str:
         """
         Normalize a SLURM state to a simple category.
@@ -434,25 +647,25 @@ class Collection:
 
         return summary
 
-    def _get_analysis_rows(self, attempt_mode: str = "primary") -> List[Dict[str, Any]]:
+    def _get_analysis_rows(
+        self,
+        attempt_mode: str = "primary",
+        submission_group: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
         """Build canonical rows for status analysis."""
+        effective_jobs = self.get_effective_jobs(
+            attempt_mode=attempt_mode,
+            submission_group=submission_group,
+        )
         rows = []
-
-        for job in self._jobs:
-            state = job.get("state")
-            if attempt_mode == "latest":
-                resubmissions = job.get("resubmissions", [])
-                if resubmissions:
-                    latest_state = resubmissions[-1].get("state")
-                    if latest_state:
-                        state = latest_state
-
-            rows.append({
-                "job_name": job.get("job_name"),
-                "state": self._normalize_state(state),
-                "parameters": job.get("parameters", {}) or {},
-            })
-
+        for row in effective_jobs:
+            rows.append(
+                {
+                    "job_name": row.get("job_name"),
+                    "state": row.get("effective_state", JOB_STATE_UNKNOWN),
+                    "parameters": row.get("parameters", {}) or {},
+                }
+            )
         return rows
 
     def _format_param_value(self, value: Any) -> str:
@@ -464,6 +677,7 @@ class Collection:
     def analyze_status_by_params(
         self,
         attempt_mode: str = "primary",
+        submission_group: Optional[str] = None,
         min_support: int = 3,
         selected_params: Optional[List[str]] = None,
         top_k: int = 10,
@@ -487,7 +701,11 @@ class Collection:
         if top_k < 1:
             raise ValueError("top_k must be >= 1")
 
-        rows = self._get_analysis_rows(attempt_mode=attempt_mode)
+        effective_mode = "latest" if self._normalize_submission_group(submission_group) else attempt_mode
+        rows = self._get_analysis_rows(
+            attempt_mode=effective_mode,
+            submission_group=submission_group,
+        )
 
         summary_counts = {
             JOB_STATE_COMPLETED: 0,
@@ -614,7 +832,8 @@ class Collection:
             "top_stable_values": top_stable,
             "metadata": {
                 "min_support": min_support,
-                "attempt_mode": attempt_mode,
+                "attempt_mode": effective_mode,
+                "submission_group": self._normalize_submission_group(submission_group),
                 "selected_params": selected_params or [],
                 "skipped_params": skipped_params,
             },

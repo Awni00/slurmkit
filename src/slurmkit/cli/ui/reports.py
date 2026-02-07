@@ -23,9 +23,13 @@ def build_collection_show_report(
     *,
     collection: Any,
     jobs: Sequence[Dict[str, Any]],
+    summary: Dict[str, int],
+    attempt_mode: str,
+    submission_group: Optional[str],
+    show_primary: bool = False,
+    show_history: bool = False,
 ) -> CollectionShowReport:
     """Build view-model for collection show output."""
-    summary = collection.get_summary()
     total = max(summary.get("total", 0), 1)
 
     metadata = [
@@ -34,7 +38,10 @@ def build_collection_show_report(
         ("Created", str(collection.created_at)),
         ("Updated", str(collection.updated_at)),
         ("Cluster", str(collection.cluster or "")),
+        ("Attempt mode", str(attempt_mode)),
     ]
+    if submission_group:
+        metadata.append(("Submission group", submission_group))
 
     parameters_yaml = None
     if collection.parameters:
@@ -59,21 +66,48 @@ def build_collection_show_report(
 
     rows = []
     for job in jobs:
-        rows.append(
-            [
-                str(job.get("job_name", "")),
-                str(job.get("job_id", "N/A")),
-                str(job.get("state", "N/A")),
-                str(job.get("hostname", "")),
-                str(len(job.get("resubmissions", [])) or ""),
-            ]
-        )
+        row = [
+            str(job.get("job_name", "")),
+            str(job.get("effective_job_id", "N/A")),
+            str(job.get("effective_state_raw", "N/A")),
+            str(job.get("effective_attempt_label", "")),
+            str(job.get("effective_submission_group", "") or ""),
+            str(job.get("resubmissions_count", "") or ""),
+            str(job.get("effective_hostname", "") or ""),
+        ]
+        if show_primary:
+            row.extend(
+                [
+                    str(job.get("primary_job_id", "N/A")),
+                    str(job.get("primary_state_raw", "N/A")),
+                ]
+            )
+        if show_history:
+            row.append(" -> ".join(job.get("attempt_history", [])))
+
+        rows.append(row)
+
+    headers = [
+        "Job Name",
+        "Job ID",
+        "State",
+        "Attempt",
+        "Submission Group",
+        "Resubmissions",
+        "Hostname",
+    ]
+    status_columns = [2]
+    if show_primary:
+        headers.extend(["Primary Job ID", "Primary State"])
+        status_columns.append(len(headers) - 1)
+    if show_history:
+        headers.append("History")
 
     jobs_table = TableSection(
         title=f"Jobs ({len(jobs)}):",
-        headers=["Job Name", "Job ID", "State", "Hostname", "Resubmissions"],
+        headers=headers,
         rows=rows,
-        status_columns=(2,),
+        status_columns=tuple(status_columns),
         empty_message="  (no jobs)",
     )
 
@@ -95,6 +129,7 @@ def build_collection_analyze_report(
     min_support: int,
     top_k: int,
     selected_params: Optional[Sequence[str]],
+    submission_group: Optional[str] = None,
 ) -> CollectionAnalyzeReport:
     """Build view-model for collection analyze output."""
     summary = analysis["summary"]
@@ -106,6 +141,10 @@ def build_collection_analyze_report(
     metadata_lines = [
         f"Attempt mode: {attempt_mode} | Min support: {min_support} | Top-k: {top_k}",
     ]
+    if submission_group:
+        metadata_lines.append(
+            f"Submission group: {submission_group} (latest attempt within group)"
+        )
     if selected_params:
         metadata_lines.append(f"Selected params: {', '.join(selected_params)}")
 
