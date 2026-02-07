@@ -88,6 +88,16 @@ cleanup:
   min_age_days: 3
 
 # =============================================================================
+# CLI UI Settings
+# =============================================================================
+
+ui:
+  # plain: always plain tables
+  # rich: require Rich rendering
+  # auto: use Rich on interactive terminals when available, else plain
+  mode: plain
+
+# =============================================================================
 # Notifications (Optional)
 # =============================================================================
 
@@ -181,6 +191,23 @@ slurmkit status exp1 --jobs-dir /custom/path/
 
 # Override config file
 slurmkit --config /path/to/config.yaml status exp1
+
+# Override UI mode for one command
+slurmkit --ui rich collection analyze exp1
+```
+
+## UI Mode Resolution
+
+UI mode is resolved in this order:
+
+1. CLI override: `--ui {plain,rich,auto}`
+2. Config value: `ui.mode`
+3. Fallback: `plain`
+
+If `--ui rich` is requested but Rich is not installed, slurmkit exits with an install hint:
+
+```bash
+pip install slurmkit[ui]
 ```
 
 ## Output File Patterns

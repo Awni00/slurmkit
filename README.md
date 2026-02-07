@@ -56,6 +56,7 @@ pip install slurmkit
 
 **Optional:**
 - wandb (for W&B cleanup features)
+- rich (enhanced CLI UI; install with `pip install slurmkit[ui]`)
 
 ## Quick Start
 
@@ -135,6 +136,9 @@ slurmkit collection update exp1
 # View collection status
 slurmkit collection show exp1
 
+# Rich UI (if installed)
+slurmkit --ui rich collection analyze exp1
+
 # Resubmit failed jobs
 slurmkit resubmit --collection exp1 --filter failed
 ```
@@ -177,6 +181,9 @@ slurm_defaults:
 job_structure:
   scripts_subdir: job_scripts/
   logs_subdir: logs/
+
+ui:
+  mode: plain  # plain | rich | auto
 
 notifications:
   defaults:

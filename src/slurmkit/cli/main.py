@@ -53,6 +53,12 @@ For more information on a command, run: slurmkit <command> --help
         metavar="PATH",
         help="Path to config file (default: .slurm-kit/config.yaml)",
     )
+    parser.add_argument(
+        "--ui",
+        choices=["plain", "rich", "auto"],
+        default=None,
+        help="UI mode override (plain, rich, auto). Defaults to config ui.mode or plain.",
+    )
 
     # Subcommands
     subparsers = parser.add_subparsers(

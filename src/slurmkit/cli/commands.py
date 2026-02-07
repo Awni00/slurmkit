@@ -19,6 +19,15 @@ import yaml
 import pandas as pd
 from tabulate import tabulate
 
+from slurmkit.cli.ui import (
+    UIResolutionError,
+    build_collection_analyze_report,
+    build_collection_show_report,
+    create_ui_backend,
+    render_collection_analyze_report,
+    render_collection_show_report,
+    resolve_ui_context,
+)
 from slurmkit.config import Config, get_config, init_config
 from slurmkit.collections import (
     Collection,
@@ -103,6 +112,13 @@ def cmd_init(args: Any) -> int:
     # W&B settings (optional)
     print("\nW&B settings (optional, press Enter to skip):")
     wandb_entity = input("  W&B entity: ").strip() or None
+
+    # CLI UI settings
+    print("\nCLI output UI:")
+    ui_mode = input("  Default UI mode [plain]: ").strip().lower() or "plain"
+    if ui_mode not in ("plain", "rich", "auto"):
+        print("  Invalid UI mode. Falling back to 'plain'.")
+        ui_mode = "plain"
 
     # Notification settings (optional)
     print("\nNotifications (optional):")
@@ -214,6 +230,9 @@ def cmd_init(args: Any) -> int:
         "cleanup": {
             "threshold_seconds": 300,
             "min_age_days": 3,
+        },
+        "ui": {
+            "mode": ui_mode,
         },
         "notifications": {
             "defaults": {
@@ -1080,43 +1099,15 @@ def cmd_collection_show(args: Any) -> int:
         print(yaml.dump(data, default_flow_style=False, sort_keys=False))
         return 0
 
-    # Table format
-    print(f"Collection: {collection.name}")
-    print(f"Description: {collection.description}")
-    print(f"Created: {collection.created_at}")
-    print(f"Updated: {collection.updated_at}")
-    print(f"Cluster: {collection.cluster}")
+    try:
+        ui_context = resolve_ui_context(args, config)
+        backend = create_ui_backend(ui_context)
+    except UIResolutionError as exc:
+        print(f"Error: {exc}")
+        return 1
 
-    if collection.parameters:
-        print(f"\nGeneration Parameters:")
-        print(yaml.dump(collection.parameters, default_flow_style=False, indent=2))
-
-    summary = collection.get_summary()
-    print(f"\nSummary: {summary['total']} jobs")
-    print(f"  Completed: {summary['completed']}")
-    print(f"  Failed: {summary['failed']}")
-    print(f"  Running: {summary['running']}")
-    print(f"  Pending: {summary['pending']}")
-    print(f"  Not submitted: {summary['not_submitted']}")
-
-    print(f"\nJobs ({len(jobs)}):")
-    print_separator()
-
-    if jobs:
-        headers = ["Job Name", "Job ID", "State", "Hostname", "Resubmissions"]
-        rows = []
-        for job in jobs:
-            resub_count = len(job.get("resubmissions", []))
-            rows.append([
-                job.get("job_name", ""),
-                job.get("job_id", "N/A"),
-                job.get("state", "N/A"),
-                job.get("hostname", ""),
-                resub_count if resub_count > 0 else "",
-            ])
-        print(tabulate(rows, headers=headers, tablefmt="simple"))
-    else:
-        print("  (no jobs)")
+    report = build_collection_show_report(collection=collection, jobs=jobs)
+    render_collection_show_report(report, backend)
 
     return 0
 
@@ -1155,114 +1146,22 @@ def cmd_collection_analyze(args: Any) -> int:
         print(json.dumps(analysis, indent=2, default=str))
         return 0
 
-    summary = analysis["summary"]
-    counts = summary["counts"]
-    rates = summary["rates"]
-    parameters = analysis["parameters"]
-    skipped = analysis["metadata"]["skipped_params"]
+    try:
+        ui_context = resolve_ui_context(args, config)
+        backend = create_ui_backend(ui_context)
+    except UIResolutionError as exc:
+        print(f"Error: {exc}")
+        return 1
 
-    print(f"Collection Analysis: {collection.name}")
-    print(
-        f"  Attempt mode: {args.attempt_mode} | Min support: {args.min_support} | Top-k: {args.top_k}"
+    report = build_collection_analyze_report(
+        collection_name=collection.name,
+        analysis=analysis,
+        attempt_mode=args.attempt_mode,
+        min_support=args.min_support,
+        top_k=args.top_k,
+        selected_params=args.param,
     )
-    if args.param:
-        print(f"  Selected params: {', '.join(args.param)}")
-    print_separator()
-
-    print(f"Overall summary ({summary['total_jobs']} jobs):")
-    for state in ["completed", "failed", "running", "pending", "unknown"]:
-        pct = rates[state] * 100.0
-        print(f"  {state}: {counts[state]} ({pct:.1f}%)")
-
-    if not parameters:
-        print("\nNo analyzable parameters found.")
-        if skipped:
-            print(f"Skipped requested params: {', '.join(skipped)}")
-        return 0
-
-    varying_parameters = [p for p in parameters if len(p.get("values", [])) >= 2]
-    varying_param_names = {p["param"] for p in varying_parameters}
-
-    if not varying_parameters:
-        print("\nNo parameter breakdown shown: all analyzed parameters have only one distinct value.")
-        if skipped:
-            print(f"Skipped requested params: {', '.join(skipped)}")
-        return 0
-
-    for param_block in varying_parameters:
-        param = param_block["param"]
-        rows = []
-        for value_entry in param_block["values"]:
-            c = value_entry["counts"]
-            r = value_entry["rates"]
-            rows.append([
-                param,
-                value_entry["value"],
-                value_entry["n"],
-                c["failed"],
-                c["completed"],
-                c["running"],
-                c["pending"],
-                c["unknown"],
-                f"{r['failure_rate'] * 100.0:.1f}",
-                f"{r['completion_rate'] * 100.0:.1f}",
-                "yes" if value_entry["low_sample"] else "",
-            ])
-
-        print(f"\nParameter: {param}")
-        print(
-            tabulate(
-                rows,
-                headers=[
-                    "Param",
-                    "Value",
-                    "N",
-                    "Failed",
-                    "Completed",
-                    "Running",
-                    "Pending",
-                    "Unknown",
-                    "Fail %",
-                    "Complete %",
-                    "Low N",
-                ],
-                tablefmt="simple",
-            )
-        )
-
-    def _render_top_values(title: str, entries: List[Dict[str, Any]], rate_key: str) -> None:
-        print(f"\n{title}:")
-        if not entries:
-            print("  (no groups met min support)")
-            return
-        rows = []
-        for entry in entries:
-            rows.append([
-                entry["param"],
-                entry["value"],
-                entry["n"],
-                f"{entry['rates'][rate_key] * 100.0:.1f}",
-                entry["counts"]["failed"],
-                entry["counts"]["completed"],
-            ])
-        print(
-            tabulate(
-                rows,
-                headers=["Param", "Value", "N", "Rate %", "Failed", "Completed"],
-                tablefmt="simple",
-            )
-        )
-
-    top_risky_display = [e for e in analysis["top_risky_values"] if e["param"] in varying_param_names]
-    top_stable_display = [e for e in analysis["top_stable_values"] if e["param"] in varying_param_names]
-
-    _render_top_values("Top risky values", top_risky_display, "failure_rate")
-    _render_top_values("Top stable values", top_stable_display, "completion_rate")
-
-    print("\nNotes:")
-    print(f"  - Low N marks groups with n < min_support ({args.min_support}).")
-    if skipped:
-        print(f"  - Skipped requested params not found: {', '.join(skipped)}")
+    render_collection_analyze_report(report, backend)
 
     return 0
 

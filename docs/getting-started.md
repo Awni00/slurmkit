@@ -13,6 +13,8 @@ cd slurm-job-utils
 
 # Install in development mode
 pip install -e .
+# Optional Rich UI support
+pip install -e ".[ui]"
 ```
 
 ### From PyPI (When Published)
@@ -36,6 +38,7 @@ This interactive wizard will create `.slurm-kit/config.yaml` with your settings:
 - Jobs directory path
 - Default SLURM arguments (partition, time, memory)
 - W&B entity (optional)
+- Default CLI UI mode (`plain`, `rich`, `auto`)
 
 ### Configuration File
 
@@ -63,6 +66,10 @@ slurm_defaults:
 job_structure:
   scripts_subdir: job_scripts/
   logs_subdir: logs/
+
+# CLI UI defaults
+ui:
+  mode: plain
 
 # W&B settings (optional)
 wandb:
@@ -158,6 +165,9 @@ View collection details:
 
 ```bash
 slurmkit collection show my_experiment
+
+# Rich output (if Rich is installed)
+slurmkit --ui rich collection analyze my_experiment
 ```
 
 Update job states:

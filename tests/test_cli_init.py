@@ -17,6 +17,7 @@ def test_cmd_init_writes_notification_route(monkeypatch, tmp_path):
             "12:00:00",
             "8G",
             "",
+            "plain",
             "y",
             "slack",
             "team_alerts",
@@ -36,6 +37,7 @@ def test_cmd_init_writes_notification_route(monkeypatch, tmp_path):
     with open(config_path, "r") as f:
         data = yaml.safe_load(f)
 
+    assert data["ui"]["mode"] == "plain"
     assert "notifications" in data
     assert data["notifications"]["defaults"]["events"] == ["job_failed"]
     assert len(data["notifications"]["routes"]) == 1
@@ -55,6 +57,7 @@ def test_cmd_init_writes_email_notification_route(monkeypatch, tmp_path):
             "24:00:00",
             "16G",
             "",
+            "plain",
             "y",
             "email",
             "team_email",
@@ -81,6 +84,7 @@ def test_cmd_init_writes_email_notification_route(monkeypatch, tmp_path):
     with open(config_path, "r") as f:
         data = yaml.safe_load(f)
 
+    assert data["ui"]["mode"] == "plain"
     route = data["notifications"]["routes"][0]
     assert route["name"] == "team_email"
     assert route["type"] == "email"

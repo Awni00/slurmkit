@@ -5,12 +5,13 @@ Complete reference for all slurmkit commands.
 ## Global Options
 
 ```bash
-slurmkit [--config PATH] [--version] <command>
+slurmkit [--config PATH] [--ui MODE] [--version] <command>
 ```
 
 | Option | Description |
 |--------|-------------|
 | `--config PATH` | Path to config file (default: `.slurm-kit/config.yaml`) |
+| `--ui MODE` | UI override: `plain`, `rich`, `auto` (default from `ui.mode` config, fallback `plain`) |
 | `-V, --version` | Show version and exit |
 
 ## Commands
@@ -31,6 +32,7 @@ Interactive prompts for:
 - Jobs directory
 - Default SLURM partition, time, memory
 - W&B entity (optional)
+- Default UI mode (`plain`, `rich`, `auto`)
 - Notification route setup (optional)
 
 ---
@@ -333,6 +335,8 @@ slurmkit collection show my_exp --state failed
 slurmkit collection update my_exp
 slurmkit collection analyze my_exp --min-support 5 --param algo --param learning_rate
 slurmkit collection analyze my_exp --attempt-mode latest --format json
+slurmkit --ui rich collection show my_exp
+slurmkit --ui auto collection analyze my_exp
 slurmkit collection delete my_exp --keep-outputs
 slurmkit collection add my_exp 12345678 12345679
 ```

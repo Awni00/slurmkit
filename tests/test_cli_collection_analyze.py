@@ -83,6 +83,16 @@ class _FakeManager:
         self.saved = True
 
 
+class _FakeConfig:
+    def __init__(self, ui_mode="plain"):
+        self.ui_mode = ui_mode
+
+    def get(self, key, default=None):
+        if key == "ui.mode":
+            return self.ui_mode
+        return default
+
+
 def _analysis_payload_mixed_params():
     return {
         "summary": {
@@ -265,6 +275,8 @@ def test_collection_analyze_parser_args():
     parser = create_parser()
     args = parser.parse_args(
         [
+            "--ui",
+            "plain",
             "collection",
             "analyze",
             "my_collection",
@@ -285,6 +297,7 @@ def test_collection_analyze_parser_args():
     )
     assert args.command == "collection"
     assert args.collection_action == "analyze"
+    assert args.ui == "plain"
     assert args.name == "my_collection"
     assert args.format == "json"
     assert args.no_refresh is True
@@ -422,3 +435,31 @@ def test_cmd_collection_analyze_rejects_invalid_min_support(monkeypatch, capsys)
 
     assert exit_code == 1
     assert "--min-support" in output
+
+
+def test_cmd_collection_analyze_rich_mode_missing_dependency(monkeypatch, capsys):
+    """Rich mode should fail with an install hint when rich is unavailable."""
+    fake_collection = _FakeCollectionWithAnalysis(_analysis_payload_mixed_params())
+    fake_manager = _FakeManager(fake_collection)
+
+    monkeypatch.setattr(commands, "get_configured_config", lambda _args: _FakeConfig(ui_mode="rich"))
+    monkeypatch.setattr(commands, "CollectionManager", lambda config=None: fake_manager)
+    monkeypatch.setattr("slurmkit.cli.ui.context._is_rich_available", lambda: False)
+    monkeypatch.setattr("slurmkit.cli.ui.context._stdout_isatty", lambda: True)
+
+    args = Namespace(
+        name="my_collection",
+        format="table",
+        no_refresh=True,
+        min_support=1,
+        param=None,
+        attempt_mode="primary",
+        top_k=10,
+        ui="rich",
+    )
+
+    exit_code = commands.cmd_collection_analyze(args)
+    output = capsys.readouterr().out
+
+    assert exit_code == 1
+    assert "Install with: pip install slurmkit[ui]" in output

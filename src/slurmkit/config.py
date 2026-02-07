@@ -70,6 +70,11 @@ DEFAULT_CONFIG = {
         "min_age_days": 3,         # Min age before considering for cleanup
     },
 
+    # CLI output UI defaults
+    "ui": {
+        "mode": "plain",
+    },
+
     # Notifications (webhook transports)
     "notifications": {
         "defaults": {

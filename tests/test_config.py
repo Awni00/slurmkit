@@ -82,6 +82,7 @@ class TestConfig:
         with tempfile.TemporaryDirectory() as tmpdir:
             config = Config(project_root=tmpdir)
             assert config.get("jobs_dir") == DEFAULT_CONFIG["jobs_dir"]
+            assert config.get("ui.mode") == "plain"
 
     def test_load_from_file(self):
         """Test loading config from a YAML file."""
@@ -94,6 +95,7 @@ class TestConfig:
             custom_config = {
                 "jobs_dir": "custom_jobs/",
                 "slurm_defaults": {"partition": "custom_partition"},
+                "ui": {"mode": "auto"},
             }
             with open(config_file, "w") as f:
                 yaml.dump(custom_config, f)
@@ -103,6 +105,7 @@ class TestConfig:
             # Custom values should be loaded
             assert config.get("jobs_dir") == "custom_jobs/"
             assert config.get("slurm_defaults.partition") == "custom_partition"
+            assert config.get("ui.mode") == "auto"
 
             # Default values should still be present
             assert config.get("slurm_defaults.time") == DEFAULT_CONFIG["slurm_defaults"]["time"]
