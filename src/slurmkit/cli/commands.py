@@ -115,7 +115,7 @@ def cmd_init(args: Any) -> int:
 
     # CLI UI settings
     print("\nCLI output UI:")
-    ui_mode = input("  Default UI mode [plain]: ").strip().lower() or "plain"
+    ui_mode = input("  Default UI mode [plain|rich|auto, default: plain]: ").strip().lower() or "plain"
     if ui_mode not in ("plain", "rich", "auto"):
         print("  Invalid UI mode. Falling back to 'plain'.")
         ui_mode = "plain"
