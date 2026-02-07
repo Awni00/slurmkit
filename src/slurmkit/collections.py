@@ -112,6 +112,7 @@ class Collection:
         cluster: Optional[str] = None,
         parameters: Optional[Dict[str, Any]] = None,
         jobs: Optional[List[Dict[str, Any]]] = None,
+        meta: Optional[Dict[str, Any]] = None,
     ):
         """
         Initialize a collection.
@@ -124,6 +125,7 @@ class Collection:
             cluster: Hostname where collection was created.
             parameters: Generation parameters specification.
             jobs: List of job entries.
+            meta: Collection-level metadata (e.g., notification checkpoints).
         """
         self.name = name
         self.description = description
@@ -135,6 +137,7 @@ class Collection:
 
         self.parameters = parameters or {}
         self._jobs: List[Dict[str, Any]] = jobs or []
+        self.meta: Dict[str, Any] = meta or {}
 
     @property
     def jobs(self) -> List[Dict[str, Any]]:
@@ -705,6 +708,7 @@ class Collection:
             "cluster": self.cluster,
             "parameters": self.parameters,
             "jobs": self._jobs,
+            "meta": self.meta,
         }
 
     @classmethod
@@ -726,6 +730,7 @@ class Collection:
             cluster=data.get("cluster"),
             parameters=data.get("parameters"),
             jobs=data.get("jobs"),
+            meta=data.get("meta"),
         )
 
     def __len__(self) -> int:

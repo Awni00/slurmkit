@@ -79,6 +79,16 @@ DEFAULT_CONFIG = {
             "backoff_seconds": 0.5,
             "output_tail_lines": 40,
         },
+        "collection_final": {
+            "attempt_mode": "latest",
+            "min_support": 3,
+            "top_k": 10,
+            "include_failed_output_tail_lines": 20,
+            "ai": {
+                "enabled": False,
+                "callback": None,
+            },
+        },
         "routes": [],
     },
 }

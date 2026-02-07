@@ -152,6 +152,7 @@ class TestCollection:
         """Test serialization and deserialization."""
         collection = Collection("test", description="Test description")
         collection.add_job(job_name="job1", parameters={"lr": 0.01})
+        collection.meta = {"notifications": {"collection_final": {"last_event": "collection_completed"}}}
 
         data = collection.to_dict()
         restored = Collection.from_dict(data)
@@ -159,6 +160,7 @@ class TestCollection:
         assert restored.name == collection.name
         assert restored.description == collection.description
         assert len(restored) == len(collection)
+        assert restored.meta["notifications"]["collection_final"]["last_event"] == "collection_completed"
 
     def test_analyze_status_by_params_scalar_values(self):
         """Test state aggregation by scalar parameter values."""

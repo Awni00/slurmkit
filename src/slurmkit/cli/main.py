@@ -644,6 +644,48 @@ For more information on a command, run: slurmkit <command> --help
         help="Show resolved routes and payload without sending requests",
     )
 
+    # notify collection-final
+    notify_collection_final_parser = notify_subparsers.add_parser(
+        "collection-final",
+        help="Send collection-final report notification when a collection becomes terminal",
+    )
+    notify_collection_final_parser.add_argument(
+        "--job-id",
+        metavar="JOB_ID",
+        help="SLURM job ID that triggered this check (defaults to SLURM_JOB_ID env var)",
+    )
+    notify_collection_final_parser.add_argument(
+        "--collection",
+        metavar="NAME",
+        help="Collection name (optional if job ID maps to exactly one collection)",
+    )
+    notify_collection_final_parser.add_argument(
+        "--route",
+        action="append",
+        metavar="NAME",
+        help="Route name filter (repeatable)",
+    )
+    notify_collection_final_parser.add_argument(
+        "--strict",
+        action="store_true",
+        help="Require all attempted routes to succeed",
+    )
+    notify_collection_final_parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Show resolved routes and payload without sending requests",
+    )
+    notify_collection_final_parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Bypass collection-final deduplication guard",
+    )
+    notify_collection_final_parser.add_argument(
+        "--no-refresh",
+        action="store_true",
+        help="Skip SLURM refresh before finality check",
+    )
+
     return parser
 
 
@@ -725,6 +767,8 @@ def main(argv: Optional[List[str]] = None) -> int:
                 return commands.cmd_notify_job(args)
             elif args.notify_action == "test":
                 return commands.cmd_notify_test(args)
+            elif args.notify_action == "collection-final":
+                return commands.cmd_notify_collection_final(args)
             else:
                 parser.parse_args([args.command, "--help"])
                 return 1

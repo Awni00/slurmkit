@@ -43,6 +43,8 @@ from slurmkit.generate import (
 )
 from slurmkit.sync import SyncManager
 from slurmkit.notifications import (
+    EVENT_COLLECTION_COMPLETED,
+    EVENT_COLLECTION_FAILED,
     EVENT_JOB_COMPLETED,
     EVENT_JOB_FAILED,
     NotificationService,
@@ -161,6 +163,16 @@ def cmd_init(args: Any) -> int:
                 "max_attempts": 3,
                 "backoff_seconds": 0.5,
                 "output_tail_lines": 40,
+            },
+            "collection_final": {
+                "attempt_mode": "latest",
+                "min_support": 3,
+                "top_k": 10,
+                "include_failed_output_tail_lines": 20,
+                "ai": {
+                    "enabled": False,
+                    "callback": None,
+                },
             },
             "routes": [],
         },
@@ -1451,6 +1463,143 @@ def cmd_notify_test(args: Any) -> int:
         attempted_count=attempted_count,
         strict=args.strict,
     )
+
+
+def cmd_notify_collection_final(args: Any) -> int:
+    """Send collection-final report if the target collection is terminal."""
+    config = get_configured_config(args)
+    service = NotificationService(config=config)
+
+    trigger_job_id = args.job_id or os.environ.get("SLURM_JOB_ID")
+    if not trigger_job_id:
+        print("Error: Missing job ID. Pass --job-id or set SLURM_JOB_ID.")
+        return 1
+
+    resolution = service.resolve_collection_for_job(
+        job_id=trigger_job_id,
+        collection_name=args.collection,
+    )
+    for warning in resolution.warnings:
+        print(f"[context-warning] {warning}")
+
+    if resolution.collection is None:
+        print("Error: Could not resolve a single collection for collection-final notification.")
+        return 1
+
+    collection_name = resolution.collection.name
+    manager = service.collection_manager
+
+    try:
+        with service.collection_lock(collection_name):
+            collection = manager.load(collection_name)
+
+            if not args.no_refresh:
+                collection.refresh_states()
+                manager.save(collection)
+
+            cfg = service.get_collection_final_config()
+            finality = service.evaluate_collection_finality(
+                collection=collection,
+                attempt_mode=cfg.attempt_mode,
+            )
+
+            counts = finality.counts
+            if not finality.terminal:
+                print(
+                    "Collection is not terminal yet: "
+                    f"pending={counts.get('pending', 0)}, running={counts.get('running', 0)}"
+                )
+                return 0
+
+            event = finality.event
+            if event not in (EVENT_COLLECTION_COMPLETED, EVENT_COLLECTION_FAILED):
+                print("Error: Failed to determine collection terminal event.")
+                return 1
+
+            fingerprint = service.compute_collection_final_fingerprint(
+                collection_name=collection.name,
+                event=event,
+                effective_rows=finality.effective_rows,
+            )
+            if not args.force and service.should_skip_collection_final(
+                collection=collection,
+                event=event,
+                fingerprint=fingerprint,
+            ):
+                print(
+                    "Skipping notification: collection-final notification "
+                    "for this terminal snapshot was already sent."
+                )
+                return 0
+
+            report = service.build_collection_report(
+                collection=collection,
+                trigger_job_id=trigger_job_id,
+                attempt_mode=cfg.attempt_mode,
+                min_support=cfg.min_support,
+                top_k=cfg.top_k,
+                failed_tail_lines=cfg.include_failed_output_tail_lines,
+            )
+
+            ai_summary, ai_status, ai_warning = service.run_collection_ai_callback(report)
+            if ai_warning:
+                print(f"[ai-warning] {ai_warning}")
+
+            payload = service.build_collection_final_payload(
+                collection=collection,
+                event=event,
+                trigger_job_id=trigger_job_id,
+                report=report,
+                ai_status=ai_status,
+                ai_summary=ai_summary,
+            )
+
+            route_resolution = service.resolve_routes(
+                event=event,
+                route_names=args.route,
+            )
+            if not route_resolution.routes and not route_resolution.errors:
+                print(f"No notification routes matched event '{event}'.")
+                return 0
+
+            if args.dry_run:
+                print("Dry run enabled. Payload preview:")
+                print(json.dumps(payload, indent=2, default=str))
+                if route_resolution.routes:
+                    names = ", ".join(route.name for route in route_resolution.routes)
+                    print(f"Resolved routes: {names}")
+                else:
+                    print("Resolved routes: (none)")
+
+            delivery_results = service.dispatch(
+                payload=payload,
+                routes=route_resolution.routes,
+                dry_run=args.dry_run,
+            )
+            _print_notification_results(delivery_results, route_resolution.errors)
+
+            success_count = sum(1 for result in delivery_results if result.success)
+            attempted_count = len(delivery_results) + len(route_resolution.errors)
+            exit_code = _compute_notification_exit_code(
+                success_count=success_count,
+                attempted_count=attempted_count,
+                strict=args.strict,
+            )
+
+            if exit_code == 0 and not args.dry_run:
+                service.mark_collection_final_sent(
+                    collection=collection,
+                    event=event,
+                    fingerprint=fingerprint,
+                    trigger_job_id=trigger_job_id,
+                )
+                manager.save(collection)
+
+            return exit_code
+
+    except TimeoutError as e:
+        print(f"Error: {e}")
+        return 1
 
 
 # =============================================================================
