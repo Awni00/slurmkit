@@ -52,6 +52,7 @@ pip install slurmkit
 - Jinja2
 - pandas
 - tabulate
+- requests
 
 **Optional:**
 - wandb (for W&B cleanup features)
@@ -184,11 +185,19 @@ notifications:
     max_attempts: 3
     backoff_seconds: 0.5
     output_tail_lines: 40
+  collection_final:
+    attempt_mode: latest
+    min_support: 3
+    top_k: 10
+    include_failed_output_tail_lines: 20
+    ai:
+      enabled: false
+      callback: null
   routes:
     - name: team_slack
       type: slack
       url: "${SLACK_WEBHOOK_URL}"
-      events: [job_failed]
+      events: [job_failed, collection_failed]
 ```
 
 ### Environment Variables
@@ -258,6 +267,9 @@ slurmkit notify test
 
 # Typical end-of-job call from script (default: notify only on failure)
 slurmkit notify job --job-id "$SLURM_JOB_ID" --exit-code "$rc"
+
+# Collection-final summary notification (emits only when collection is terminal)
+slurmkit notify collection-final --job-id "$SLURM_JOB_ID"
 ```
 
 Recommended trap snippet inside a job script:
@@ -265,6 +277,7 @@ Recommended trap snippet inside a job script:
 ```bash
 rc=$?
 slurmkit notify job --job-id "${SLURM_JOB_ID}" --exit-code "${rc}"
+slurmkit notify collection-final --job-id "${SLURM_JOB_ID}"
 exit "${rc}"
 ```
 

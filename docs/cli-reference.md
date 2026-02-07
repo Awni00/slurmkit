@@ -365,7 +365,7 @@ slurmkit sync --push
 
 ### slurmkit notify
 
-Send job lifecycle notifications to configured webhook routes.
+Send job and collection lifecycle notifications to configured webhook routes.
 
 #### notify job
 
@@ -411,6 +411,31 @@ Examples:
 slurmkit notify test
 slurmkit notify test --route team_slack
 slurmkit notify test --dry-run
+```
+
+#### notify collection-final
+
+```bash
+slurmkit notify collection-final [options]
+```
+
+| Option | Description |
+|--------|-------------|
+| `--job-id JOB_ID` | Triggering SLURM job ID (defaults to `SLURM_JOB_ID`) |
+| `--collection NAME` | Optional collection name (otherwise resolved by job ID) |
+| `--route NAME` | Route name filter (repeatable) |
+| `--strict` | Require all attempted routes to succeed |
+| `--dry-run` | Preview payload/routes without sending HTTP |
+| `--force` | Bypass deduplication for repeated terminal snapshots |
+| `--no-refresh` | Skip SLURM refresh before finality check |
+
+Examples:
+
+```bash
+slurmkit notify collection-final --job-id 12345
+slurmkit notify collection-final --job-id 12345 --collection my_exp
+slurmkit notify collection-final --job-id 12345 --route team_slack --strict
+slurmkit notify collection-final --job-id 12345 --no-refresh --dry-run
 ```
 
 ---

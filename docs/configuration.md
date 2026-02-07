@@ -100,12 +100,21 @@ notifications:
     backoff_seconds: 0.5
     output_tail_lines: 40
 
+  collection_final:
+    attempt_mode: latest
+    min_support: 3
+    top_k: 10
+    include_failed_output_tail_lines: 20
+    ai:
+      enabled: false
+      callback: null  # "module.path:function_name"
+
   routes:
     - name: team_slack
       type: slack            # slack | discord | webhook
       url: "${SLACK_WEBHOOK_URL}"
       enabled: true
-      events: [job_failed]
+      events: [job_failed, collection_failed]
       headers: {}
       timeout_seconds: 5
       max_attempts: 3
@@ -233,17 +242,35 @@ Use `notifications.routes` to define where `slurmkit notify` sends events.
 - `type` - `webhook`, `slack`, or `discord`
 - `url` - Destination URL; supports `${ENV_VAR}` interpolation
 - `enabled` - Optional boolean (default: `true`)
-- `events` - Optional list of subscribed events (defaults to `job_failed`)
+- `events` - Optional list of subscribed events
 - `headers` - Optional HTTP headers map; supports `${ENV_VAR}` interpolation
 - `timeout_seconds` - Optional request timeout override
 - `max_attempts` - Optional retry attempts override
 - `backoff_seconds` - Optional retry backoff override
+
+Supported events:
+- `job_failed`
+- `job_completed`
+- `collection_failed`
+- `collection_completed`
 
 ### Defaults Behavior
 
 - If `events` is omitted on a route, it defaults to `notifications.defaults.events`.
 - If `notifications.defaults.events` is omitted, it defaults to `[job_failed]`.
 - Retry and timeout values fall back from route settings to `notifications.defaults`.
+
+### Collection Final Report Settings
+
+`notifications.collection_final` controls `slurmkit notify collection-final` behavior:
+- `attempt_mode` - `latest` (default) or `primary`
+- `min_support` - Support threshold for risky/stable analysis tables
+- `top_k` - Number of top risky/stable values included in report
+- `include_failed_output_tail_lines` - Tail lines embedded per failed job
+- `ai.enabled` - Enable optional Python callback enrichment
+- `ai.callback` - Callback in `module.path:function_name` format
+
+When AI callback execution fails, deterministic report delivery still proceeds and payload marks `ai_status: unavailable`.
 
 ### Environment Variable Interpolation
 

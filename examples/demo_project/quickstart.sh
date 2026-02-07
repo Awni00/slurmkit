@@ -34,6 +34,18 @@ warn() {
     echo -e "${YELLOW}! $1${NC}"
 }
 
+# Function to run demo commands without aborting the full quickstart.
+run_demo_cmd() {
+    local label="$1"
+    shift
+    echo "  $ $*"
+    if "$@"; then
+        success "$label"
+    else
+        warn "$label failed (continuing). Check route/env/webhook configuration."
+    fi
+}
+
 # Check if slurmkit is installed
 if ! command -v slurmkit &> /dev/null; then
     echo "Error: slurmkit is not installed or not in PATH"
@@ -173,6 +185,61 @@ else
 fi
 
 # =============================================================================
+# Step 7: Notification Demos (Optional)
+# =============================================================================
+
+step "7" "Notification demos (optional)"
+
+echo "This can demo: notify test, notify job, and notify collection-final."
+echo "For live webhook delivery (non-dry-run), ensure route URL env vars are configured."
+echo "Example:"
+echo "  export DEMO_WEBHOOK_URL='https://example.com/your-webhook'"
+echo ""
+read -p "Run notification demo commands now? [y/N]: " notify_choice
+
+if [[ "$notify_choice" =~ ^[Yy]$ ]]; then
+    read -p "Use dry-run mode for notify commands? [Y/n]: " notify_dry_run_choice
+    NOTIFY_FLAGS=()
+    if [[ "$notify_dry_run_choice" =~ ^[Nn]$ ]]; then
+        warn "Running notify commands without --dry-run (live delivery mode)."
+    else
+        NOTIFY_FLAGS+=(--dry-run)
+        echo "Using --dry-run mode."
+    fi
+
+    echo ""
+    echo "Preparing deterministic dummy collections..."
+    if ./setup_dummy_jobs.py --include-non-terminal; then
+        success "Dummy collections created"
+    else
+        warn "Could not create dummy collections; skipping notification commands."
+        NOTIFY_SKIP=1
+    fi
+
+    if [[ -z "${NOTIFY_SKIP:-}" ]]; then
+        echo ""
+        echo "Running notification demos:"
+        run_demo_cmd "notify test" slurmkit notify test "${NOTIFY_FLAGS[@]}"
+        run_demo_cmd "notify job (failed)" slurmkit notify job --job-id 990002 --exit-code 1 "${NOTIFY_FLAGS[@]}"
+        run_demo_cmd "notify job (completed)" slurmkit notify job --job-id 990001 --exit-code 0 --on always "${NOTIFY_FLAGS[@]}"
+        run_demo_cmd "notify collection-final (terminal failed)" \
+            slurmkit notify collection-final --collection demo_terminal_failed --job-id 990002 --no-refresh "${NOTIFY_FLAGS[@]}"
+        run_demo_cmd "notify collection-final (terminal completed)" \
+            slurmkit notify collection-final --collection demo_terminal_completed --job-id 990011 --no-refresh "${NOTIFY_FLAGS[@]}"
+        run_demo_cmd "notify collection-final (non-terminal skip)" \
+            slurmkit notify collection-final --collection demo_in_progress --job-id 990020 --no-refresh "${NOTIFY_FLAGS[@]}"
+    fi
+
+    echo ""
+    echo "Optional AI callback demo:"
+    echo "  export PYTHONPATH=\"\$PWD:\$PYTHONPATH\""
+    echo "  set notifications.collection_final.ai.enabled=true in .slurm-kit/config.yaml"
+    echo "  slurmkit notify collection-final --collection demo_terminal_failed --job-id 990002 --no-refresh --dry-run"
+else
+    echo "Skipped notification demos."
+fi
+
+# =============================================================================
 # Summary
 # =============================================================================
 
@@ -203,6 +270,12 @@ echo "     slurmkit find <JOB_ID> --preview"
 echo ""
 echo "  5. Handle failures:"
 echo "     slurmkit resubmit --collection $COLLECTION --filter failed"
+echo ""
+echo "  6. Demo collection-final notifications:"
+echo "     ./setup_dummy_jobs.py --include-non-terminal"
+echo "     export PYTHONPATH=\"\$PWD:\$PYTHONPATH\""
+echo "     # set notifications.collection_final.ai.enabled=true in .slurm-kit/config.yaml"
+echo "     slurmkit notify collection-final --collection demo_terminal_failed --job-id 990002 --no-refresh --dry-run"
 echo ""
 echo "See README.md for more detailed workflows and examples."
 echo ""

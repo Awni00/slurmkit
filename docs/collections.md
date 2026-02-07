@@ -233,11 +233,17 @@ Collections are used by `slurmkit notify job` to enrich notifications with:
 - Job metadata (name, state, timestamps)
 - Output path and failure tail snippet (when available)
 
+Collections also drive terminal collection reporting via `slurmkit notify collection-final`:
+- evaluates finality with latest-attempt semantics
+- sends `collection_completed` or `collection_failed` when terminal
+- deduplicates repeated terminal snapshots via collection metadata
+
 Typical end-of-job pattern:
 
 ```bash
 rc=$?
 slurmkit notify job --job-id "${SLURM_JOB_ID}" --exit-code "${rc}"
+slurmkit notify collection-final --job-id "${SLURM_JOB_ID}"
 exit "${rc}"
 ```
 
