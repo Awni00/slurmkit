@@ -1,4 +1,4 @@
-![slurmkit header](docs/assets/slurmkit-header-landscape.png)
+![slurmkit header](https://raw.githubusercontent.com/Awni00/slurmkit/main/docs/assets/slurmkit-header-landscape.png)
 
 <p align="center">
   <a href="https://github.com/Awni00/slurmkit/actions/workflows/tests.yml"><img src="https://github.com/Awni00/slurmkit/actions/workflows/tests.yml/badge.svg" alt="Unit Tests"></a>
@@ -32,7 +32,13 @@ A CLI toolkit for managing and generating SLURM jobs.
 
 ## Installation
 
-### Install Latest From GitHub
+### Install via pip
+
+```bash
+pip install slurmkit
+```
+
+### Install Latest from GitHub
 
 ```bash
 pip install git+https://github.com/Awni00/slurmkit.git
@@ -47,13 +53,6 @@ git clone https://github.com/Awni00/slurmkit.git
 cd slurmkit
 pip install -e ".[all]"
 ```
-<!--
-### From PyPI
-
-```bash
-pip install slurmkit
-```
- -->
 
 ### Dependencies
 
@@ -67,7 +66,7 @@ pip install slurmkit
 
 **Optional:**
 - wandb (for W&B cleanup features)
-- rich (enhanced CLI UI; install with `pip install -e ".[ui]"` from a clone)
+- rich (enhanced CLI UI; install with `pip install "slurmkit[ui]"`)
 - `all` extra for optional groups (`ui`, `dev`, `docs`)
 
 ## Quick Start
