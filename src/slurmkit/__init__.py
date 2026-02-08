@@ -9,7 +9,7 @@ A toolkit for managing SLURM job workflows including:
 - Cleanup utilities for failed jobs and W&B runs
 """
 
-__version__ = "0.1.0"
+from slurmkit._version import __version__
 __author__ = "Awni Altabaa"
 
 from slurmkit.config import Config, get_config
