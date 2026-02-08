@@ -3,7 +3,9 @@
 <p align="center">
   <a href="https://github.com/Awni00/slurmkit/actions/workflows/tests.yml"><img src="https://github.com/Awni00/slurmkit/actions/workflows/tests.yml/badge.svg" alt="Unit Tests"></a>
   <a href="https://github.com/Awni00/slurmkit/actions/workflows/docs.yml"><img src="https://github.com/Awni00/slurmkit/actions/workflows/docs.yml/badge.svg" alt="Docs"></a>
-  <img src="https://img.shields.io/badge/python-3.8%2B-blue" alt="Python 3.8+">
+  <a href="https://github.com/Awni00/slurmkit/actions/workflows/publish.yml"><img src="https://github.com/Awni00/slurmkit/actions/workflows/publish.yml/badge.svg" alt="Publish"></a>
+  <a href="https://pypi.org/project/slurmkit/"><img src="https://img.shields.io/pypi/v/slurmkit" alt="PyPI version"></a>
+  <!-- <img src="https://img.shields.io/pypi/pyversions/slurmkit" alt="PyPI - Python Version"> -->
   <img src="https://img.shields.io/badge/license-MIT-green" alt="MIT License">
 </p>
 
