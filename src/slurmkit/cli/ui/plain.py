@@ -57,6 +57,8 @@ class PlainBackend:
                 print(f"  {label}: {item.value}")
             else:
                 print(f"  {label}: {item.value} ({item.percent:.1f}%)")
+            if item.details:
+                print(f"    {item.details}")
 
     def table(
         self,

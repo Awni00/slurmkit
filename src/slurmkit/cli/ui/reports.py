@@ -36,6 +36,18 @@ def _to_non_negative_int(value: Any) -> int:
     return parsed if parsed > 0 else 0
 
 
+def _normalize_raw_state(value: Any) -> Optional[str]:
+    if value is None:
+        return None
+    raw_state = str(value).strip()
+    if not raw_state:
+        return None
+    raw_state_upper = raw_state.upper()
+    if raw_state_upper in {"N/A", "NONE", "NULL"}:
+        return None
+    return raw_state_upper
+
+
 def build_collection_show_report(
     *,
     collection: Any,
@@ -45,6 +57,7 @@ def build_collection_show_report(
     submission_group: Optional[str],
     show_primary: bool = False,
     show_history: bool = False,
+    summary_jobs: Optional[Sequence[Dict[str, Any]]] = None,
 ) -> CollectionShowReport:
     """Build view-model for collection show output."""
     total = max(summary.get("total", 0), 1)
@@ -77,15 +90,33 @@ def build_collection_show_report(
             indent=2,
         ).rstrip()
 
+    summary_source_jobs = summary_jobs if summary_jobs is not None else jobs
+    raw_state_breakdowns: Dict[str, Dict[str, int]] = {}
+    for job in summary_source_jobs:
+        normalized_state = str(job.get("effective_state", "")).strip().lower()
+        if not normalized_state:
+            continue
+        raw_state = _normalize_raw_state(job.get("effective_state_raw"))
+        if raw_state is None:
+            continue
+        breakdown = raw_state_breakdowns.setdefault(normalized_state, {})
+        breakdown[raw_state] = breakdown.get(raw_state, 0) + 1
+
     summary_metrics = []
     for key in ("completed", "failed", "running", "pending", "not_submitted"):
         count = int(summary.get(key, 0))
+        details = None
+        breakdown = raw_state_breakdowns.get(key)
+        if breakdown:
+            sorted_pairs = sorted(breakdown.items(), key=lambda item: (-item[1], item[0]))
+            details = ", ".join(f"{raw_state}: {raw_count}" for raw_state, raw_count in sorted_pairs)
         summary_metrics.append(
             MetricItem(
                 label=key.replace("_", " ").title(),
                 value=str(count),
                 percent=(count * 100.0 / total),
                 state=key.replace("_", " "),
+                details=details,
             )
         )
 

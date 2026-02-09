@@ -62,6 +62,8 @@ class RichBackend:
             if item.percent is not None:
                 value = f"{value} ({item.percent:.1f}%)"
             table.add_row(label, value)
+            if item.details:
+                table.add_row(f"[dim]  {item.details}[/dim]", "")
         self.console.print(table)
 
     def table(

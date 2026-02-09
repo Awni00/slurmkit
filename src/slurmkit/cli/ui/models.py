@@ -17,6 +17,7 @@ class MetricItem:
     value: str
     percent: Optional[float] = None
     state: Optional[str] = None
+    details: Optional[str] = None
 
 
 @dataclass(frozen=True)

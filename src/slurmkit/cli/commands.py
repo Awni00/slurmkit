@@ -1425,6 +1425,13 @@ def cmd_collection_show(args: Any) -> int:
         attempt_mode=args.attempt_mode,
         submission_group=args.submission_group,
     )
+    summary_jobs = effective_jobs
+    if state_filter is not None:
+        summary_jobs = collection.get_effective_jobs(
+            attempt_mode=args.attempt_mode,
+            submission_group=args.submission_group,
+            state=None,
+        )
 
     serialized_jobs = []
     for row in effective_jobs:
@@ -1474,6 +1481,7 @@ def cmd_collection_show(args: Any) -> int:
         submission_group=args.submission_group,
         show_primary=getattr(args, "show_primary", False),
         show_history=getattr(args, "show_history", False),
+        summary_jobs=summary_jobs,
     )
     render_collection_show_report(report, backend)
 
