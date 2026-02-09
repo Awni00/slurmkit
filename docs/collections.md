@@ -25,6 +25,19 @@ parameters:
     learning_rate: [0.001, 0.01, 0.1]
     batch_size: [32, 64]
 
+# Generation context for deterministic resubmission regeneration
+meta:
+  generation:
+    template_path: templates/train.job.j2
+    output_dir: jobs/exp1/job_scripts
+    job_name_pattern: "resnet18_lr{{ learning_rate }}_bs{{ batch_size }}"
+    logs_dir: jobs/exp1/logs
+    slurm_defaults:
+      partition: gpu
+      time: "12:00:00"
+    slurm_logic_file: experiments/exp1/slurm_logic.py
+    slurm_logic_function: get_slurm_args
+
 # List of jobs
 jobs:
   - job_name: resnet18_lr0.001_bs32
@@ -51,6 +64,13 @@ jobs:
         state: RUNNING
         hostname: cluster-a
         submitted_at: "2025-01-15T15:00:00"
+        regenerated: true
+        job_name: resnet18_lr0.01_bs64.resubmit-1
+        script_path: jobs/exp1/job_scripts/resnet18_lr0.01_bs64.resubmit-1.job
+        parameters:
+          learning_rate: 0.01
+          batch_size: 64
+          checkpoint: checkpoints/epoch_10.pt
         extra_params:
           checkpoint: checkpoints/epoch_10.pt
 ```
@@ -246,6 +266,9 @@ slurmkit collection update my_experiment
 slurmkit resubmit --collection my_experiment --filter failed
 ```
 
+Collection mode regenerates scripts by default. Use `--no-regenerate` to reuse
+the existing `.job` file directly.
+
 With extra parameters (e.g., resume from checkpoint):
 
 ```bash
@@ -317,9 +340,15 @@ jobs:
       - job_id: "12346"  # First retry
         state: FAILED
         submitted_at: "2025-01-15T14:00:00"
+        regenerated: true
+        job_name: train_model.resubmit-1
+        script_path: jobs/exp1/job_scripts/train_model.resubmit-1.job
+        parameters:
+          checkpoint: checkpoints/epoch_10.pt
       - job_id: "12347"  # Second retry
         state: COMPLETED
         submitted_at: "2025-01-15T15:00:00"
+        regenerated: false
         extra_params:
           checkpoint: checkpoints/epoch_50.pt
 ```

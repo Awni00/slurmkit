@@ -289,6 +289,10 @@ class Collection:
         extra_params: Optional[Dict[str, Any]] = None,
         submission_group: Optional[str] = None,
         hostname: Optional[str] = None,
+        attempt_job_name: Optional[str] = None,
+        attempt_script_path: Optional[Union[str, Path]] = None,
+        attempt_parameters: Optional[Dict[str, Any]] = None,
+        regenerated: Optional[bool] = None,
     ) -> bool:
         """
         Record a job resubmission.
@@ -298,6 +302,10 @@ class Collection:
             job_id: New SLURM job ID from resubmission.
             extra_params: Additional parameters used for resubmission.
             hostname: Hostname where resubmission occurred.
+            attempt_job_name: Job name used for this attempt (if regenerated).
+            attempt_script_path: Script path used for this attempt.
+            attempt_parameters: Effective template parameters used for this attempt.
+            regenerated: Whether the script was regenerated for this attempt.
 
         Returns:
             True if job was found and resubmission recorded, False otherwise.
@@ -314,6 +322,10 @@ class Collection:
             "submitted_at": datetime.now().isoformat(timespec="seconds"),
             "extra_params": extra_params or {},
             "submission_group": submission_group,
+            "job_name": attempt_job_name,
+            "script_path": str(attempt_script_path) if attempt_script_path else None,
+            "parameters": attempt_parameters or {},
+            "regenerated": regenerated,
             "git_branch": git_metadata["git_branch"],
             "git_commit_id": git_metadata["git_commit_id"],
         }

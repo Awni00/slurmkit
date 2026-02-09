@@ -162,6 +162,9 @@ slurmkit --ui rich collection analyze exp1
 # Resubmit failed jobs
 slurmkit resubmit --collection exp1 --filter failed
 
+# Legacy behavior: reuse existing script file instead of regenerating
+slurmkit resubmit --collection exp1 --filter failed --no-regenerate
+
 # Group-aware retry
 slurmkit resubmit --collection exp1 --filter failed --submission-group retry_after_fix
 ```
@@ -347,7 +350,9 @@ Key features at a glance:
 - Create, inspect, and refresh collections: `slurmkit collection create exp1`, `slurmkit collection show exp1`, `slurmkit collection update exp1`
 - Analyze outcomes by parameter values and latest attempts: `slurmkit collection analyze exp1 --attempt-mode latest --top-k 10`
 - Inspect resubmission waves and attempt history: `slurmkit collection groups exp1`, `slurmkit collection show exp1 --show-history`
-- Resubmit failed jobs with optional selection and parameter callbacks to programatically specify which jobs are submitted and whether to include additional parameters in resubmission (e.g., checkpoint dir): `slurmkit resubmit --collection exp1 --filter failed --select-file callbacks.py --extra-params-file extra.py`
+- Resubmit failed jobs with deterministic regeneration by default in collection mode, including optional selection and parameter callbacks (e.g., checkpoint dir): `slurmkit resubmit --collection exp1 --filter failed --select-file callbacks.py --extra-params-file extra.py`
+
+Collections created before regeneration metadata was introduced may require `--no-regenerate` when resubmitting.
 
 **3) Notifications and Cross-Cluster Sync**
 

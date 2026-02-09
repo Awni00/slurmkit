@@ -119,6 +119,26 @@ class TestCollection:
         job = collection.get_job("job1")
         assert job["resubmissions"][0]["submission_group"] == "resubmit_20260207_170000"
 
+    def test_add_resubmission_regenerated_metadata(self):
+        """Test regenerated attempt metadata is persisted on resubmission records."""
+        collection = Collection("test")
+        collection.add_job(job_name="job1", job_id="12345", state="FAILED")
+
+        collection.add_resubmission(
+            "job1",
+            job_id="12346",
+            attempt_job_name="job1.resubmit-1",
+            attempt_script_path="jobs/job1.resubmit-1.job",
+            attempt_parameters={"checkpoint": "last.pt"},
+            regenerated=True,
+        )
+
+        resub = collection.get_job("job1")["resubmissions"][0]
+        assert resub["job_name"] == "job1.resubmit-1"
+        assert resub["script_path"] == "jobs/job1.resubmit-1.job"
+        assert resub["parameters"]["checkpoint"] == "last.pt"
+        assert resub["regenerated"] is True
+
     def test_filter_jobs_by_state(self):
         """Test filtering jobs by state."""
         collection = Collection("test")
@@ -212,7 +232,10 @@ class TestCollection:
         """Test serialization and deserialization."""
         collection = Collection("test", description="Test description")
         collection.add_job(job_name="job1", parameters={"lr": 0.01})
-        collection.meta = {"notifications": {"collection_final": {"last_event": "collection_completed"}}}
+        collection.meta = {
+            "notifications": {"collection_final": {"last_event": "collection_completed"}},
+            "generation": {"template_path": "templates/train.job.j2"},
+        }
 
         data = collection.to_dict()
         restored = Collection.from_dict(data)
@@ -221,6 +244,7 @@ class TestCollection:
         assert restored.description == collection.description
         assert len(restored) == len(collection)
         assert restored.meta["notifications"]["collection_final"]["last_event"] == "collection_completed"
+        assert restored.meta["generation"]["template_path"] == "templates/train.job.j2"
 
     def test_analyze_status_by_params_scalar_values(self):
         """Test state aggregation by scalar parameter values."""

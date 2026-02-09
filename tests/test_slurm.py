@@ -2,10 +2,12 @@
 
 import tempfile
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
 from slurmkit.slurm import (
+    get_pending_jobs,
     parse_elapsed_to_seconds,
     parse_timestamp,
     match_output_pattern,
@@ -197,3 +199,18 @@ class TestFindJobOutput:
 
             results = find_job_output("99999999", jobs_dir, mock_config)
             assert len(results) == 0
+
+
+def test_get_pending_jobs_preserves_dot_suffixes(monkeypatch):
+    """Pending job names should preserve dotted suffixes like `.resubmit-1`."""
+    from slurmkit import slurm
+
+    fake_output = "123|train.resubmit-1|PENDING|N/A\n"
+    monkeypatch.setattr(
+        slurm,
+        "run_command",
+        lambda _cmd: SimpleNamespace(stdout=fake_output),
+    )
+
+    pending = get_pending_jobs()
+    assert pending[0]["job_name"] == "train.resubmit-1"

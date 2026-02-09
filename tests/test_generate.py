@@ -264,6 +264,27 @@ echo "Batch size: {{ batch_size }}"
             assert (Path(output_dir) / "job_lr0.01.job").exists()
             assert (Path(output_dir) / "job_lr0.1.job").exists()
 
+    def test_generator_generate_one(self, template_dir):
+        """Test generating a single script from explicit params + job name."""
+        with tempfile.TemporaryDirectory() as output_dir:
+            generator = JobGenerator(
+                template_path=Path(template_dir) / "test.job.j2",
+                parameters={"mode": "list", "values": []},
+                slurm_defaults={"partition": "gpu", "time": "1:00:00"},
+            )
+            result = generator.generate_one(
+                output_dir=output_dir,
+                params={"learning_rate": 0.02, "batch_size": 16},
+                job_name="custom.resubmit-1",
+            )
+
+            assert result["job_name"] == "custom.resubmit-1"
+            assert result["script_path"].name == "custom.resubmit-1.job"
+            assert result["script_path"].exists()
+            content = result["script_path"].read_text()
+            assert "Learning rate: 0.02" in content
+            assert "Batch size: 16" in content
+
     def test_generator_dry_run(self, template_dir):
         """Test dry run mode."""
         with tempfile.TemporaryDirectory() as output_dir:

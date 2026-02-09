@@ -137,6 +137,98 @@ def _load_python_callback(
     return callback
 
 
+def _resolve_resubmit_regenerate_mode(args: Any, is_collection_mode: bool) -> bool:
+    """Resolve regenerate mode with mode-specific defaults."""
+    regenerate_flag = getattr(args, "regenerate", None)
+    if regenerate_flag is None:
+        return is_collection_mode
+    if regenerate_flag and not is_collection_mode:
+        raise ValueError(
+            "--regenerate requires --collection so template context can be resolved. "
+            "Use collection mode or omit --regenerate for job-id resubmission."
+        )
+    return bool(regenerate_flag)
+
+
+def _resolve_generation_context(collection: Collection, args: Any) -> Dict[str, Any]:
+    """
+    Resolve and validate generation context needed for regenerated resubmissions.
+
+    Raises ValueError with actionable messages when context is missing/incomplete.
+    """
+    generation_meta = collection.meta.get("generation")
+    if not isinstance(generation_meta, dict):
+        raise ValueError(
+            "Collection is missing generation metadata required for --regenerate. "
+            "Use --no-regenerate for legacy collections."
+        )
+
+    template_raw = getattr(args, "template", None) or generation_meta.get("template_path")
+    output_dir_raw = generation_meta.get("output_dir")
+    if not template_raw:
+        raise ValueError(
+            "Generation metadata is missing 'template_path'. "
+            "Pass --template or use --no-regenerate."
+        )
+    if not output_dir_raw:
+        raise ValueError(
+            "Generation metadata is missing 'output_dir'. "
+            "Use --no-regenerate for legacy collections."
+        )
+
+    template_path = Path(str(template_raw))
+    if not template_path.exists():
+        raise ValueError(
+            f"Template file not found for regeneration: {template_path}. "
+            "Pass --template or use --no-regenerate."
+        )
+
+    slurm_defaults = generation_meta.get("slurm_defaults", {})
+    if slurm_defaults is None:
+        slurm_defaults = {}
+    if not isinstance(slurm_defaults, dict):
+        raise ValueError(
+            "Generation metadata field 'slurm_defaults' must be a mapping. "
+            "Use --no-regenerate or regenerate jobs with slurmkit generate."
+        )
+
+    slurm_logic_file = generation_meta.get("slurm_logic_file")
+    if slurm_logic_file:
+        slurm_logic_file = Path(str(slurm_logic_file))
+        if not slurm_logic_file.exists():
+            raise ValueError(
+                f"SLURM logic file not found for regeneration: {slurm_logic_file}. "
+                "Use --no-regenerate or refresh collection generation metadata."
+            )
+
+    logs_dir = generation_meta.get("logs_dir")
+    return {
+        "template_path": template_path,
+        "output_dir": Path(str(output_dir_raw)),
+        "job_name_pattern": generation_meta.get("job_name_pattern"),
+        "logs_dir": Path(str(logs_dir)) if logs_dir else None,
+        "slurm_defaults": slurm_defaults,
+        "slurm_logic_file": slurm_logic_file,
+        "slurm_logic_function": generation_meta.get("slurm_logic_function", "get_slurm_args"),
+    }
+
+
+def _build_generation_metadata(
+    generator: JobGenerator,
+    output_dir: Path,
+) -> Dict[str, Any]:
+    """Build serializable generation metadata for collection persistence."""
+    return {
+        "template_path": str(generator.template_path),
+        "output_dir": str(output_dir),
+        "job_name_pattern": generator.job_name_pattern,
+        "logs_dir": str(generator.logs_dir) if generator.logs_dir else None,
+        "slurm_defaults": generator.slurm_defaults,
+        "slurm_logic_file": str(generator.slurm_logic_file) if generator.slurm_logic_file else None,
+        "slurm_logic_function": generator.slurm_logic_function,
+    }
+
+
 # =============================================================================
 # init Command
 # =============================================================================
@@ -801,6 +893,14 @@ def cmd_generate(args: Any) -> int:
         with open(params_path, "r") as f:
             collection.parameters = yaml.safe_load(f) or {}
 
+    generation_meta = _build_generation_metadata(
+        generator=generator,
+        output_dir=Path(output_dir),
+    )
+    if not isinstance(collection.meta, dict):
+        collection.meta = {}
+    collection.meta["generation"] = generation_meta
+
     manager.save(collection)
 
     print(f"\nGenerated {len(result)} job script(s).")
@@ -950,6 +1050,7 @@ def cmd_resubmit(args: Any) -> int:
     jobs_to_consider = []
     collection_for_tracking: Optional[Collection] = None
     submission_group = args.submission_group or datetime.now().strftime("resubmit_%Y%m%d_%H%M%S")
+    is_collection_mode = bool(args.collection)
 
     if args.collection:
         # Resubmit from collection
@@ -1004,6 +1105,39 @@ def cmd_resubmit(args: Any) -> int:
     if not jobs_to_consider:
         print("No jobs to resubmit.")
         return 0
+
+    try:
+        regenerate = _resolve_resubmit_regenerate_mode(
+            args,
+            is_collection_mode=is_collection_mode,
+        )
+    except ValueError as exc:
+        print(f"Error: {exc}")
+        return 1
+
+    generation_context: Optional[Dict[str, Any]] = None
+    resubmit_generator: Optional[JobGenerator] = None
+    if regenerate:
+        if collection_for_tracking is None:
+            print(
+                "Error: --regenerate requires --collection mode so generation metadata can be loaded."
+            )
+            return 1
+        try:
+            generation_context = _resolve_generation_context(collection_for_tracking, args)
+            resubmit_generator = JobGenerator(
+                template_path=generation_context["template_path"],
+                parameters={"mode": "list", "values": []},
+                slurm_defaults=generation_context["slurm_defaults"],
+                slurm_logic_file=generation_context["slurm_logic_file"],
+                slurm_logic_function=generation_context["slurm_logic_function"],
+                job_name_pattern=generation_context["job_name_pattern"],
+                logs_dir=generation_context["logs_dir"],
+                config=config,
+            )
+        except Exception as exc:
+            print(f"Error: {exc}")
+            return 1
 
     static_extra_params = _parse_key_value_pairs(args.extra_params)
 
@@ -1084,18 +1218,50 @@ def cmd_resubmit(args: Any) -> int:
         resolved_extra_params = dict(dynamic_extra_params)
         resolved_extra_params.update(static_extra_params)
 
-        jobs_to_resubmit.append({
+        prepared_job = {
             **job,
             "resolved_extra_params": resolved_extra_params,
-        })
+            "regenerated": regenerate,
+        }
+        if regenerate:
+            collection_job = job.get("collection_job")
+            if not isinstance(collection_job, dict):
+                print(
+                    f"Error: job '{job['job_name']}' is missing collection metadata required "
+                    "for regeneration. Use --no-regenerate."
+                )
+                return 1
+            base_params = collection_job.get("parameters") or {}
+            if not isinstance(base_params, dict):
+                print(
+                    f"Error: job '{job['job_name']}' has non-mapping parameters in collection metadata. "
+                    "Use --no-regenerate."
+                )
+                return 1
+
+            resubmit_count = len(collection_job.get("resubmissions", []) or []) + 1
+            attempt_job_name = f"{job['job_name']}.resubmit-{resubmit_count}"
+            effective_params = dict(base_params)
+            effective_params.update(resolved_extra_params)
+            prepared_job.update({
+                "attempt_job_name": attempt_job_name,
+                "attempt_script_path": generation_context["output_dir"] / f"{attempt_job_name}.job",
+                "effective_params": effective_params,
+            })
+
+        jobs_to_resubmit.append(prepared_job)
 
     # Display jobs
     print(f"Submission group: {submission_group}")
+    print(f"Regenerate scripts: {'yes' if regenerate else 'no'}")
     print(f"Will resubmit {len(jobs_to_resubmit)} job(s):")
     print_separator()
     for job in jobs_to_resubmit:
         print(f"  {job['job_name']} (original ID: {job['original_job_id']})")
-        print(f"    Script: {job['script_path']}")
+        if job["regenerated"]:
+            print(f"    Generated script: {job['attempt_script_path']}")
+        else:
+            print(f"    Script: {job['script_path']}")
         if job.get("resolved_extra_params"):
             print(f"    Extra parameters: {job['resolved_extra_params']}")
     if skipped_jobs:
@@ -1125,12 +1291,29 @@ def cmd_resubmit(args: Any) -> int:
     resubmitted = 0
     for job in jobs_to_resubmit:
         script_path = job["script_path"]
+        attempt_script_path = script_path
 
-        if not script_path.exists():
-            print(f"Error: Script not found: {script_path}", file=sys.stderr)
+        if job["regenerated"]:
+            try:
+                generated_job = resubmit_generator.generate_one(
+                    output_dir=generation_context["output_dir"],
+                    params=job["effective_params"],
+                    job_name=job["attempt_job_name"],
+                    dry_run=False,
+                )
+                attempt_script_path = generated_job["script_path"]
+            except Exception as exc:
+                print(
+                    f"Failed: {job['job_name']} -> regeneration failed: {exc}",
+                    file=sys.stderr,
+                )
+                continue
+
+        if not attempt_script_path.exists():
+            print(f"Error: Script not found: {attempt_script_path}", file=sys.stderr)
             continue
 
-        success, job_id, message = submit_job(script_path, dry_run=False)
+        success, job_id, message = submit_job(attempt_script_path, dry_run=False)
 
         if success:
             print(f"Resubmitted: {job['job_name']} -> {message}")
@@ -1143,6 +1326,10 @@ def cmd_resubmit(args: Any) -> int:
                     job_id=job_id,
                     extra_params=job.get("resolved_extra_params") or None,
                     submission_group=submission_group,
+                    attempt_job_name=job.get("attempt_job_name"),
+                    attempt_script_path=attempt_script_path if job["regenerated"] else None,
+                    attempt_parameters=job.get("effective_params"),
+                    regenerated=job["regenerated"],
                 )
         else:
             print(f"Failed: {job['job_name']} -> {message}", file=sys.stderr)

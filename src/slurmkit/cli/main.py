@@ -347,12 +347,12 @@ For more information on a command, run: slurmkit <command> --help
     resubmit_parser.add_argument(
         "--template",
         metavar="FILE",
-        help="Use modified template for resubmission",
+        help="Template override for regenerated resubmission scripts",
     )
     resubmit_parser.add_argument(
         "--extra-params",
         metavar="KEY=VAL,...",
-        help="Extra template parameters for resubmission",
+        help="Extra parameters merged into regenerated template context",
     )
     resubmit_parser.add_argument(
         "--extra-params-file",
@@ -385,6 +385,20 @@ For more information on a command, run: slurmkit <command> --help
         "--jobs-dir",
         metavar="PATH",
         help="Override jobs directory",
+    )
+    regenerate_group = resubmit_parser.add_mutually_exclusive_group()
+    regenerate_group.add_argument(
+        "--regenerate",
+        dest="regenerate",
+        action="store_true",
+        default=None,
+        help="Regenerate a new job script before resubmission",
+    )
+    regenerate_group.add_argument(
+        "--no-regenerate",
+        dest="regenerate",
+        action="store_false",
+        help="Resubmit existing script path without regeneration",
     )
     resubmit_parser.add_argument(
         "--dry-run",

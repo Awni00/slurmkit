@@ -15,7 +15,7 @@ import importlib.util
 import itertools
 import sys
 from pathlib import Path
-from typing import Any, Callable, Dict, Iterator, List, Optional, Union
+from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple, Union
 
 import yaml
 from jinja2 import Environment, FileSystemLoader, Template
@@ -398,6 +398,8 @@ class JobGenerator:
         self.parameters = parameters
         self.job_name_pattern = job_name_pattern
         self.logs_dir = Path(logs_dir) if logs_dir else None
+        self.slurm_logic_file = Path(slurm_logic_file) if slurm_logic_file else None
+        self.slurm_logic_function = slurm_logic_function
 
         # Parameter filter logic (optional)
         self.param_filter_func = None
@@ -420,10 +422,10 @@ class JobGenerator:
             self.slurm_defaults.update(slurm_defaults)
         self.slurm_logic_func = None
 
-        if slurm_logic_file:
+        if self.slurm_logic_file:
             self.slurm_logic_func = load_slurm_args_function(
-                slurm_logic_file,
-                slurm_logic_function,
+                self.slurm_logic_file,
+                self.slurm_logic_function,
             )
 
         # Set up Jinja2 environment
@@ -432,6 +434,68 @@ class JobGenerator:
             loader=FileSystemLoader(str(template_dir)),
             keep_trailing_newline=True,
         )
+
+    def _render_job(self, params: Dict[str, Any], job_name: str) -> Tuple[Dict[str, Any], str]:
+        """
+        Render a single job and return computed SLURM args + script content.
+
+        Args:
+            params: Effective parameters for the job.
+            job_name: Final SLURM job name to inject into the template.
+
+        Returns:
+            Tuple of (slurm_args, rendered_content).
+        """
+        template = self._env.get_template(self.template_path.name)
+        slurm_args = compute_slurm_args(
+            params,
+            self.slurm_defaults,
+            self.slurm_logic_func,
+        )
+        context = {
+            "job_name": job_name,
+            "slurm": slurm_args,
+            "logs_dir": str(self.logs_dir) if self.logs_dir else ".",
+            "params": params,
+            **params,
+        }
+        content = template.render(**context)
+        return slurm_args, content
+
+    def generate_one(
+        self,
+        output_dir: Union[str, Path],
+        params: Dict[str, Any],
+        job_name: str,
+        dry_run: bool = False,
+    ) -> Dict[str, Any]:
+        """
+        Generate one job script from explicit params and an explicit job name.
+
+        Args:
+            output_dir: Directory to write the generated script.
+            params: Effective parameters to render with.
+            job_name: Job name for file naming + template context.
+            dry_run: If True, do not write the file.
+
+        Returns:
+            Job info dictionary containing job_name/script_path/parameters/slurm_args.
+        """
+        output_dir = Path(output_dir)
+        if not dry_run:
+            output_dir.mkdir(parents=True, exist_ok=True)
+
+        slurm_args, content = self._render_job(params, job_name)
+        script_path = output_dir / f"{job_name}.job"
+        if not dry_run:
+            script_path.write_text(content)
+
+        return {
+            "job_name": job_name,
+            "script_path": script_path,
+            "parameters": params,
+            "slurm_args": slurm_args,
+        }
 
     @classmethod
     def from_spec(
@@ -519,9 +583,6 @@ class JobGenerator:
         if not dry_run:
             output_dir.mkdir(parents=True, exist_ok=True)
 
-        # Load template
-        template = self._env.get_template(self.template_path.name)
-
         # Expand parameters
         param_list = expand_parameters(
             self.parameters,
@@ -538,38 +599,12 @@ class JobGenerator:
                 env=self._env,
             )
 
-            # Compute SLURM args
-            slurm_args = compute_slurm_args(
-                params,
-                self.slurm_defaults,
-                self.slurm_logic_func,
+            job_info = self.generate_one(
+                output_dir=output_dir,
+                params=params,
+                job_name=job_name,
+                dry_run=dry_run,
             )
-
-            # Prepare template context
-            context = {
-                "job_name": job_name,
-                "slurm": slurm_args,
-                "logs_dir": str(self.logs_dir) if self.logs_dir else ".",
-                "params": params,  # Also include params dict for iteration
-                **params,  # Unpack for direct access (e.g., {{ algorithm }})
-            }
-
-            # Render template
-            content = template.render(**context)
-
-            # Determine output path
-            script_path = output_dir / f"{job_name}.job"
-
-            # Write script
-            if not dry_run:
-                script_path.write_text(content)
-
-            job_info = {
-                "job_name": job_name,
-                "script_path": script_path,
-                "parameters": params,
-                "slurm_args": slurm_args,
-            }
 
             generated.append(job_info)
 
@@ -577,7 +612,7 @@ class JobGenerator:
             if collection is not None:
                 collection.add_job(
                     job_name=job_name,
-                    script_path=script_path,
+                    script_path=job_info["script_path"],
                     parameters=params,
                 )
 
@@ -593,9 +628,6 @@ class JobGenerator:
         Returns:
             Rendered script content.
         """
-        # Load template
-        template = self._env.get_template(self.template_path.name)
-
         # Expand parameters
         param_list = expand_parameters(
             self.parameters,
@@ -614,23 +646,8 @@ class JobGenerator:
             env=self._env,
         )
 
-        # Compute SLURM args
-        slurm_args = compute_slurm_args(
-            params,
-            self.slurm_defaults,
-            self.slurm_logic_func,
-        )
-
-        # Prepare template context
-        context = {
-            "job_name": job_name,
-            "slurm": slurm_args,
-            "logs_dir": str(self.logs_dir) if self.logs_dir else ".",
-            "params": params,  # Also include params dict for iteration
-            **params,  # Unpack for direct access
-        }
-
-        return template.render(**context)
+        _, content = self._render_job(params=params, job_name=job_name)
+        return content
 
     def count_jobs(self) -> int:
         """

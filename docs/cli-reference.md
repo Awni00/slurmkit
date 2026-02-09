@@ -234,16 +234,22 @@ slurmkit resubmit --collection NAME [options]
 |--------|-------------|
 | `--collection NAME` | Resubmit from collection |
 | `--filter FILTER` | For collection: `failed` or `all` |
-| `--template FILE` | Modified template for resubmission |
-| `--extra-params K=V,...` | Extra template parameters |
+| `--template FILE` | Template override for regenerated resubmission scripts |
+| `--extra-params K=V,...` | Extra parameters merged into regenerated template context |
 | `--extra-params-file FILE` | Python file with `get_extra_params(context) -> dict` |
 | `--extra-params-function NAME` | Function name in `--extra-params-file` (default: `get_extra_params`) |
 | `--select-file FILE` | Python file with `should_resubmit(context) -> bool` |
 | `--select-function NAME` | Function name in `--select-file` (default: `should_resubmit`) |
 | `--submission-group NAME` | Submission group label (default: auto-generated `resubmit_YYYYMMDD_HHMMSS`) |
 | `--jobs-dir PATH` | Override jobs directory |
+| `--regenerate` | Force regeneration before resubmitting (requires `--collection`) |
+| `--no-regenerate` | Reuse existing script path without regeneration |
 | `--dry-run` | Show what would be resubmitted |
 | `-y, --yes` | Skip confirmation |
+
+`resubmit` defaults are mode-specific:
+- Collection mode (`--collection`): regenerate scripts by default.
+- Job ID mode (`slurmkit resubmit <job_id...>`): reuse existing scripts by default.
 
 **Examples:**
 
@@ -251,6 +257,7 @@ slurmkit resubmit --collection NAME [options]
 slurmkit resubmit 12345678
 slurmkit resubmit --collection my_exp --filter failed
 slurmkit resubmit --collection my_exp --extra-params "checkpoint=last.pt"
+slurmkit resubmit --collection my_exp --no-regenerate
 slurmkit resubmit --collection my_exp --submission-group retry_after_fix
 slurmkit resubmit --collection my_exp --select-file callbacks.py --select-function should_resubmit
 ```

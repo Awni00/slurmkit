@@ -224,12 +224,9 @@ def get_pending_jobs(user: Optional[str] = None) -> List[Dict[str, str]]:
 
             job_id, job_name, state, start_time_str = parts[:4]
 
-            # Clean up job name (remove date suffixes after first dot)
-            job_name_clean = job_name.split(".")[0]
-
             job_info = {
                 "job_id": job_id,
-                "job_name": job_name_clean,
+                "job_name": job_name,
                 "state": state,
             }
 
