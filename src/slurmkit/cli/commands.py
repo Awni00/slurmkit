@@ -1183,7 +1183,9 @@ def cmd_collection_list(args: Any) -> int:
     config = get_configured_config(args)
     manager = CollectionManager(config=config)
 
-    summaries = manager.list_collections_with_summary()
+    summaries = manager.list_collections_with_summary(
+        attempt_mode=getattr(args, "attempt_mode", "latest"),
+    )
 
     if not summaries:
         print("No collections found.")

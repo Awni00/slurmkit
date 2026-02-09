@@ -1163,9 +1163,12 @@ class CollectionManager:
 
         return sorted(names)
 
-    def list_collections_with_summary(self) -> List[Dict[str, Any]]:
+    def list_collections_with_summary(self, attempt_mode: str = "primary") -> List[Dict[str, Any]]:
         """
         List all collections with summary information.
+
+        Args:
+            attempt_mode: Either "primary" or "latest" effective attempt state.
 
         Returns:
             List of dicts with name, description, job counts, etc.
@@ -1175,7 +1178,7 @@ class CollectionManager:
         for name in self.list_collections():
             try:
                 collection = self.load(name)
-                summary = collection.get_summary()
+                summary = collection.get_effective_summary(attempt_mode=attempt_mode)
                 summaries.append({
                     "name": name,
                     "description": collection.description,

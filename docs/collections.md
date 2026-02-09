@@ -67,7 +67,11 @@ slurmkit collection create my_experiment --description "Training sweep"
 
 ```bash
 slurmkit collection list
+# Optional override to use primary submission state counts
+slurmkit collection list --attempt-mode primary
 ```
+
+`collection list` uses latest-attempt status counts by default.
 
 Output:
 ```

@@ -425,9 +425,15 @@ For more information on a command, run: slurmkit <command> --help
     )
 
     # collection list
-    collection_subparsers.add_parser(
+    coll_list_parser = collection_subparsers.add_parser(
         "list",
         help="List all collections",
+    )
+    coll_list_parser.add_argument(
+        "--attempt-mode",
+        choices=["primary", "latest"],
+        default="latest",
+        help="Show primary submission state or latest attempt state (default: latest)",
     )
 
     # collection show

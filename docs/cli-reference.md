@@ -270,8 +270,12 @@ slurmkit collection create <name> [--description TEXT]
 #### collection list
 
 ```bash
-slurmkit collection list
+slurmkit collection list [--attempt-mode MODE]
 ```
+
+| Option | Description |
+|--------|-------------|
+| `--attempt-mode MODE` | `primary` or `latest` effective attempt (default: `latest`) |
 
 #### collection show
 

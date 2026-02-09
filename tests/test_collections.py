@@ -402,6 +402,38 @@ class TestCollectionManager:
             names = manager.list_collections()
             assert sorted(names) == ["test1", "test2", "test3"]
 
+    def test_list_collections_with_summary_attempt_mode_latest(self):
+        """Latest attempt mode should reflect the most recent resubmission state."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            manager = CollectionManager(collections_dir=tmpdir)
+            collection = manager.create("test")
+            collection.add_job(job_name="job1", job_id="1", state="FAILED")
+            collection.add_resubmission("job1", job_id="2")
+            collection.get_job("job1")["resubmissions"][-1]["state"] = "COMPLETED"
+            manager.save(collection)
+
+            primary = manager.list_collections_with_summary(attempt_mode="primary")
+            latest = manager.list_collections_with_summary(attempt_mode="latest")
+
+            assert primary[0]["failed"] == 1
+            assert primary[0]["completed"] == 0
+            assert latest[0]["failed"] == 0
+            assert latest[0]["completed"] == 1
+
+    def test_list_collections_with_summary_primary_latest_match_without_resubmissions(self):
+        """Primary and latest should match when no job has resubmissions."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            manager = CollectionManager(collections_dir=tmpdir)
+            collection = manager.create("test")
+            collection.add_job(job_name="job1", job_id="1", state="COMPLETED")
+            manager.save(collection)
+
+            primary = manager.list_collections_with_summary(attempt_mode="primary")
+            latest = manager.list_collections_with_summary(attempt_mode="latest")
+
+            keys = ["total", "pending", "running", "completed", "failed", "unknown", "not_submitted"]
+            assert {k: primary[0][k] for k in keys} == {k: latest[0][k] for k in keys}
+
     def test_get_or_create_existing(self):
         """Test get_or_create returns existing collection."""
         with tempfile.TemporaryDirectory() as tmpdir:

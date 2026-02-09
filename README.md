@@ -184,6 +184,7 @@ Then run:
 
 ```bash
 slurmkit collection list
+slurmkit collection list --attempt-mode primary  # Optional override to primary submission states
 slurmkit collection show demo_terminal_failed
 slurmkit collection analyze demo_terminal_failed
 # Optional richer formatting (requires rich extra):
@@ -364,6 +365,7 @@ slurmkit collection create my_exp --description "Training sweep"
 
 # List collections
 slurmkit collection list
+slurmkit collection list --attempt-mode primary  # Optional override to primary submission states
 
 # Show details
 slurmkit collection show my_exp --state failed

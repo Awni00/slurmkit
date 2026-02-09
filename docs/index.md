@@ -186,6 +186,7 @@ slurmkit collection create my_exp --description "Training sweep"
 
 # List collections
 slurmkit collection list
+slurmkit collection list --attempt-mode primary  # Optional override to primary submission states
 
 # Show details
 slurmkit collection show my_exp --state failed
