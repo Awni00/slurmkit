@@ -110,6 +110,11 @@ notifications:
     backoff_seconds: 0.5
     output_tail_lines: 40
 
+  job:
+    ai:
+      enabled: false
+      callback: null  # "module.path:function_name"
+
   collection_final:
     attempt_mode: latest
     min_support: 3
@@ -307,6 +312,14 @@ Supported events:
 - If `events` is omitted on a route, it defaults to `notifications.defaults.events`.
 - If `notifications.defaults.events` is omitted, it defaults to `[job_failed]`.
 - Retry and timeout values fall back from route settings to `notifications.defaults`.
+
+### Job Notification AI Settings
+
+`notifications.job.ai` controls optional callback enrichment for `slurmkit notify job`:
+- `enabled` - Enable optional Python callback enrichment
+- `callback` - Callback in `module.path:function_name` format
+
+When job AI callback execution fails, deterministic notification delivery still proceeds and payload marks `ai_status: unavailable`.
 
 ### Collection Final Report Settings
 

@@ -125,11 +125,12 @@ Create deterministic dummy collections/logs:
 ./setup_dummy_jobs.py --include-non-terminal
 ```
 
-Optional: enable AI callback demo for `notify collection-final` payloads:
+Optional: enable AI callback demo for `notify job` and `notify collection-final` payloads:
 
 ```bash
 export PYTHONPATH="$PWD:$PYTHONPATH"
 # then in .slurm-kit/config.yaml:
+# notifications.job.ai.enabled: true
 # notifications.collection_final.ai.enabled: true
 ```
 
@@ -222,6 +223,9 @@ slurmkit notify collection-final --collection demo_terminal_failed --job-id 9900
 
 ```bash
 export PYTHONPATH="$PWD:$PYTHONPATH"
+# set notifications.job.ai.enabled: true
+slurmkit notify job --job-id 990002 --exit-code 1 --dry-run
+
 # set notifications.collection_final.ai.enabled: true
 slurmkit notify collection-final --collection demo_terminal_failed --job-id 990002 --no-refresh --dry-run
 ```

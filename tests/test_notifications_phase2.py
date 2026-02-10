@@ -292,6 +292,61 @@ def test_ai_callback_failure_falls_back(tmp_path):
     assert "AI callback failed" in warning
 
 
+def test_job_ai_callback_success_returns_summary(tmp_path, monkeypatch):
+    """Configured job AI callback should return markdown summary."""
+    module_path = tmp_path / "job_ai_module_phase2.py"
+    module_path.write_text(
+        "def summarize(payload):\n"
+        "    return f\"AI summary for job {payload['job']['job_id']}\"\n"
+    )
+    monkeypatch.syspath_prepend(str(tmp_path))
+
+    config = _make_config(
+        tmp_path,
+        {
+            "notifications": {
+                "job": {
+                    "ai": {
+                        "enabled": True,
+                        "callback": "job_ai_module_phase2:summarize",
+                    }
+                }
+            }
+        },
+    )
+    service = NotificationService(config=config)
+    ai_summary, ai_status, warning = service.run_job_ai_callback(
+        {"job": {"job_id": "123"}, "event": "job_failed"}
+    )
+
+    assert ai_status == "available"
+    assert warning is None
+    assert ai_summary == "AI summary for job 123"
+
+
+def test_job_ai_callback_failure_falls_back(tmp_path):
+    """Bad job callback path should mark AI status unavailable and continue."""
+    config = _make_config(
+        tmp_path,
+        {
+            "notifications": {
+                "job": {
+                    "ai": {
+                        "enabled": True,
+                        "callback": "missing.module:fn",
+                    }
+                }
+            }
+        },
+    )
+    service = NotificationService(config=config)
+    ai_summary, ai_status, warning = service.run_job_ai_callback({"job": {"job_id": "123"}})
+
+    assert ai_summary is None
+    assert ai_status == "unavailable"
+    assert "AI callback failed" in warning
+
+
 def test_collection_lock_timeout_when_already_locked(tmp_path):
     """Second lock acquisition should timeout while first lock is held."""
     config = _make_config(tmp_path, {"collections_dir": ".job-collections/"})

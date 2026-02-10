@@ -14,10 +14,15 @@ class _FakeService:
         self.called_dispatch = 0
         self.route_resolution = RouteResolution(routes=[], errors=[], skipped=[])
         self.delivery_results = []
+        self.last_dispatched_payload = None
+        self.job_ai_result = (None, "disabled", None)
 
     def build_job_payload(self, **_kwargs):
         self.called_build += 1
-        return {"event": "job_failed", "job": {"job_id": "1"}}, []
+        return {"event": "job_failed", "job": {"job_id": "1"}, "ai_status": "disabled", "ai_summary": None}, []
+
+    def run_job_ai_callback(self, _payload):
+        return self.job_ai_result
 
     def build_test_payload(self):
         return {"event": "test_notification"}
@@ -26,8 +31,9 @@ class _FakeService:
         self.called_resolve += 1
         return self.route_resolution
 
-    def dispatch(self, **_kwargs):
+    def dispatch(self, **kwargs):
         self.called_dispatch += 1
+        self.last_dispatched_payload = kwargs.get("payload")
         return list(self.delivery_results)
 
 
@@ -257,3 +263,71 @@ def test_cmd_notify_job_with_email_route_output(monkeypatch, capsys):
 
     assert exit_code == 0
     assert "team_email (email)" in out
+
+
+def test_cmd_notify_job_ai_callback_success_attaches_payload_fields(monkeypatch):
+    """Successful job AI callback should enrich payload before dispatch."""
+    fake_service = _FakeService()
+    fake_service.route_resolution = RouteResolution(
+        routes=[Namespace(name="route_a", route_type="webhook")],
+        errors=[],
+        skipped=[],
+    )
+    fake_service.delivery_results = [
+        DeliveryResult(route_name="route_a", route_type="webhook", success=True, attempts=1)
+    ]
+    fake_service.job_ai_result = ("AI concise summary", "available", None)
+
+    monkeypatch.setattr(commands, "get_configured_config", lambda _args: object())
+    monkeypatch.setattr(commands, "NotificationService", lambda config=None: fake_service)
+
+    args = Namespace(
+        job_id="123",
+        collection=None,
+        exit_code=1,
+        on="failed",
+        route=None,
+        tail_lines=None,
+        strict=False,
+        dry_run=False,
+    )
+    exit_code = commands.cmd_notify_job(args)
+
+    assert exit_code == 0
+    assert fake_service.last_dispatched_payload["ai_status"] == "available"
+    assert fake_service.last_dispatched_payload["ai_summary"] == "AI concise summary"
+
+
+def test_cmd_notify_job_ai_callback_failure_fallback(monkeypatch, capsys):
+    """AI callback failure should keep deterministic delivery and mark unavailable."""
+    fake_service = _FakeService()
+    fake_service.route_resolution = RouteResolution(
+        routes=[Namespace(name="route_a", route_type="webhook")],
+        errors=[],
+        skipped=[],
+    )
+    fake_service.delivery_results = [
+        DeliveryResult(route_name="route_a", route_type="webhook", success=True, attempts=1)
+    ]
+    fake_service.job_ai_result = (None, "unavailable", "AI callback failed: boom")
+
+    monkeypatch.setattr(commands, "get_configured_config", lambda _args: object())
+    monkeypatch.setattr(commands, "NotificationService", lambda config=None: fake_service)
+
+    args = Namespace(
+        job_id="123",
+        collection=None,
+        exit_code=1,
+        on="failed",
+        route=None,
+        tail_lines=None,
+        strict=False,
+        dry_run=False,
+    )
+    exit_code = commands.cmd_notify_job(args)
+    out = capsys.readouterr().out
+
+    assert exit_code == 0
+    assert "[ai-warning]" in out
+    assert fake_service.last_dispatched_payload["ai_status"] == "unavailable"
+    assert fake_service.last_dispatched_payload["ai_summary"] is None

@@ -1795,6 +1795,12 @@ def cmd_notify_job(args: Any) -> int:
     for warning in context_warnings:
         print(f"[context-warning] {warning}")
 
+    ai_summary, ai_status, ai_warning = service.run_job_ai_callback(payload)
+    if ai_warning:
+        print(f"[ai-warning] {ai_warning}")
+    payload["ai_status"] = ai_status
+    payload["ai_summary"] = ai_summary
+
     route_resolution = service.resolve_routes(
         event=event,
         route_names=args.route,

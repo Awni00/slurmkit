@@ -210,6 +210,8 @@ def test_build_payload_collection_match_and_failure_tail(tmp_path):
     assert payload["collection"]["name"] == "exp1"
     assert payload["job"]["job_name"] == "train"
     assert payload["job"]["output_tail"] == "line2\nline3"
+    assert payload["ai_status"] == "disabled"
+    assert payload["ai_summary"] is None
 
 
 def test_build_payload_no_match_is_env_only(tmp_path):
@@ -298,6 +300,71 @@ def test_output_tail_only_for_failed_event(tmp_path):
         event=EVENT_JOB_COMPLETED,
     )
     assert payload["job"]["output_tail"] is None
+
+
+def test_job_ai_callback_disabled_by_default(tmp_path):
+    """Job AI callback should default to disabled when not configured."""
+    config = _make_config(
+        tmp_path,
+        {
+            "notifications": {
+                "routes": [
+                    {"name": "hook", "type": "webhook", "url": "https://example.test/hook"}
+                ]
+            }
+        },
+    )
+    service = NotificationService(config=config)
+    payload, _ = service.build_job_payload(
+        job_id="777",
+        exit_code=0,
+        event=EVENT_JOB_COMPLETED,
+    )
+    ai_summary, ai_status, warning = service.run_job_ai_callback(payload)
+
+    assert ai_summary is None
+    assert ai_status == "disabled"
+    assert warning is None
+
+
+def test_job_ai_callback_enrichment_updates_payload(tmp_path, monkeypatch):
+    """Enabled job AI callback should produce available summary for payload enrichment."""
+    module_path = tmp_path / "job_ai_module.py"
+    module_path.write_text(
+        "def summarize(payload):\n"
+        "    return f\"Job AI summary for {payload['job']['job_id']}\"\n"
+    )
+    monkeypatch.syspath_prepend(str(tmp_path))
+
+    config = _make_config(
+        tmp_path,
+        {
+            "notifications": {
+                "job": {
+                    "ai": {
+                        "enabled": True,
+                        "callback": "job_ai_module:summarize",
+                    }
+                },
+                "routes": [
+                    {"name": "hook", "type": "webhook", "url": "https://example.test/hook"}
+                ],
+            }
+        },
+    )
+    service = NotificationService(config=config)
+    payload, _ = service.build_job_payload(
+        job_id="777",
+        exit_code=1,
+        event=EVENT_JOB_FAILED,
+    )
+    ai_summary, ai_status, warning = service.run_job_ai_callback(payload)
+    payload["ai_status"] = ai_status
+    payload["ai_summary"] = ai_summary
+
+    assert warning is None
+    assert payload["ai_status"] == "available"
+    assert payload["ai_summary"] == "Job AI summary for 777"
 
 
 def test_dispatch_retries_then_succeeds(tmp_path, monkeypatch):

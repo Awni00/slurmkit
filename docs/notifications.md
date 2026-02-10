@@ -25,6 +25,11 @@ notifications:
     backoff_seconds: 0.5
     output_tail_lines: 40
 
+  job:
+    ai:
+      enabled: false
+      callback: null
+
   collection_final:
     attempt_mode: latest
     min_support: 3
@@ -149,12 +154,14 @@ By default (`--on failed`), completed job notifications are skipped.
 
 For `type: webhook`, slurmkit sends stable `schema_version: v1` JSON.
 
-Job/test payload includes:
+Job payload includes:
 - `event`
 - `generated_at`
 - `context_source` (`collection_match`, `env_only`, `ambiguous_match`)
 - `job`
 - `collection` (when uniquely resolved)
+- `ai_status`
+- optional `ai_summary`
 - `host`
 - `meta` (route name/type)
 
@@ -163,6 +170,8 @@ Collection-final payload additionally includes:
 - `trigger_job_id`
 - `ai_status`
 - optional `ai_summary`
+
+Test payload includes deterministic baseline fields and does not run AI callbacks.
 
 For `slack`/`discord`, slurmkit sends a human-readable summary with key metadata.
 

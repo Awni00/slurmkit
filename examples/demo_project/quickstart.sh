@@ -236,6 +236,8 @@ if [[ "$notify_choice" =~ ^[Yy]$ ]]; then
     echo ""
     echo "Optional AI callback demo:"
     echo "  export PYTHONPATH=\"\$PWD:\$PYTHONPATH\""
+    echo "  set notifications.job.ai.enabled=true in .slurm-kit/config.yaml"
+    echo "  slurmkit notify job --job-id 990002 --exit-code 1 --dry-run"
     echo "  set notifications.collection_final.ai.enabled=true in .slurm-kit/config.yaml"
     echo "  slurmkit notify collection-final --collection demo_terminal_failed --job-id 990002 --no-refresh --dry-run"
 else

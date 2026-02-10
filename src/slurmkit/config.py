@@ -84,6 +84,12 @@ DEFAULT_CONFIG = {
             "backoff_seconds": 0.5,
             "output_tail_lines": 40,
         },
+        "job": {
+            "ai": {
+                "enabled": False,
+                "callback": None,
+            },
+        },
         "collection_final": {
             "attempt_mode": "latest",
             "min_support": 3,

@@ -69,3 +69,38 @@ def summarize_collection_report(report: Dict[str, Any]) -> str:
         lines.extend([f"  {item}" for item in stable_lines])
 
     return "\n".join(lines)
+
+
+def summarize_job_payload(payload: Dict[str, Any]) -> str:
+    """
+    Return concise markdown summary for job-level notification payloads.
+
+    Args:
+        payload: Canonical job payload dictionary produced by slurmkit notify job.
+
+    Returns:
+        Markdown string included as `ai_summary` in outgoing payload.
+    """
+    job = payload.get("job", {}) or {}
+    collection = payload.get("collection", {}) or {}
+
+    lines = [
+        "### AI Summary (Job Demo Callback)",
+        f"- Event: `{payload.get('event', 'unknown')}`",
+        f"- Job: `{job.get('job_name') or 'unknown'}` (`{job.get('job_id') or 'unknown'}`)",
+        f"- State: `{job.get('state') or 'unknown'}`",
+    ]
+
+    if job.get("exit_code") is not None:
+        lines.append(f"- Exit code: `{job.get('exit_code')}`")
+
+    if collection:
+        lines.append(f"- Collection: `{collection.get('name') or 'unknown'}`")
+
+    output_tail = job.get("output_tail")
+    if output_tail:
+        first_line = str(output_tail).splitlines()[0] if str(output_tail).splitlines() else ""
+        if first_line:
+            lines.append(f"- First output-tail line: `{first_line}`")
+
+    return "\n".join(lines)

@@ -998,6 +998,14 @@ class NotificationService:
             "callback": raw.get("callback"),
         }
 
+    def _job_ai_callback_config(self) -> Dict[str, Any]:
+        """Get normalized AI callback configuration for job notifications."""
+        raw = self.config.get("notifications.job.ai", {}) or {}
+        return {
+            "enabled": bool(raw.get("enabled", False)),
+            "callback": raw.get("callback"),
+        }
+
     def _load_callback(self, callback_path: str) -> Callable[[Dict[str, Any]], Any]:
         """Load python callback from module:function path."""
         if ":" not in callback_path:
@@ -1046,6 +1054,42 @@ class NotificationService:
         try:
             callback = self._load_callback(str(callback_path))
             output = callback(copy.deepcopy(report))
+        except Exception as exc:
+            return None, "unavailable", f"AI callback failed: {exc}"
+
+        if isinstance(output, dict):
+            summary = "```json\n" + json.dumps(output, indent=2, default=str) + "\n```"
+        elif isinstance(output, str):
+            summary = output.strip()
+        else:
+            summary = str(output).strip()
+
+        if not summary:
+            return None, "unavailable", "AI callback returned empty output."
+
+        return summary, "available", None
+
+    def run_job_ai_callback(
+        self,
+        payload: Dict[str, Any],
+    ) -> Tuple[Optional[str], str, Optional[str]]:
+        """
+        Execute optional AI callback.
+
+        Returns:
+            (ai_summary_markdown, ai_status, warning_message)
+        """
+        ai_cfg = self._job_ai_callback_config()
+        if not ai_cfg["enabled"]:
+            return None, "disabled", None
+
+        callback_path = ai_cfg.get("callback")
+        if callback_path is None or str(callback_path).strip() == "":
+            return None, "unavailable", "AI callback is enabled but callback path is empty."
+
+        try:
+            callback = self._load_callback(str(callback_path))
+            output = callback(copy.deepcopy(payload))
         except Exception as exc:
             return None, "unavailable", f"AI callback failed: {exc}"
 
@@ -1176,6 +1220,8 @@ class NotificationService:
                 "route_name": None,
                 "route_type": None,
             },
+            "ai_status": "disabled",
+            "ai_summary": None,
         }
         payload["job"]["exit_code"] = int(exit_code)
         return payload, warnings
@@ -1313,6 +1359,11 @@ class NotificationService:
             if output_tail:
                 lines.append("Output tail:")
                 lines.append(output_tail)
+
+            ai_summary = payload.get("ai_summary")
+            if ai_summary:
+                lines.append("AI summary:")
+                lines.append(ai_summary)
 
         lines.append(f"Host: {payload.get('host', {}).get('hostname', 'unknown')}")
 
