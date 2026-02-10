@@ -396,7 +396,7 @@ slurmkit notify test --route team_email --dry-run
 slurmkit notify job --job-id "$SLURM_JOB_ID" --exit-code "$rc"
 
 # Collection-final summary notification (emits only when collection is terminal)
-slurmkit notify collection-final --job-id "$SLURM_JOB_ID"
+slurmkit notify collection-final --job-id "$SLURM_JOB_ID" --trigger-exit-code "$rc"
 ```
 
 Recommended trap snippet inside a job script:
@@ -404,7 +404,7 @@ Recommended trap snippet inside a job script:
 ```bash
 rc=$?
 slurmkit notify job --job-id "${SLURM_JOB_ID}" --exit-code "${rc}"
-slurmkit notify collection-final --job-id "${SLURM_JOB_ID}"
+slurmkit notify collection-final --job-id "${SLURM_JOB_ID}" --trigger-exit-code "${rc}"
 exit "${rc}"
 ```
 

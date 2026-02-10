@@ -24,6 +24,7 @@ def _make_config(tmp_path: Path, data: dict) -> Config:
 def _args(**overrides):
     base = {
         "job_id": "100",
+        "trigger_exit_code": None,
         "collection": None,
         "route": None,
         "strict": False,
@@ -46,6 +47,8 @@ def test_notify_collection_final_parser_args():
             "collection-final",
             "--job-id",
             "123",
+            "--trigger-exit-code",
+            "0",
             "--collection",
             "exp",
             "--route",
@@ -62,6 +65,7 @@ def test_notify_collection_final_parser_args():
     assert args.command == "notify"
     assert args.notify_action == "collection-final"
     assert args.job_id == "123"
+    assert args.trigger_exit_code == 0
     assert args.collection == "exp"
     assert args.route == ["r1", "r2"]
     assert args.strict is True
@@ -91,6 +95,7 @@ def test_cmd_notify_collection_final_non_terminal_skips(tmp_path, monkeypatch, c
     manager = CollectionManager(config=config)
     collection = manager.create("exp")
     collection.add_job(job_name="job1", job_id="100", state="RUNNING")
+    collection.add_job(job_name="job2", job_id="200", state="PENDING")
     manager.save(collection)
     service = NotificationService(config=config)
 
@@ -110,6 +115,128 @@ def test_cmd_notify_collection_final_non_terminal_skips(tmp_path, monkeypatch, c
     assert exit_code == 0
     assert "not terminal yet" in out
     assert calls["dispatch"] == 0
+
+
+def test_cmd_notify_collection_final_trigger_exit_code_zero_marks_completed(tmp_path, monkeypatch):
+    """Sole active trigger job with zero exit code should infer completed terminality."""
+    config = _make_config(
+        tmp_path,
+        {
+            "collections_dir": ".job-collections/",
+            "notifications": {
+                "routes": [
+                    {
+                        "name": "r",
+                        "type": "webhook",
+                        "url": "https://example.test/hook",
+                        "events": ["collection_completed"],
+                    }
+                ]
+            },
+        },
+    )
+    manager = CollectionManager(config=config)
+    collection = manager.create("exp")
+    collection.add_job(job_name="job1", job_id="100", state="RUNNING")
+    manager.save(collection)
+    service = NotificationService(config=config)
+
+    captured = {"payload": None}
+
+    def fake_dispatch(payload, routes, dry_run=False):
+        captured["payload"] = payload
+        return [DeliveryResult(route_name=routes[0].name, route_type=routes[0].route_type, success=True, attempts=1)]
+
+    monkeypatch.setattr(service, "dispatch", fake_dispatch)
+    monkeypatch.setattr(commands, "get_configured_config", lambda _args: config)
+    monkeypatch.setattr(commands, "NotificationService", lambda config=None: service)
+
+    exit_code = commands.cmd_notify_collection_final(_args(job_id="100", trigger_exit_code=0))
+    assert exit_code == 0
+    assert captured["payload"]["event"] == "collection_completed"
+
+
+def test_cmd_notify_collection_final_trigger_exit_code_nonzero_marks_failed(tmp_path, monkeypatch):
+    """Sole active trigger job with non-zero exit code should infer failed terminality."""
+    config = _make_config(
+        tmp_path,
+        {
+            "collections_dir": ".job-collections/",
+            "notifications": {
+                "routes": [
+                    {
+                        "name": "r",
+                        "type": "webhook",
+                        "url": "https://example.test/hook",
+                        "events": ["collection_failed"],
+                    }
+                ]
+            },
+        },
+    )
+    manager = CollectionManager(config=config)
+    collection = manager.create("exp")
+    collection.add_job(job_name="job1", job_id="100", state="RUNNING")
+    manager.save(collection)
+    service = NotificationService(config=config)
+
+    captured = {"payload": None}
+
+    def fake_dispatch(payload, routes, dry_run=False):
+        captured["payload"] = payload
+        return [DeliveryResult(route_name=routes[0].name, route_type=routes[0].route_type, success=True, attempts=1)]
+
+    monkeypatch.setattr(service, "dispatch", fake_dispatch)
+    monkeypatch.setattr(commands, "get_configured_config", lambda _args: config)
+    monkeypatch.setattr(commands, "NotificationService", lambda config=None: service)
+
+    exit_code = commands.cmd_notify_collection_final(_args(job_id="100", trigger_exit_code=2))
+    assert exit_code == 0
+    assert captured["payload"]["event"] == "collection_failed"
+
+
+def test_cmd_notify_collection_final_trigger_without_exit_code_warns_and_uses_unknown(
+    tmp_path, monkeypatch, capsys
+):
+    """Missing trigger exit code should warn only when unknown fallback is used."""
+    config = _make_config(
+        tmp_path,
+        {
+            "collections_dir": ".job-collections/",
+            "notifications": {
+                "routes": [
+                    {
+                        "name": "r",
+                        "type": "webhook",
+                        "url": "https://example.test/hook",
+                        "events": ["collection_failed"],
+                    }
+                ]
+            },
+        },
+    )
+    manager = CollectionManager(config=config)
+    collection = manager.create("exp")
+    collection.add_job(job_name="job1", job_id="100", state="RUNNING")
+    manager.save(collection)
+    service = NotificationService(config=config)
+
+    captured = {"payload": None}
+
+    def fake_dispatch(payload, routes, dry_run=False):
+        captured["payload"] = payload
+        return [DeliveryResult(route_name=routes[0].name, route_type=routes[0].route_type, success=True, attempts=1)]
+
+    monkeypatch.setattr(service, "dispatch", fake_dispatch)
+    monkeypatch.setattr(commands, "get_configured_config", lambda _args: config)
+    monkeypatch.setattr(commands, "NotificationService", lambda config=None: service)
+
+    exit_code = commands.cmd_notify_collection_final(_args(job_id="100"))
+    out = capsys.readouterr().out
+    assert exit_code == 0
+    assert captured["payload"]["event"] == "collection_failed"
+    assert "[finality-warning]" in out
+    assert "--trigger-exit-code" in out
 
 
 def test_cmd_notify_collection_final_completed_event(tmp_path, monkeypatch):

@@ -242,7 +242,7 @@ slurmkit resubmit --collection hp_sweep --filter failed
 If you want notification hooks in a real job script:
 
 ```bash
-trap 'rc=$?; slurmkit notify job --job-id "${SLURM_JOB_ID}" --exit-code "${rc}"; slurmkit notify collection-final --job-id "${SLURM_JOB_ID}"; exit "${rc}"' EXIT
+trap 'rc=$?; slurmkit notify job --job-id "${SLURM_JOB_ID}" --exit-code "${rc}"; slurmkit notify collection-final --job-id "${SLURM_JOB_ID}" --trigger-exit-code "${rc}"; exit "${rc}"' EXIT
 ```
 
 ## Notes

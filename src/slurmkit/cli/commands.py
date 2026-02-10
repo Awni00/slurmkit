@@ -1905,7 +1905,11 @@ def cmd_notify_collection_final(args: Any) -> int:
             finality = service.evaluate_collection_finality(
                 collection=collection,
                 attempt_mode=cfg.attempt_mode,
+                trigger_job_id=trigger_job_id,
+                trigger_exit_code=args.trigger_exit_code,
             )
+            for warning in finality.warnings:
+                print(f"[finality-warning] {warning}")
 
             counts = finality.counts
             if not finality.terminal:
@@ -1943,6 +1947,7 @@ def cmd_notify_collection_final(args: Any) -> int:
                 min_support=cfg.min_support,
                 top_k=cfg.top_k,
                 failed_tail_lines=cfg.include_failed_output_tail_lines,
+                precomputed_finality=finality,
             )
 
             ai_summary, ai_status, ai_warning = service.run_collection_ai_callback(report)

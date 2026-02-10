@@ -751,6 +751,15 @@ For more information on a command, run: slurmkit <command> --help
         help="SLURM job ID that triggered this check (defaults to SLURM_JOB_ID env var)",
     )
     notify_collection_final_parser.add_argument(
+        "--trigger-exit-code",
+        type=int,
+        metavar="EXIT_CODE",
+        help=(
+            "Optional trigger job exit code used for terminal inference when "
+            "the trigger job is the only active effective row"
+        ),
+    )
+    notify_collection_final_parser.add_argument(
         "--collection",
         metavar="NAME",
         help="Collection name (optional if job ID maps to exactly one collection)",

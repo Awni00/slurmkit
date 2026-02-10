@@ -136,6 +136,7 @@ class CollectionFinality:
     event: Optional[str]
     counts: Dict[str, int]
     effective_rows: List[Dict[str, Any]]
+    warnings: List[str] = field(default_factory=list)
 
 
 @dataclass
@@ -814,26 +815,62 @@ class NotificationService:
         self,
         collection: Collection,
         attempt_mode: str = "latest",
+        trigger_job_id: Optional[str] = None,
+        trigger_exit_code: Optional[int] = None,
     ) -> CollectionFinality:
         """Evaluate terminal status and event type for a collection."""
         if attempt_mode not in ("primary", "latest"):
             raise ValueError("attempt_mode must be 'primary' or 'latest'")
 
-        rows = [self._effective_row_for_job(job, attempt_mode=attempt_mode) for job in collection.jobs]
+        effective_rows = [
+            self._effective_row_for_job(job, attempt_mode=attempt_mode)
+            for job in collection.jobs
+        ]
+        warnings: List[str] = []
 
-        counts = {
-            "total": len(rows),
-            JOB_STATE_PENDING: 0,
-            JOB_STATE_RUNNING: 0,
-            JOB_STATE_COMPLETED: 0,
-            JOB_STATE_FAILED: 0,
-            JOB_STATE_UNKNOWN: 0,
-        }
-        for row in rows:
-            state = row["state"]
-            counts[state] = counts.get(state, 0) + 1
+        def _counts_for_rows(rows: List[Dict[str, Any]]) -> Dict[str, int]:
+            counts = {
+                "total": len(rows),
+                JOB_STATE_PENDING: 0,
+                JOB_STATE_RUNNING: 0,
+                JOB_STATE_COMPLETED: 0,
+                JOB_STATE_FAILED: 0,
+                JOB_STATE_UNKNOWN: 0,
+            }
+            for row in rows:
+                state = row["state"]
+                counts[state] = counts.get(state, 0) + 1
+            return counts
+
+        counts = _counts_for_rows(effective_rows)
 
         terminal = (counts[JOB_STATE_PENDING] + counts[JOB_STATE_RUNNING]) == 0
+        if not terminal and trigger_job_id is not None:
+            active_rows = [
+                row
+                for row in effective_rows
+                if row["state"] in (JOB_STATE_PENDING, JOB_STATE_RUNNING)
+            ]
+            if (
+                len(active_rows) == 1
+                and str(active_rows[0].get("job_id")) == str(trigger_job_id)
+            ):
+                inferred_state: str
+                if trigger_exit_code is None:
+                    inferred_state = JOB_STATE_UNKNOWN
+                    warnings.append(
+                        "Trigger job is the only active effective row but "
+                        "--trigger-exit-code was not provided; using state='unknown' "
+                        "for finality inference."
+                    )
+                elif int(trigger_exit_code) == 0:
+                    inferred_state = JOB_STATE_COMPLETED
+                else:
+                    inferred_state = JOB_STATE_FAILED
+
+                active_rows[0]["state"] = inferred_state
+                counts = _counts_for_rows(effective_rows)
+                terminal = (counts[JOB_STATE_PENDING] + counts[JOB_STATE_RUNNING]) == 0
 
         event: Optional[str] = None
         if terminal:
@@ -844,7 +881,8 @@ class NotificationService:
             terminal=terminal,
             event=event,
             counts=counts,
-            effective_rows=rows,
+            effective_rows=effective_rows,
+            warnings=warnings,
         )
 
     def _recommendations_from_finality(self, finality: CollectionFinality, collection_name: str) -> List[str]:
@@ -879,6 +917,7 @@ class NotificationService:
         min_support: Optional[int] = None,
         top_k: Optional[int] = None,
         failed_tail_lines: Optional[int] = None,
+        precomputed_finality: Optional[CollectionFinality] = None,
     ) -> Dict[str, Any]:
         """Build deterministic structured report for collection-final notifications."""
         cfg = self.get_collection_final_config()
@@ -891,7 +930,7 @@ class NotificationService:
             else cfg.include_failed_output_tail_lines
         )
 
-        finality = self.evaluate_collection_finality(
+        finality = precomputed_finality or self.evaluate_collection_finality(
             collection,
             attempt_mode=effective_attempt_mode,
         )

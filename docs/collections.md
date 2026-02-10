@@ -300,6 +300,7 @@ Collections are used by `slurmkit notify job` to enrich notifications with:
 Collections also drive terminal collection reporting via `slurmkit notify collection-final`:
 - evaluates finality with latest-attempt semantics
 - sends `collection_completed` or `collection_failed` when terminal
+- supports trigger-aware terminal inference via `--trigger-exit-code`
 - deduplicates repeated terminal snapshots via collection metadata
 
 Typical end-of-job pattern:
@@ -307,7 +308,7 @@ Typical end-of-job pattern:
 ```bash
 rc=$?
 slurmkit notify job --job-id "${SLURM_JOB_ID}" --exit-code "${rc}"
-slurmkit notify collection-final --job-id "${SLURM_JOB_ID}"
+slurmkit notify collection-final --job-id "${SLURM_JOB_ID}" --trigger-exit-code "${rc}"
 exit "${rc}"
 ```
 

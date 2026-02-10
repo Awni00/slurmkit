@@ -102,6 +102,7 @@ slurmkit notify job --job-id 12345 --dry-run
 ```bash
 slurmkit notify collection-final --job-id 12345
 slurmkit notify collection-final --job-id 12345 --collection exp1
+slurmkit notify collection-final --job-id 12345 --trigger-exit-code 0
 slurmkit notify collection-final --job-id 12345 --route custom_ops --strict
 slurmkit notify collection-final --job-id 12345 --no-refresh --dry-run
 ```
@@ -110,6 +111,9 @@ slurmkit notify collection-final --job-id 12345 --no-refresh --dry-run
 - refreshes collection state before finality check (unless `--no-refresh`)
 - uses latest-attempt semantics to classify each logical job
 - sends `collection_completed` or `collection_failed` only when collection is terminal
+- can treat collection as terminal when the only active effective row is the trigger job (`--job-id`)
+- when that fallback path is used: `--trigger-exit-code 0` infers completed, non-zero infers failed
+- if fallback is used without `--trigger-exit-code`, trigger state is inferred as `unknown` and a warning is printed
 - deduplicates by terminal-state fingerprint (use `--force` to bypass)
 
 ## Job Script Integration
@@ -117,7 +121,7 @@ slurmkit notify collection-final --job-id 12345 --no-refresh --dry-run
 Recommended shell pattern to preserve original job exit code while triggering both job and collection-final notifications:
 
 ```bash
-trap 'rc=$?; slurmkit notify job --job-id "${SLURM_JOB_ID}" --exit-code "${rc}"; slurmkit notify collection-final --job-id "${SLURM_JOB_ID}"; exit "${rc}"' EXIT
+trap 'rc=$?; slurmkit notify job --job-id "${SLURM_JOB_ID}" --exit-code "${rc}"; slurmkit notify collection-final --job-id "${SLURM_JOB_ID}" --trigger-exit-code "${rc}"; exit "${rc}"' EXIT
 ```
 
 If your script handles exits explicitly, use equivalent end-of-script flow:
@@ -125,7 +129,7 @@ If your script handles exits explicitly, use equivalent end-of-script flow:
 ```bash
 rc=$?
 slurmkit notify job --job-id "${SLURM_JOB_ID}" --exit-code "${rc}"
-slurmkit notify collection-final --job-id "${SLURM_JOB_ID}"
+slurmkit notify collection-final --job-id "${SLURM_JOB_ID}" --trigger-exit-code "${rc}"
 exit "${rc}"
 ```
 

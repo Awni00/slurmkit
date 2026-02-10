@@ -466,6 +466,7 @@ slurmkit notify collection-final [options]
 | Option | Description |
 |--------|-------------|
 | `--job-id JOB_ID` | Triggering SLURM job ID (defaults to `SLURM_JOB_ID`) |
+| `--trigger-exit-code EXIT_CODE` | Optional trigger exit code for trigger-aware terminal inference (`0` completed, non-zero failed) |
 | `--collection NAME` | Optional collection name (otherwise resolved by job ID) |
 | `--route NAME` | Route name filter (repeatable) |
 | `--strict` | Require all attempted routes to succeed |
@@ -478,6 +479,7 @@ Examples:
 ```bash
 slurmkit notify collection-final --job-id 12345
 slurmkit notify collection-final --job-id 12345 --collection my_exp
+slurmkit notify collection-final --job-id 12345 --trigger-exit-code 1
 slurmkit notify collection-final --job-id 12345 --route team_slack --strict
 slurmkit notify collection-final --job-id 12345 --no-refresh --dry-run
 ```

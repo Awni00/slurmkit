@@ -60,6 +60,76 @@ def test_collection_finality_non_terminal_when_running(tmp_path):
     assert finality.counts["running"] == 1
 
 
+def test_collection_finality_trigger_only_active_with_zero_exit_code(tmp_path):
+    """Sole active trigger row with zero exit should infer completed terminality."""
+    config = _make_config(tmp_path, {"collections_dir": ".job-collections/"})
+    manager = CollectionManager(config=config)
+    collection = manager.create("exp")
+    collection.add_job(job_name="job1", job_id="100", state="RUNNING")
+    manager.save(collection)
+
+    service = NotificationService(config=config)
+    finality = service.evaluate_collection_finality(
+        manager.load("exp"),
+        attempt_mode="latest",
+        trigger_job_id="100",
+        trigger_exit_code=0,
+    )
+
+    assert finality.terminal is True
+    assert finality.event == EVENT_COLLECTION_COMPLETED
+    assert finality.counts["completed"] == 1
+    assert finality.counts["running"] == 0
+    assert finality.warnings == []
+
+
+def test_collection_finality_trigger_only_active_without_exit_code_warns(tmp_path):
+    """Missing trigger exit code should infer unknown with warning when fallback is used."""
+    config = _make_config(tmp_path, {"collections_dir": ".job-collections/"})
+    manager = CollectionManager(config=config)
+    collection = manager.create("exp")
+    collection.add_job(job_name="job1", job_id="100", state="RUNNING")
+    manager.save(collection)
+
+    service = NotificationService(config=config)
+    finality = service.evaluate_collection_finality(
+        manager.load("exp"),
+        attempt_mode="latest",
+        trigger_job_id="100",
+        trigger_exit_code=None,
+    )
+
+    assert finality.terminal is True
+    assert finality.event == EVENT_COLLECTION_FAILED
+    assert finality.counts["unknown"] == 1
+    assert len(finality.warnings) == 1
+    assert "--trigger-exit-code" in finality.warnings[0]
+
+
+def test_collection_finality_trigger_not_only_active_stays_non_terminal(tmp_path):
+    """No inference should happen when active rows include non-trigger jobs."""
+    config = _make_config(tmp_path, {"collections_dir": ".job-collections/"})
+    manager = CollectionManager(config=config)
+    collection = manager.create("exp")
+    collection.add_job(job_name="job1", job_id="100", state="RUNNING")
+    collection.add_job(job_name="job2", job_id="200", state="PENDING")
+    manager.save(collection)
+
+    service = NotificationService(config=config)
+    finality = service.evaluate_collection_finality(
+        manager.load("exp"),
+        attempt_mode="latest",
+        trigger_job_id="100",
+        trigger_exit_code=0,
+    )
+
+    assert finality.terminal is False
+    assert finality.event is None
+    assert finality.counts["running"] == 1
+    assert finality.counts["pending"] == 1
+    assert finality.warnings == []
+
+
 def test_collection_finality_unknown_is_failure_like(tmp_path):
     """Unknown terminal states should classify as collection_failed."""
     config = _make_config(tmp_path, {"collections_dir": ".job-collections/"})
