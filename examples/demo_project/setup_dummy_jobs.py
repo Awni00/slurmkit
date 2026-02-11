@@ -62,6 +62,8 @@ def main() -> int:
     failed_collection_name = f"{args.prefix}_terminal_failed"
     completed_collection_name = f"{args.prefix}_terminal_completed"
     in_progress_collection_name = f"{args.prefix}_in_progress"
+    sweep_spec_rel = "experiments/hyperparameter_sweep/job_spec.yaml"
+    model_spec_rel = "experiments/model_comparison/job_spec.yaml"
 
     demo_logs_dir = project_root / "jobs" / "dummy_demo" / "logs"
     failed_log = demo_logs_dir / f"{args.prefix}_failed.{base_id}002.out"
@@ -128,6 +130,9 @@ def main() -> int:
         started_at=_now_iso(),
         completed_at=_now_iso(),
     )
+    if not isinstance(failed_collection.meta, dict):
+        failed_collection.meta = {}
+    failed_collection.meta["generation"] = {"spec_path": sweep_spec_rel}
     manager.save(failed_collection)
 
     completed_collection = manager.create(
@@ -156,6 +161,9 @@ def main() -> int:
         started_at=_now_iso(),
         completed_at=_now_iso(),
     )
+    if not isinstance(completed_collection.meta, dict):
+        completed_collection.meta = {}
+    completed_collection.meta["generation"] = {"spec_path": model_spec_rel}
     manager.save(completed_collection)
 
     created = [failed_collection_name, completed_collection_name]
@@ -182,6 +190,9 @@ def main() -> int:
             parameters={"algorithm": "algo_c", "dataset": "large"},
             submitted_at=_now_iso(),
         )
+        if not isinstance(in_progress_collection.meta, dict):
+            in_progress_collection.meta = {}
+        in_progress_collection.meta["generation"] = {"spec_path": model_spec_rel}
         manager.save(in_progress_collection)
         created.append(in_progress_collection_name)
 
@@ -198,8 +209,16 @@ def main() -> int:
         f"--collection {failed_collection_name} --job-id {base_id}002 --no-refresh --dry-run"
     )
     print(
+        "  slurmkit notify job "
+        f"--collection {failed_collection_name} --job-id {base_id}002 --exit-code 1 --dry-run"
+    )
+    print(
         "  slurmkit notify collection-final "
         f"--collection {completed_collection_name} --job-id {base_id}011 --no-refresh --dry-run"
+    )
+    print(
+        "  slurmkit notify job "
+        f"--collection {completed_collection_name} --job-id {base_id}011 --exit-code 0 --on always --dry-run"
     )
     if args.include_non_terminal:
         print(

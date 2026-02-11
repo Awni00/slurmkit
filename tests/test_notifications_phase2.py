@@ -347,6 +347,100 @@ def test_job_ai_callback_failure_falls_back(tmp_path):
     assert "AI callback failed" in warning
 
 
+def test_collection_final_config_uses_spec_override(tmp_path):
+    """Collection-final report knobs should resolve from collection spec overrides."""
+    spec_path = tmp_path / "specs" / "exp_spec.yaml"
+    spec_path.parent.mkdir(parents=True, exist_ok=True)
+    spec_path.write_text(
+        "notifications:\n"
+        "  collection_final:\n"
+        "    attempt_mode: primary\n"
+        "    min_support: 7\n"
+        "    top_k: 4\n"
+        "    include_failed_output_tail_lines: 3\n",
+        encoding="utf-8",
+    )
+
+    config = _make_config(
+        tmp_path,
+        {
+            "collections_dir": ".job-collections/",
+            "notifications": {
+                "collection_final": {
+                    "attempt_mode": "latest",
+                    "min_support": 3,
+                    "top_k": 10,
+                    "include_failed_output_tail_lines": 20,
+                }
+            },
+        },
+    )
+    manager = CollectionManager(config=config)
+    collection = manager.create("exp")
+    collection.meta["generation"] = {"spec_path": "specs/exp_spec.yaml"}
+    collection.add_job(job_name="job1", job_id="100", state="COMPLETED")
+    manager.save(collection)
+
+    service = NotificationService(config=config)
+    warnings = []
+    cfg = service.get_collection_final_config(collection_name="exp", warnings=warnings)
+
+    assert warnings == []
+    assert cfg.attempt_mode == "primary"
+    assert cfg.min_support == 7
+    assert cfg.top_k == 4
+    assert cfg.include_failed_output_tail_lines == 3
+
+
+def test_collection_ai_callback_uses_spec_override(tmp_path, monkeypatch):
+    """Collection-final AI callback should resolve from collection spec overrides."""
+    module_path = tmp_path / "spec_collection_ai.py"
+    module_path.write_text(
+        "def summarize(payload):\n"
+        "    return f\"spec-summary-{payload['collection_name']}\"\n",
+        encoding="utf-8",
+    )
+    monkeypatch.syspath_prepend(str(tmp_path))
+
+    spec_path = tmp_path / "specs" / "exp_spec.yaml"
+    spec_path.parent.mkdir(parents=True, exist_ok=True)
+    spec_path.write_text(
+        "notifications:\n"
+        "  collection_final:\n"
+        "    ai:\n"
+        "      enabled: true\n"
+        "      callback: spec_collection_ai:summarize\n",
+        encoding="utf-8",
+    )
+
+    config = _make_config(
+        tmp_path,
+        {
+            "collections_dir": ".job-collections/",
+            "notifications": {
+                "collection_final": {
+                    "ai": {
+                        "enabled": True,
+                        "callback": "missing.module:fn",
+                    }
+                }
+            },
+        },
+    )
+    manager = CollectionManager(config=config)
+    collection = manager.create("exp")
+    collection.meta["generation"] = {"spec_path": "specs/exp_spec.yaml"}
+    collection.add_job(job_name="job1", job_id="100", state="COMPLETED")
+    manager.save(collection)
+
+    service = NotificationService(config=config)
+    ai_summary, ai_status, warning = service.run_collection_ai_callback({"collection_name": "exp"})
+
+    assert warning is None
+    assert ai_status == "available"
+    assert ai_summary == "spec-summary-exp"
+
+
 def test_collection_lock_timeout_when_already_locked(tmp_path):
     """Second lock acquisition should timeout while first lock is held."""
     config = _make_config(tmp_path, {"collections_dir": ".job-collections/"})

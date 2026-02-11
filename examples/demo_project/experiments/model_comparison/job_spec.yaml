@@ -44,3 +44,7 @@ slurm_args:
 
 # Job naming includes key parameters
 job_name_pattern: "compare_{{ algorithm }}_{{ dataset }}"
+
+# Note: no top-level `notifications` block here.
+# This collection intentionally uses global notifications from
+# .slurm-kit/config.yaml to demonstrate fallback behavior.

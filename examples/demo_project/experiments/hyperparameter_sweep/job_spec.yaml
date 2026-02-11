@@ -49,3 +49,21 @@ slurm_args:
 # Job naming pattern
 # This creates readable names like: demo_algo_a_small_default
 job_name_pattern: "demo_{{ algorithm }}_{{ dataset }}_{{ config }}"
+
+# Optional collection-specific notification overrides.
+# These settings apply when notify resolves this collection and take precedence
+# over .slurm-kit/config.yaml notifications keys.
+notifications:
+  defaults:
+    # Use a shorter output tail for this sweep's failed job notifications.
+    output_tail_lines: 15
+  job:
+    ai:
+      enabled: true
+      callback: "collection_ai_callback:summarize_job_payload"
+  collection_final:
+    attempt_mode: latest
+    top_k: 5
+    ai:
+      enabled: true
+      callback: "collection_ai_callback:summarize_collection_report"

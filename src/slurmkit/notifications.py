@@ -29,6 +29,8 @@ from email.message import EmailMessage
 from pathlib import Path
 from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple
 
+import yaml
+
 from slurmkit.collections import (
     Collection,
     CollectionManager,
@@ -348,10 +350,171 @@ class NotificationService:
             config = get_config()
         self.config = config
         self.collection_manager = collection_manager or CollectionManager(config=config)
+        self._emitted_config_warnings: set = set()
 
-    def get_defaults(self) -> NotificationDefaults:
-        """Get normalized notification defaults from config."""
-        defaults_raw = self.config.get("notifications.defaults", {}) or {}
+    def _append_config_warning(
+        self,
+        warnings: Optional[List[str]],
+        key: str,
+        message: str,
+    ) -> None:
+        """Append warning once per service instance when sink is provided."""
+        if warnings is None:
+            return
+        if key in self._emitted_config_warnings:
+            return
+        self._emitted_config_warnings.add(key)
+        warnings.append(message)
+
+    def _deep_merge_dicts(
+        self,
+        base: Dict[str, Any],
+        override: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        """Deep-merge dictionaries with override precedence and list replacement."""
+        merged = copy.deepcopy(base)
+        for key, value in override.items():
+            if (
+                key in merged
+                and isinstance(merged[key], dict)
+                and isinstance(value, dict)
+            ):
+                merged[key] = self._deep_merge_dicts(merged[key], value)
+            else:
+                merged[key] = copy.deepcopy(value)
+        return merged
+
+    def _collection_spec_path(
+        self,
+        collection: Collection,
+    ) -> Optional[Path]:
+        """Resolve configured spec path for collection generation metadata."""
+        generation_meta = collection.meta.get("generation") if isinstance(collection.meta, dict) else None
+        if not isinstance(generation_meta, dict):
+            return None
+
+        raw_path = generation_meta.get("spec_path")
+        if raw_path is None:
+            return None
+
+        raw_str = str(raw_path).strip()
+        if not raw_str:
+            return None
+
+        path = Path(raw_str).expanduser()
+        if path.is_absolute():
+            return path
+
+        project_root = getattr(self.config, "project_root", Path.cwd())
+        return Path(project_root) / path
+
+    def _load_collection_spec_notifications(
+        self,
+        collection_name: Optional[str],
+        warnings: Optional[List[str]] = None,
+    ) -> Optional[Dict[str, Any]]:
+        """Load optional top-level notifications override from collection spec."""
+        if not collection_name:
+            return None
+
+        try:
+            collection = self.collection_manager.load(collection_name)
+        except Exception as exc:
+            self._append_config_warning(
+                warnings,
+                f"{collection_name}:load_collection",
+                f"Failed to load collection '{collection_name}' for spec-based notification overrides: {exc}",
+            )
+            return None
+
+        spec_path = self._collection_spec_path(collection)
+        if spec_path is None:
+            return None
+
+        if not spec_path.exists():
+            self._append_config_warning(
+                warnings,
+                f"{collection_name}:{spec_path}:missing_spec",
+                (
+                    f"Spec file not found for collection '{collection_name}' at {spec_path}; "
+                    "falling back to global notifications config."
+                ),
+            )
+            return None
+
+        try:
+            with open(spec_path, "r") as f:
+                spec_data = yaml.safe_load(f) or {}
+        except (yaml.YAMLError, OSError) as exc:
+            self._append_config_warning(
+                warnings,
+                f"{collection_name}:{spec_path}:invalid_spec",
+                (
+                    f"Failed to read spec file for collection '{collection_name}' at {spec_path}: {exc}; "
+                    "falling back to global notifications config."
+                ),
+            )
+            return None
+
+        if not isinstance(spec_data, dict):
+            self._append_config_warning(
+                warnings,
+                f"{collection_name}:{spec_path}:root_not_mapping",
+                (
+                    f"Spec file for collection '{collection_name}' at {spec_path} must be a mapping; "
+                    "falling back to global notifications config."
+                ),
+            )
+            return None
+
+        if "notifications" not in spec_data:
+            return None
+
+        override = spec_data.get("notifications")
+        if override is None:
+            return None
+        if not isinstance(override, dict):
+            self._append_config_warning(
+                warnings,
+                f"{collection_name}:{spec_path}:notifications_not_mapping",
+                (
+                    f"Spec file notifications block for collection '{collection_name}' at {spec_path} "
+                    "must be a mapping; falling back to global notifications config."
+                ),
+            )
+            return None
+
+        return override
+
+    def _effective_notifications_config(
+        self,
+        collection_name: Optional[str] = None,
+        warnings: Optional[List[str]] = None,
+    ) -> Dict[str, Any]:
+        """Resolve effective notifications config with collection-spec overrides."""
+        global_notifications = self.config.get("notifications", {}) or {}
+        if not isinstance(global_notifications, dict):
+            global_notifications = {}
+
+        override = self._load_collection_spec_notifications(
+            collection_name=collection_name,
+            warnings=warnings,
+        )
+        if override is None:
+            return copy.deepcopy(global_notifications)
+        return self._deep_merge_dicts(global_notifications, override)
+
+    def get_defaults(
+        self,
+        collection_name: Optional[str] = None,
+        warnings: Optional[List[str]] = None,
+    ) -> NotificationDefaults:
+        """Get normalized notification defaults from effective config."""
+        notifications_cfg = self._effective_notifications_config(
+            collection_name=collection_name,
+            warnings=warnings,
+        )
+        defaults_raw = notifications_cfg.get("defaults", {}) or {}
         events = _normalize_events(defaults_raw.get("events"), fallback=[DEFAULT_EVENT_FAILED])
 
         return NotificationDefaults(
@@ -362,9 +525,21 @@ class NotificationService:
             output_tail_lines=_to_positive_int(defaults_raw.get("output_tail_lines"), 40),
         )
 
-    def get_collection_final_config(self) -> CollectionFinalConfig:
+    def get_collection_final_config(
+        self,
+        collection: Optional[Collection] = None,
+        collection_name: Optional[str] = None,
+        warnings: Optional[List[str]] = None,
+    ) -> CollectionFinalConfig:
         """Get normalized configuration for collection-final reporting."""
-        raw = self.config.get("notifications.collection_final", {}) or {}
+        resolved_collection_name = collection_name
+        if collection is not None:
+            resolved_collection_name = collection.name
+        notifications_cfg = self._effective_notifications_config(
+            collection_name=resolved_collection_name,
+            warnings=warnings,
+        )
+        raw = notifications_cfg.get("collection_final", {}) or {}
         attempt_mode = str(raw.get("attempt_mode", "latest")).strip().lower()
         if attempt_mode not in ("primary", "latest"):
             attempt_mode = "latest"
@@ -538,6 +713,8 @@ class NotificationService:
         self,
         event: Optional[str],
         route_names: Optional[List[str]] = None,
+        collection_name: Optional[str] = None,
+        warnings: Optional[List[str]] = None,
     ) -> RouteResolution:
         """
         Resolve routes by event and optional route-name filtering.
@@ -545,12 +722,21 @@ class NotificationService:
         Args:
             event: Event name for filtering. If None, no event filtering is applied.
             route_names: Optional allow-list of route names.
+            collection_name: Optional collection name for spec-level overrides.
+            warnings: Optional list to receive config fallback warnings.
 
         Returns:
             RouteResolution with routes, parsing errors, and skipped route names.
         """
-        defaults = self.get_defaults()
-        raw_routes = self.config.get("notifications.routes", []) or []
+        notifications_cfg = self._effective_notifications_config(
+            collection_name=collection_name,
+            warnings=warnings,
+        )
+        defaults = self.get_defaults(
+            collection_name=collection_name,
+            warnings=warnings,
+        )
+        raw_routes = notifications_cfg.get("routes", []) or []
         if not isinstance(raw_routes, list):
             return RouteResolution(
                 routes=[],
@@ -678,8 +864,6 @@ class NotificationService:
     ) -> Tuple[Dict[str, Any], List[str]]:
         """Resolve job and collection metadata for notifications."""
         warnings: List[str] = []
-        defaults = self.get_defaults()
-        tail_n = tail_lines if tail_lines is not None else defaults.output_tail_lines
 
         job_name_env = os.environ.get("SLURM_JOB_NAME")
         context_source = "env_only"
@@ -712,6 +896,7 @@ class NotificationService:
 
         selected_job: Optional[Dict[str, Any]] = None
         selected_resub: Optional[Dict[str, Any]] = None
+        selected_collection: Optional[Collection] = None
 
         if len(matches) == 1:
             context_source = "collection_match"
@@ -728,6 +913,18 @@ class NotificationService:
                 "Job ID matched multiple collections "
                 f"({', '.join(match_names)}); using env-only context."
             )
+
+        resolved_cfg_collection_name: Optional[str] = None
+        if selected_collection is not None:
+            resolved_cfg_collection_name = selected_collection.name
+        elif collection_name and collection_names:
+            resolved_cfg_collection_name = collection_name
+
+        defaults = self.get_defaults(
+            collection_name=resolved_cfg_collection_name,
+            warnings=warnings,
+        )
+        tail_n = tail_lines if tail_lines is not None else defaults.output_tail_lines
 
         derived_state = "FAILED" if event == EVENT_JOB_FAILED else "COMPLETED"
         job_payload: Dict[str, Any] = {
@@ -920,7 +1117,7 @@ class NotificationService:
         precomputed_finality: Optional[CollectionFinality] = None,
     ) -> Dict[str, Any]:
         """Build deterministic structured report for collection-final notifications."""
-        cfg = self.get_collection_final_config()
+        cfg = self.get_collection_final_config(collection=collection)
         effective_attempt_mode = attempt_mode or cfg.attempt_mode
         effective_min_support = min_support if min_support is not None else cfg.min_support
         effective_top_k = top_k if top_k is not None else cfg.top_k
@@ -990,17 +1187,35 @@ class NotificationService:
         }
         return report
 
-    def _ai_callback_config(self) -> Dict[str, Any]:
+    def _ai_callback_config(
+        self,
+        collection_name: Optional[str] = None,
+        warnings: Optional[List[str]] = None,
+    ) -> Dict[str, Any]:
         """Get normalized AI callback configuration for collection-final reports."""
-        raw = self.config.get("notifications.collection_final.ai", {}) or {}
+        notifications_cfg = self._effective_notifications_config(
+            collection_name=collection_name,
+            warnings=warnings,
+        )
+        collection_final_cfg = notifications_cfg.get("collection_final", {}) or {}
+        raw = collection_final_cfg.get("ai", {}) or {}
         return {
             "enabled": bool(raw.get("enabled", False)),
             "callback": raw.get("callback"),
         }
 
-    def _job_ai_callback_config(self) -> Dict[str, Any]:
+    def _job_ai_callback_config(
+        self,
+        collection_name: Optional[str] = None,
+        warnings: Optional[List[str]] = None,
+    ) -> Dict[str, Any]:
         """Get normalized AI callback configuration for job notifications."""
-        raw = self.config.get("notifications.job.ai", {}) or {}
+        notifications_cfg = self._effective_notifications_config(
+            collection_name=collection_name,
+            warnings=warnings,
+        )
+        job_cfg = notifications_cfg.get("job", {}) or {}
+        raw = job_cfg.get("ai", {}) or {}
         return {
             "enabled": bool(raw.get("enabled", False)),
             "callback": raw.get("callback"),
@@ -1043,7 +1258,10 @@ class NotificationService:
         Returns:
             (ai_summary_markdown, ai_status, warning_message)
         """
-        ai_cfg = self._ai_callback_config()
+        collection_name = report.get("collection_name")
+        ai_cfg = self._ai_callback_config(
+            collection_name=str(collection_name) if collection_name else None,
+        )
         if not ai_cfg["enabled"]:
             return None, "disabled", None
 
@@ -1079,7 +1297,14 @@ class NotificationService:
         Returns:
             (ai_summary_markdown, ai_status, warning_message)
         """
-        ai_cfg = self._job_ai_callback_config()
+        collection_obj = payload.get("collection")
+        collection_name: Optional[str] = None
+        if isinstance(collection_obj, dict):
+            raw_name = collection_obj.get("name")
+            if raw_name:
+                collection_name = str(raw_name)
+
+        ai_cfg = self._job_ai_callback_config(collection_name=collection_name)
         if not ai_cfg["enabled"]:
             return None, "disabled", None
 

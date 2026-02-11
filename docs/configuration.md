@@ -333,6 +333,23 @@ When job AI callback execution fails, deterministic notification delivery still 
 
 When AI callback execution fails, deterministic report delivery still proceeds and payload marks `ai_status: unavailable`.
 
+### Collection Spec Notification Overrides
+
+Collections generated from `job_spec.yaml` persist `meta.generation.spec_path`.
+At notify-time, slurmkit loads that spec and checks for a top-level `notifications` block.
+
+Precedence:
+- `spec.yaml` top-level `notifications` (collection-specific override)
+- `.slurm-kit/config.yaml` `notifications` (global fallback)
+
+Merge behavior:
+- Mapping values deep-merge recursively.
+- List values replace global values (including `notifications.routes`).
+
+Fallback behavior:
+- If the spec file is missing/unreadable/malformed, slurmkit emits a context warning and falls back to global notifications.
+- If the spec has no top-level `notifications` key, global notifications are used without warning.
+
 ### Environment Variable Interpolation
 
 Webhook fields support `${VAR_NAME}` placeholders:

@@ -491,6 +491,48 @@ def test_cmd_notify_collection_final_ai_callback_failure_fallback(tmp_path, monk
     assert captured["payload"]["ai_summary"] is None
 
 
+def test_cmd_notify_collection_final_missing_spec_warns_and_falls_back(tmp_path, monkeypatch, capsys):
+    """Missing collection spec should emit context warning and still send via global config."""
+    config = _make_config(
+        tmp_path,
+        {
+            "collections_dir": ".job-collections/",
+            "notifications": {
+                "routes": [
+                    {
+                        "name": "r",
+                        "type": "webhook",
+                        "url": "https://example.test/hook",
+                        "events": ["collection_completed"],
+                    }
+                ]
+            },
+        },
+    )
+    manager = CollectionManager(config=config)
+    c = manager.create("exp")
+    c.meta["generation"] = {"spec_path": "specs/missing.yaml"}
+    c.add_job(job_name="job", job_id="100", state="COMPLETED")
+    manager.save(c)
+    service = NotificationService(config=config)
+
+    captured = {"dispatch": 0}
+
+    def fake_dispatch(payload, routes, dry_run=False):
+        captured["dispatch"] += 1
+        return [DeliveryResult(route_name=routes[0].name, route_type=routes[0].route_type, success=True, attempts=1)]
+
+    monkeypatch.setattr(service, "dispatch", fake_dispatch)
+    monkeypatch.setattr(commands, "get_configured_config", lambda _args: config)
+    monkeypatch.setattr(commands, "NotificationService", lambda config=None: service)
+
+    assert commands.cmd_notify_collection_final(_args(job_id="100")) == 0
+    out = capsys.readouterr().out
+    assert captured["dispatch"] == 1
+    assert "[context-warning]" in out
+    assert "Spec file not found" in out
+
+
 def test_cmd_notify_collection_final_event_route_filtering_skip(tmp_path, monkeypatch):
     """No route subscribed to collection_completed should skip send with exit 0."""
     config = _make_config(

@@ -403,6 +403,13 @@ slurmkit notify job --job-id "$SLURM_JOB_ID" --exit-code "$rc"
 slurmkit notify collection-final --job-id "$SLURM_JOB_ID" --trigger-exit-code "$rc"
 ```
 
+Collection-specific overrides are supported via a top-level `notifications` block in `job_spec.yaml`:
+- If a collection is linked to a spec with `notifications`, those values override global `.slurm-kit/config.yaml` notifications.
+- If no spec-level block exists (or spec loading fails), slurmkit falls back to global config.
+- Dicts deep-merge; lists replace (including `notifications.routes`).
+
+See `/Users/awni/Documents/project-code/slurmkit/docs/notifications.md` and `/Users/awni/Documents/project-code/slurmkit/examples/demo_project/README.md` for full examples.
+
 Recommended trap snippet inside a job script:
 
 ```bash

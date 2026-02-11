@@ -403,3 +403,51 @@ def test_cmd_generate_persists_generation_metadata(monkeypatch, tmp_path):
     assert generation_meta["slurm_logic_function"] == "get_slurm_args"
     assert isinstance(generation_meta["slurm_defaults"], dict)
     assert collection.parameters == yaml.safe_load(params.read_text(encoding="utf-8"))
+
+
+def test_cmd_generate_spec_file_persists_spec_path(monkeypatch, tmp_path):
+    """cmd_generate with spec should persist spec_path relative to project root."""
+    template = tmp_path / "templates" / "train.job.j2"
+    template.parent.mkdir(parents=True, exist_ok=True)
+    template.write_text(
+        "#!/bin/bash\n"
+        "echo {{ run }}\n",
+        encoding="utf-8",
+    )
+    spec_path = tmp_path / "experiments" / "exp1" / "job_spec.yaml"
+    spec_path.parent.mkdir(parents=True, exist_ok=True)
+    spec_path.write_text(
+        "name: exp1\n"
+        "description: demo\n"
+        "template: ../../templates/train.job.j2\n"
+        "output_dir: ../../generated\n"
+        "parameters:\n"
+        "  mode: list\n"
+        "  values:\n"
+        "    - run: 1\n",
+        encoding="utf-8",
+    )
+
+    cfg = _FakeConfig(tmp_path)
+    cfg.project_root = tmp_path  # type: ignore[attr-defined]
+    collection = Collection("exp1")
+    manager = _FakeManager(collection)
+
+    monkeypatch.setattr(commands, "get_configured_config", lambda _args: cfg)
+    monkeypatch.setattr(commands, "CollectionManager", lambda config=None: manager)
+
+    args = Namespace(
+        spec_file=str(spec_path),
+        template=None,
+        params=None,
+        output_dir=None,
+        collection="exp1",
+        slurm_args_file=None,
+        dry_run=False,
+    )
+    exit_code = commands.cmd_generate(args)
+
+    assert exit_code == 0
+    assert manager.saved is True
+    generation_meta = collection.meta["generation"]
+    assert generation_meta["spec_path"] == "experiments/exp1/job_spec.yaml"

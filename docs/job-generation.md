@@ -124,7 +124,36 @@ slurm_args:
 
 # Jinja2 pattern for job names
 job_name_pattern: "{{ model }}_lr{{ learning_rate }}_bs{{ batch_size }}"
+
+# Optional collection-specific notification overrides
+# (same shape as .slurm-kit/config.yaml notifications)
+notifications:
+  defaults:
+    events: [job_failed]
+  job:
+    ai:
+      enabled: false
+      callback: null
+  collection_final:
+    attempt_mode: latest
+    min_support: 3
+    top_k: 10
+    include_failed_output_tail_lines: 20
+    ai:
+      enabled: false
+      callback: null
+  routes:
+    - name: exp_slack
+      type: slack
+      url: "${SLACK_WEBHOOK_URL}"
+      events: [job_failed, collection_failed]
 ```
+
+Notification precedence for `slurmkit notify`:
+- If collection generation metadata includes `spec_path`, slurmkit loads the collection's `spec.yaml` at notify-time.
+- If top-level `notifications` exists in the spec, it overrides global notifications via deep merge.
+- Dict keys deep-merge; list values (including `notifications.routes`) replace the global list.
+- If spec is missing/unreadable/malformed, slurmkit warns and falls back to `.slurm-kit/config.yaml`.
 
 ## Parameter Modes
 

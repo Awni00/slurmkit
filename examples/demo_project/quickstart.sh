@@ -234,12 +234,13 @@ if [[ "$notify_choice" =~ ^[Yy]$ ]]; then
     fi
 
     echo ""
-    echo "Optional AI callback demo:"
+    echo "Optional collection-specific notifications demo:"
     echo "  export PYTHONPATH=\"\$PWD:\$PYTHONPATH\""
-    echo "  set notifications.job.ai.enabled=true in .slurm-kit/config.yaml"
-    echo "  slurmkit notify job --job-id 990002 --exit-code 1 --dry-run"
-    echo "  set notifications.collection_final.ai.enabled=true in .slurm-kit/config.yaml"
+    echo "  # uses spec override from experiments/hyperparameter_sweep/job_spec.yaml"
+    echo "  slurmkit notify job --collection demo_terminal_failed --job-id 990002 --exit-code 1 --dry-run"
     echo "  slurmkit notify collection-final --collection demo_terminal_failed --job-id 990002 --no-refresh --dry-run"
+    echo "  # fallback collection (no spec notifications block) uses .slurm-kit/config.yaml"
+    echo "  slurmkit notify job --collection demo_terminal_completed --job-id 990011 --exit-code 0 --on always --dry-run"
 else
     echo "Skipped notification demos."
 fi
@@ -279,7 +280,7 @@ echo ""
 echo "  6. Demo collection-final notifications:"
 echo "     ./setup_dummy_jobs.py --include-non-terminal"
 echo "     export PYTHONPATH=\"\$PWD:\$PYTHONPATH\""
-echo "     # set notifications.collection_final.ai.enabled=true in .slurm-kit/config.yaml"
+echo "     # demo_terminal_failed uses spec-level notifications override"
 echo "     slurmkit notify collection-final --collection demo_terminal_failed --job-id 990002 --no-refresh --dry-run"
 echo ""
 echo "See README.md for more detailed workflows and examples."

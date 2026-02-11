@@ -216,9 +216,11 @@ def _resolve_generation_context(collection: Collection, args: Any) -> Dict[str, 
 def _build_generation_metadata(
     generator: JobGenerator,
     output_dir: Path,
+    spec_path: Optional[Path] = None,
+    project_root: Optional[Path] = None,
 ) -> Dict[str, Any]:
     """Build serializable generation metadata for collection persistence."""
-    return {
+    metadata = {
         "template_path": str(generator.template_path),
         "output_dir": str(output_dir),
         "job_name_pattern": generator.job_name_pattern,
@@ -227,6 +229,22 @@ def _build_generation_metadata(
         "slurm_logic_file": str(generator.slurm_logic_file) if generator.slurm_logic_file else None,
         "slurm_logic_function": generator.slurm_logic_function,
     }
+    if spec_path is not None:
+        resolved_spec = spec_path.expanduser()
+        if not resolved_spec.is_absolute():
+            resolved_spec = (Path.cwd() / resolved_spec).resolve()
+        else:
+            resolved_spec = resolved_spec.resolve()
+
+        stored_spec = str(resolved_spec)
+        if project_root is not None:
+            try:
+                stored_spec = str(resolved_spec.relative_to(project_root.resolve()))
+            except ValueError:
+                stored_spec = str(resolved_spec)
+        metadata["spec_path"] = stored_spec
+
+    return metadata
 
 
 # =============================================================================
@@ -896,6 +914,8 @@ def cmd_generate(args: Any) -> int:
     generation_meta = _build_generation_metadata(
         generator=generator,
         output_dir=Path(output_dir),
+        spec_path=Path(args.spec_file) if args.spec_file else None,
+        project_root=getattr(config, "project_root", None),
     )
     if not isinstance(collection.meta, dict):
         collection.meta = {}
@@ -1804,6 +1824,11 @@ def cmd_notify_job(args: Any) -> int:
     route_resolution = service.resolve_routes(
         event=event,
         route_names=args.route,
+        collection_name=(
+            payload.get("collection", {}).get("name")
+            if isinstance(payload.get("collection"), dict)
+            else None
+        ),
     )
 
     if not route_resolution.routes and not route_resolution.errors:
@@ -1907,7 +1932,13 @@ def cmd_notify_collection_final(args: Any) -> int:
                 collection.refresh_states()
                 manager.save(collection)
 
-            cfg = service.get_collection_final_config()
+            cfg_warnings: List[str] = []
+            cfg = service.get_collection_final_config(
+                collection=collection,
+                warnings=cfg_warnings,
+            )
+            for warning in cfg_warnings:
+                print(f"[context-warning] {warning}")
             finality = service.evaluate_collection_finality(
                 collection=collection,
                 attempt_mode=cfg.attempt_mode,
@@ -1972,6 +2003,7 @@ def cmd_notify_collection_final(args: Any) -> int:
             route_resolution = service.resolve_routes(
                 event=event,
                 route_names=args.route,
+                collection_name=collection.name,
             )
             if not route_resolution.routes and not route_resolution.errors:
                 print(f"No notification routes matched event '{event}'.")

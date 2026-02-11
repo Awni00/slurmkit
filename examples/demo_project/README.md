@@ -125,7 +125,46 @@ Create deterministic dummy collections/logs:
 ./setup_dummy_jobs.py --include-non-terminal
 ```
 
-Optional: enable AI callback demo for `notify job` and `notify collection-final` payloads:
+## Collection-Specific Notification Overrides (`spec.yaml`)
+
+This demo now includes both override modes:
+
+- `experiments/hyperparameter_sweep/job_spec.yaml` defines a top-level `notifications` block.
+  Collections linked to this spec use collection-specific notification config.
+- `experiments/model_comparison/job_spec.yaml` intentionally has no `notifications` block.
+  Collections linked to this spec fall back to global `.slurm-kit/config.yaml`.
+
+Refresh dummy collections with embedded `meta.generation.spec_path` metadata:
+
+```bash
+./setup_dummy_jobs.py --include-non-terminal
+export PYTHONPATH="$PWD:$PYTHONPATH"
+```
+
+Compare behavior:
+
+```bash
+# Uses spec override (hyperparameter_sweep spec has notifications.job.ai.enabled=true)
+slurmkit notify job --collection demo_terminal_failed --job-id 990002 --exit-code 1 --dry-run
+
+# Uses global fallback (model_comparison spec has no notifications block)
+slurmkit notify job --collection demo_terminal_completed --job-id 990011 --exit-code 0 --on always --dry-run
+```
+
+In dry-run payload preview, compare:
+- `ai_status` / `ai_summary`
+- output tail length behavior for failed jobs (`output_tail_lines`)
+
+Collection-final behavior follows the same precedence:
+
+```bash
+slurmkit notify collection-final --collection demo_terminal_failed --job-id 990002 --no-refresh --dry-run
+slurmkit notify collection-final --collection demo_terminal_completed --job-id 990011 --no-refresh --dry-run
+```
+
+If a collection references a missing/invalid spec, notify prints `[context-warning]` and falls back to global notifications.
+
+Optional: force global AI callback behavior (for collections without spec overrides):
 
 ```bash
 export PYTHONPATH="$PWD:$PYTHONPATH"
@@ -223,11 +262,17 @@ slurmkit notify collection-final --collection demo_terminal_failed --job-id 9900
 
 ```bash
 export PYTHONPATH="$PWD:$PYTHONPATH"
-# set notifications.job.ai.enabled: true
-slurmkit notify job --job-id 990002 --exit-code 1 --dry-run
+# Already enabled by spec override for demo_terminal_failed
+slurmkit notify job --collection demo_terminal_failed --job-id 990002 --exit-code 1 --dry-run
 
-# set notifications.collection_final.ai.enabled: true
+# Also enabled by spec override for demo_terminal_failed
 slurmkit notify collection-final --collection demo_terminal_failed --job-id 990002 --no-refresh --dry-run
+
+# For fallback collection (model_comparison spec has no notifications block),
+# enable global config keys if you want AI summary there too:
+# notifications.job.ai.enabled: true
+# notifications.collection_final.ai.enabled: true
+slurmkit notify job --collection demo_terminal_completed --job-id 990011 --exit-code 0 --on always --dry-run
 ```
 
 Look for `ai_status` and `ai_summary` in payload preview.

@@ -895,3 +895,263 @@ def test_email_dispatch_permanent_failure(tmp_path, monkeypatch):
     assert results[0].success is False
     assert results[0].attempts == 2
     assert "permanent failure" in (results[0].error or "")
+
+
+def test_build_payload_uses_spec_override_output_tail_lines(tmp_path):
+    """Collection spec notifications defaults should override global output tail lines."""
+    output_path = tmp_path / "job.out"
+    output_path.write_text("line1\nline2\nline3\n", encoding="utf-8")
+
+    spec_path = tmp_path / "specs" / "exp_spec.yaml"
+    spec_path.parent.mkdir(parents=True, exist_ok=True)
+    spec_path.write_text(
+        "notifications:\n"
+        "  defaults:\n"
+        "    output_tail_lines: 1\n",
+        encoding="utf-8",
+    )
+
+    config = _make_config(
+        tmp_path,
+        {
+            "collections_dir": ".job-collections/",
+            "notifications": {
+                "defaults": {"output_tail_lines": 3},
+                "routes": [{"name": "hook", "type": "webhook", "url": "https://example.test/hook"}],
+            },
+        },
+    )
+    manager = CollectionManager(config=config)
+    collection = manager.create("exp")
+    collection.meta["generation"] = {"spec_path": "specs/exp_spec.yaml"}
+    collection.add_job(job_name="train", job_id="123", output_path=output_path, state="FAILED")
+    manager.save(collection)
+
+    service = NotificationService(config=config)
+    payload, warnings = service.build_job_payload(
+        job_id="123",
+        exit_code=1,
+        event=EVENT_JOB_FAILED,
+        collection_name="exp",
+    )
+
+    assert warnings == []
+    assert payload["job"]["output_tail"] == "line3"
+
+
+def test_resolve_routes_uses_spec_routes_replacement(tmp_path):
+    """Spec routes should replace global routes for matched collections."""
+    spec_path = tmp_path / "specs" / "exp_spec.yaml"
+    spec_path.parent.mkdir(parents=True, exist_ok=True)
+    spec_path.write_text(
+        "notifications:\n"
+        "  routes:\n"
+        "    - name: spec_route\n"
+        "      type: webhook\n"
+        "      url: https://example.test/spec\n",
+        encoding="utf-8",
+    )
+
+    config = _make_config(
+        tmp_path,
+        {
+            "collections_dir": ".job-collections/",
+            "notifications": {
+                "routes": [{"name": "global_route", "type": "webhook", "url": "https://example.test/global"}],
+            },
+        },
+    )
+    manager = CollectionManager(config=config)
+    collection = manager.create("exp")
+    collection.meta["generation"] = {"spec_path": "specs/exp_spec.yaml"}
+    manager.save(collection)
+
+    service = NotificationService(config=config)
+    resolution = service.resolve_routes(event=EVENT_JOB_FAILED, collection_name="exp")
+
+    assert resolution.errors == []
+    assert [route.name for route in resolution.routes] == ["spec_route"]
+
+
+def test_job_ai_callback_uses_spec_override(tmp_path, monkeypatch):
+    """Job AI callback should resolve from collection spec notifications override."""
+    module_path = tmp_path / "spec_ai_module.py"
+    module_path.write_text(
+        "def summarize(payload):\n"
+        "    return f\"spec-ai-{payload['job']['job_id']}\"\n",
+        encoding="utf-8",
+    )
+    monkeypatch.syspath_prepend(str(tmp_path))
+
+    spec_path = tmp_path / "specs" / "exp_spec.yaml"
+    spec_path.parent.mkdir(parents=True, exist_ok=True)
+    spec_path.write_text(
+        "notifications:\n"
+        "  job:\n"
+        "    ai:\n"
+        "      enabled: true\n"
+        "      callback: spec_ai_module:summarize\n",
+        encoding="utf-8",
+    )
+
+    config = _make_config(
+        tmp_path,
+        {
+            "collections_dir": ".job-collections/",
+            "notifications": {
+                "job": {"ai": {"enabled": True, "callback": "missing.module:fn"}},
+                "routes": [{"name": "hook", "type": "webhook", "url": "https://example.test/hook"}],
+            },
+        },
+    )
+    manager = CollectionManager(config=config)
+    collection = manager.create("exp")
+    collection.meta["generation"] = {"spec_path": "specs/exp_spec.yaml"}
+    collection.add_job(job_name="train", job_id="123", state="FAILED")
+    manager.save(collection)
+
+    service = NotificationService(config=config)
+    payload, warnings = service.build_job_payload(
+        job_id="123",
+        exit_code=1,
+        event=EVENT_JOB_FAILED,
+        collection_name="exp",
+    )
+    assert warnings == []
+
+    ai_summary, ai_status, warning = service.run_job_ai_callback(payload)
+    assert warning is None
+    assert ai_status == "available"
+    assert ai_summary == "spec-ai-123"
+
+
+def test_missing_spec_warns_and_falls_back_to_global_notifications(tmp_path):
+    """Missing spec path should warn and continue using global notifications."""
+    output_path = tmp_path / "job.out"
+    output_path.write_text("line1\nline2\nline3\n", encoding="utf-8")
+
+    config = _make_config(
+        tmp_path,
+        {
+            "collections_dir": ".job-collections/",
+            "notifications": {
+                "defaults": {"output_tail_lines": 2},
+                "routes": [{"name": "hook", "type": "webhook", "url": "https://example.test/hook"}],
+            },
+        },
+    )
+    manager = CollectionManager(config=config)
+    collection = manager.create("exp")
+    collection.meta["generation"] = {"spec_path": "specs/missing.yaml"}
+    collection.add_job(job_name="train", job_id="123", output_path=output_path, state="FAILED")
+    manager.save(collection)
+
+    service = NotificationService(config=config)
+    payload, warnings = service.build_job_payload(
+        job_id="123",
+        exit_code=1,
+        event=EVENT_JOB_FAILED,
+        collection_name="exp",
+    )
+
+    assert payload["job"]["output_tail"] == "line2\nline3"
+    assert len(warnings) == 1
+    assert "Spec file not found" in warnings[0]
+
+
+def test_invalid_spec_warns_and_falls_back_to_global_notifications(tmp_path):
+    """Unreadable spec YAML should warn and fallback to global notifications."""
+    spec_path = tmp_path / "specs" / "bad_spec.yaml"
+    spec_path.parent.mkdir(parents=True, exist_ok=True)
+    spec_path.write_text("notifications:\n  defaults: [\n", encoding="utf-8")
+
+    config = _make_config(
+        tmp_path,
+        {
+            "collections_dir": ".job-collections/",
+            "notifications": {
+                "routes": [{"name": "hook", "type": "webhook", "url": "https://example.test/hook"}],
+            },
+        },
+    )
+    manager = CollectionManager(config=config)
+    collection = manager.create("exp")
+    collection.meta["generation"] = {"spec_path": "specs/bad_spec.yaml"}
+    collection.add_job(job_name="train", job_id="123", state="FAILED")
+    manager.save(collection)
+
+    service = NotificationService(config=config)
+    _payload, warnings = service.build_job_payload(
+        job_id="123",
+        exit_code=1,
+        event=EVENT_JOB_FAILED,
+        collection_name="exp",
+    )
+
+    assert len(warnings) == 1
+    assert "Failed to read spec file" in warnings[0]
+
+
+def test_non_mapping_notifications_in_spec_warns_and_falls_back(tmp_path):
+    """Non-mapping notifications block should warn and fallback to global notifications."""
+    spec_path = tmp_path / "specs" / "bad_notifications.yaml"
+    spec_path.parent.mkdir(parents=True, exist_ok=True)
+    spec_path.write_text("notifications:\n  - not\n  - mapping\n", encoding="utf-8")
+
+    config = _make_config(
+        tmp_path,
+        {
+            "collections_dir": ".job-collections/",
+            "notifications": {
+                "routes": [{"name": "hook", "type": "webhook", "url": "https://example.test/hook"}],
+            },
+        },
+    )
+    manager = CollectionManager(config=config)
+    collection = manager.create("exp")
+    collection.meta["generation"] = {"spec_path": "specs/bad_notifications.yaml"}
+    collection.add_job(job_name="train", job_id="123", state="FAILED")
+    manager.save(collection)
+
+    service = NotificationService(config=config)
+    _payload, warnings = service.build_job_payload(
+        job_id="123",
+        exit_code=1,
+        event=EVENT_JOB_FAILED,
+        collection_name="exp",
+    )
+
+    assert len(warnings) == 1
+    assert "notifications block" in warnings[0]
+
+
+def test_spec_without_notifications_silently_uses_global(tmp_path):
+    """Spec files without notifications should fallback silently to global config."""
+    spec_path = tmp_path / "specs" / "plain_spec.yaml"
+    spec_path.parent.mkdir(parents=True, exist_ok=True)
+    spec_path.write_text("name: exp\n", encoding="utf-8")
+
+    config = _make_config(
+        tmp_path,
+        {
+            "collections_dir": ".job-collections/",
+            "notifications": {
+                "routes": [{"name": "hook", "type": "webhook", "url": "https://example.test/hook"}],
+            },
+        },
+    )
+    manager = CollectionManager(config=config)
+    collection = manager.create("exp")
+    collection.meta["generation"] = {"spec_path": "specs/plain_spec.yaml"}
+    collection.add_job(job_name="train", job_id="123", state="FAILED")
+    manager.save(collection)
+
+    service = NotificationService(config=config)
+    _payload, warnings = service.build_job_payload(
+        job_id="123",
+        exit_code=1,
+        event=EVENT_JOB_FAILED,
+        collection_name="exp",
+    )
+
+    assert warnings == []

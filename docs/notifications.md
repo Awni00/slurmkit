@@ -80,6 +80,38 @@ For `type: email`:
 - `smtp_starttls` and `smtp_ssl` cannot both be `true`
 - `smtp_username` and `smtp_password` must be set together (or both omitted)
 
+### Collection-Specific Overrides from `spec.yaml`
+
+When a collection was created via `slurmkit generate --spec-file ...`, slurmkit stores `meta.generation.spec_path` in the collection metadata.
+`notify job` and `notify collection-final` use this precedence:
+
+1. Top-level `notifications` in the collection's `spec.yaml`
+2. Global `.slurm-kit/config.yaml` `notifications`
+
+Merge semantics:
+- Dictionary fields deep-merge (spec values override global values).
+- List fields replace (not append), including `notifications.routes`.
+
+If the spec file is missing, unreadable, or malformed, slurmkit prints a context warning and falls back to the global config.
+
+Example `job_spec.yaml` override:
+
+```yaml
+notifications:
+  defaults:
+    output_tail_lines: 15
+  job:
+    ai:
+      enabled: true
+      callback: "collection_ai_callback:summarize_job_payload"
+  collection_final:
+    ai:
+      enabled: true
+      callback: "collection_ai_callback:summarize_collection_report"
+```
+
+See the runnable demo in `/Users/awni/Documents/project-code/slurmkit/examples/demo_project/README.md`.
+
 ## Commands
 
 ### Test routes
