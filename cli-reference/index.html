@@ -1,0 +1,2501 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="CLI toolkit for managing and generating SLURM jobs">
+      
+      
+      
+        <link rel="canonical" href="https://awni00.github.io/slurmkit/cli-reference/">
+      
+      
+        <link rel="prev" href="../sync/">
+      
+      
+        <link rel="next" href="../api/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/slurmkit-icon-512.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.1">
+    
+    
+      
+        <title>CLI Reference - slurmkit</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/_mkdocstrings.css">
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="black" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#cli-reference" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow md-header--lifted" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="slurmkit" class="md-header__button md-logo" aria-label="slurmkit" data-md-component="logo">
+      
+  <img src="../assets/slurmkit-slime-logo.png" alt="logo">
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            slurmkit
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              CLI Reference
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="default" data-md-color-primary="black" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="slate" data-md-color-primary="black" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+          <a href="javascript:void(0)" class="md-search__icon md-icon" title="Share" aria-label="Share" data-clipboard data-clipboard-text="" data-md-component="search-share" tabindex="-1">
+            
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M18 16.08c-.76 0-1.44.3-1.96.77L8.91 12.7c.05-.23.09-.46.09-.7s-.04-.47-.09-.7l7.05-4.11c.54.5 1.25.81 2.04.81a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3c0 .24.04.47.09.7L8.04 9.81C7.5 9.31 6.79 9 6 9a3 3 0 0 0-3 3 3 3 0 0 0 3 3c.79 0 1.5-.31 2.04-.81l7.12 4.15c-.05.21-.08.43-.08.66 0 1.61 1.31 2.91 2.92 2.91s2.92-1.3 2.92-2.91A2.92 2.92 0 0 0 18 16.08"/></svg>
+          </a>
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/Awni00/slurmkit" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    Awni00/slurmkit
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+    
+      
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href=".." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="../getting-started/" class="md-tabs__link">
+          
+  
+  
+  User Guide
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../api/" class="md-tabs__link">
+          
+  
+  
+  API Reference
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+    
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="slurmkit" class="md-nav__button md-logo" aria-label="slurmkit" data-md-component="logo">
+      
+  <img src="../assets/slurmkit-slime-logo.png" alt="logo">
+
+    </a>
+    slurmkit
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/Awni00/slurmkit" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    Awni00/slurmkit
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    User Guide
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    User Guide
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../getting-started/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../configuration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../job-generation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Job Generation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../collections/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Collections
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../notifications/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Notifications
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../sync/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Cross-Cluster Sync
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLI Reference
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLI Reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#global-options" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Global Options
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#commands" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Commands
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Commands">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#slurmkit-init" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        slurmkit init
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#slurmkit-status" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        slurmkit status
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#slurmkit-find" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        slurmkit find
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#slurmkit-clean-outputs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        slurmkit clean outputs
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#slurmkit-clean-wandb" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        slurmkit clean wandb
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#slurmkit-generate" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        slurmkit generate
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#slurmkit-submit" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        slurmkit submit
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#slurmkit-resubmit" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        slurmkit resubmit
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#slurmkit-collection" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        slurmkit collection
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="slurmkit collection">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#collection-create" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        collection create
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#collection-list" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        collection list
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#collection-show" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        collection show
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#collection-update" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        collection update
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#collection-analyze" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        collection analyze
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#collection-groups" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        collection groups
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#collection-delete" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        collection delete
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#collection-add" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        collection add
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#collection-remove" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        collection remove
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#slurmkit-sync" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        slurmkit sync
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#slurmkit-notify" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        slurmkit notify
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="slurmkit notify">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#notify-job" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        notify job
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#notify-test" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        notify test
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#notify-collection-final" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        notify collection-final
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#exit-codes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Exit Codes
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    API Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/config/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Config
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/collections/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Collections
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/generate/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Job Generation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/slurm/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    SLURM Utilities
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/sync/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Sync
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#global-options" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Global Options
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#commands" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Commands
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Commands">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#slurmkit-init" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        slurmkit init
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#slurmkit-status" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        slurmkit status
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#slurmkit-find" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        slurmkit find
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#slurmkit-clean-outputs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        slurmkit clean outputs
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#slurmkit-clean-wandb" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        slurmkit clean wandb
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#slurmkit-generate" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        slurmkit generate
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#slurmkit-submit" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        slurmkit submit
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#slurmkit-resubmit" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        slurmkit resubmit
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#slurmkit-collection" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        slurmkit collection
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="slurmkit collection">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#collection-create" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        collection create
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#collection-list" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        collection list
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#collection-show" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        collection show
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#collection-update" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        collection update
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#collection-analyze" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        collection analyze
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#collection-groups" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        collection groups
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#collection-delete" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        collection delete
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#collection-add" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        collection add
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#collection-remove" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        collection remove
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#slurmkit-sync" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        slurmkit sync
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#slurmkit-notify" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        slurmkit notify
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="slurmkit notify">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#notify-job" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        notify job
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#notify-test" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        notify test
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#notify-collection-final" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        notify collection-final
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#exit-codes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Exit Codes
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="cli-reference">CLI Reference<a class="headerlink" href="#cli-reference" title="Permanent link">&para;</a></h1>
+<p>Complete reference for all slurmkit commands.</p>
+<h2 id="global-options">Global Options<a class="headerlink" href="#global-options" title="Permanent link">&para;</a></h2>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>slurmkit<span class="w"> </span><span class="o">[</span>--config<span class="w"> </span>PATH<span class="o">]</span><span class="w"> </span><span class="o">[</span>--ui<span class="w"> </span>MODE<span class="o">]</span><span class="w"> </span><span class="o">[</span>--version<span class="o">]</span><span class="w"> </span>&lt;command&gt;
+</span></code></pre></div>
+<table>
+<thead>
+<tr>
+<th>Option</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--config PATH</code></td>
+<td>Path to config file (default: <code>.slurm-kit/config.yaml</code>)</td>
+</tr>
+<tr>
+<td><code>--ui MODE</code></td>
+<td>UI override: <code>plain</code>, <code>rich</code>, <code>auto</code> (default from <code>ui.mode</code> config, fallback <code>plain</code>)</td>
+</tr>
+<tr>
+<td><code>-V, --version</code></td>
+<td>Show version and exit</td>
+</tr>
+</tbody>
+</table>
+<h2 id="commands">Commands<a class="headerlink" href="#commands" title="Permanent link">&para;</a></h2>
+<h3 id="slurmkit-init">slurmkit init<a class="headerlink" href="#slurmkit-init" title="Permanent link">&para;</a></h3>
+<p>Initialize project configuration.</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>slurmkit<span class="w"> </span>init<span class="w"> </span><span class="o">[</span>--force<span class="o">]</span>
+</span></code></pre></div>
+<table>
+<thead>
+<tr>
+<th>Option</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--force</code></td>
+<td>Overwrite existing configuration</td>
+</tr>
+</tbody>
+</table>
+<p>Interactive prompts for:
+- Jobs directory
+- Default SLURM partition, time, memory
+- W&amp;B entity (optional)
+- Default UI mode (<code>plain</code>, <code>rich</code>, <code>auto</code>)
+- Notification route setup (optional)</p>
+<hr />
+<h3 id="slurmkit-status">slurmkit status<a class="headerlink" href="#slurmkit-status" title="Permanent link">&para;</a></h3>
+<p>Show job status for an experiment or all jobs.</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>slurmkit<span class="w"> </span>status<span class="w"> </span><span class="o">[</span>experiment<span class="o">]</span><span class="w"> </span><span class="o">[</span>options<span class="o">]</span>
+</span></code></pre></div>
+<table>
+<thead>
+<tr>
+<th>Argument</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>experiment</code></td>
+<td>Optional: Experiment subdirectory name. If not specified, shows all jobs.</td>
+</tr>
+</tbody>
+</table>
+<table>
+<thead>
+<tr>
+<th>Option</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--jobs-dir PATH</code></td>
+<td>Override jobs directory</td>
+</tr>
+<tr>
+<td><code>--collection NAME</code></td>
+<td>Filter to jobs in collection</td>
+</tr>
+<tr>
+<td><code>--state STATE</code></td>
+<td>Filter by state: <code>all</code>, <code>running</code>, <code>pending</code>, <code>completed</code>, <code>failed</code></td>
+</tr>
+<tr>
+<td><code>--format FORMAT</code></td>
+<td>Output format: <code>table</code>, <code>json</code>, <code>csv</code></td>
+</tr>
+</tbody>
+</table>
+<p><strong>Examples:</strong></p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>slurmkit<span class="w"> </span>status<span class="w">                   </span><span class="c1"># Show all jobs</span>
+</span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>slurmkit<span class="w"> </span>status<span class="w"> </span>exp1<span class="w">              </span><span class="c1"># Show jobs in exp1</span>
+</span><span id="__span-3-3"><a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>slurmkit<span class="w"> </span>status<span class="w"> </span>exp1<span class="w"> </span>--state<span class="w"> </span>failed
+</span><span id="__span-3-4"><a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a>slurmkit<span class="w"> </span>status<span class="w"> </span>--format<span class="w"> </span>json
+</span></code></pre></div>
+<hr />
+<h3 id="slurmkit-find">slurmkit find<a class="headerlink" href="#slurmkit-find" title="Permanent link">&para;</a></h3>
+<p>Find job output file by job ID.</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>slurmkit<span class="w"> </span>find<span class="w"> </span>&lt;job_id&gt;<span class="w"> </span><span class="o">[</span>options<span class="o">]</span>
+</span></code></pre></div>
+<table>
+<thead>
+<tr>
+<th>Argument</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>job_id</code></td>
+<td>SLURM job ID</td>
+</tr>
+</tbody>
+</table>
+<table>
+<thead>
+<tr>
+<th>Option</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--jobs-dir PATH</code></td>
+<td>Override jobs directory</td>
+</tr>
+<tr>
+<td><code>--preview</code></td>
+<td>Show preview of output file</td>
+</tr>
+<tr>
+<td><code>--lines N</code></td>
+<td>Lines to show in preview (default: 50)</td>
+</tr>
+<tr>
+<td><code>--open</code></td>
+<td>Open file in <code>$EDITOR</code> or pager</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Examples:</strong></p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>slurmkit<span class="w"> </span>find<span class="w"> </span><span class="m">12345678</span>
+</span><span id="__span-5-2"><a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>slurmkit<span class="w"> </span>find<span class="w"> </span><span class="m">12345678</span><span class="w"> </span>--preview<span class="w"> </span>--lines<span class="w"> </span><span class="m">100</span>
+</span><span id="__span-5-3"><a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>slurmkit<span class="w"> </span>find<span class="w"> </span><span class="m">12345678</span><span class="w"> </span>--open
+</span></code></pre></div>
+<hr />
+<h3 id="slurmkit-clean-outputs">slurmkit clean outputs<a class="headerlink" href="#slurmkit-clean-outputs" title="Permanent link">&para;</a></h3>
+<p>Clean failed job output files.</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>slurmkit<span class="w"> </span>clean<span class="w"> </span>outputs<span class="w"> </span>&lt;experiment&gt;<span class="w"> </span><span class="o">[</span>options<span class="o">]</span>
+</span></code></pre></div>
+<table>
+<thead>
+<tr>
+<th>Argument</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>experiment</code></td>
+<td>Experiment subdirectory name</td>
+</tr>
+</tbody>
+</table>
+<table>
+<thead>
+<tr>
+<th>Option</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--jobs-dir PATH</code></td>
+<td>Override jobs directory</td>
+</tr>
+<tr>
+<td><code>--threshold SECONDS</code></td>
+<td>Max runtime to delete (default: 300)</td>
+</tr>
+<tr>
+<td><code>--min-age DAYS</code></td>
+<td>Min age to consider (default: 3)</td>
+</tr>
+<tr>
+<td><code>--dry-run</code></td>
+<td>Show what would be deleted</td>
+</tr>
+<tr>
+<td><code>-y, --yes</code></td>
+<td>Skip confirmation</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Examples:</strong></p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>slurmkit<span class="w"> </span>clean<span class="w"> </span>outputs<span class="w"> </span>exp1
+</span><span id="__span-7-2"><a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>slurmkit<span class="w"> </span>clean<span class="w"> </span>outputs<span class="w"> </span>exp1<span class="w"> </span>--dry-run
+</span><span id="__span-7-3"><a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a>slurmkit<span class="w"> </span>clean<span class="w"> </span>outputs<span class="w"> </span>exp1<span class="w"> </span>--threshold<span class="w"> </span><span class="m">600</span><span class="w"> </span>--min-age<span class="w"> </span><span class="m">7</span><span class="w"> </span>-y
+</span></code></pre></div>
+<hr />
+<h3 id="slurmkit-clean-wandb">slurmkit clean wandb<a class="headerlink" href="#slurmkit-clean-wandb" title="Permanent link">&para;</a></h3>
+<p>Clean failed W&amp;B runs.</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-8-1"><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>slurmkit<span class="w"> </span>clean<span class="w"> </span>wandb<span class="w"> </span><span class="o">[</span>options<span class="o">]</span>
+</span></code></pre></div>
+<table>
+<thead>
+<tr>
+<th>Option</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--projects PROJ...</code></td>
+<td>W&amp;B projects to clean</td>
+</tr>
+<tr>
+<td><code>--entity ENTITY</code></td>
+<td>W&amp;B entity</td>
+</tr>
+<tr>
+<td><code>--threshold SECONDS</code></td>
+<td>Max runtime to delete (default: 300)</td>
+</tr>
+<tr>
+<td><code>--min-age DAYS</code></td>
+<td>Min age to consider (default: 3)</td>
+</tr>
+<tr>
+<td><code>--dry-run</code></td>
+<td>Show what would be deleted</td>
+</tr>
+<tr>
+<td><code>-y, --yes</code></td>
+<td>Skip confirmation</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Examples:</strong></p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-9-1"><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>slurmkit<span class="w"> </span>clean<span class="w"> </span>wandb<span class="w"> </span>--projects<span class="w"> </span>my-project
+</span><span id="__span-9-2"><a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>slurmkit<span class="w"> </span>clean<span class="w"> </span>wandb<span class="w"> </span>--entity<span class="w"> </span>myteam<span class="w"> </span>--projects<span class="w"> </span>proj1<span class="w"> </span>proj2<span class="w"> </span>--dry-run
+</span></code></pre></div>
+<hr />
+<h3 id="slurmkit-generate">slurmkit generate<a class="headerlink" href="#slurmkit-generate" title="Permanent link">&para;</a></h3>
+<p>Generate job scripts from template.</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-10-1"><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>slurmkit<span class="w"> </span>generate<span class="w"> </span>&lt;spec_file&gt;<span class="w"> </span><span class="o">[</span>options<span class="o">]</span>
+</span><span id="__span-10-2"><a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a>slurmkit<span class="w"> </span>generate<span class="w"> </span>--template<span class="w"> </span>FILE<span class="w"> </span>--params<span class="w"> </span>FILE<span class="w"> </span><span class="o">[</span>options<span class="o">]</span>
+</span></code></pre></div>
+<table>
+<thead>
+<tr>
+<th>Argument</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>spec_file</code></td>
+<td>Job spec YAML file</td>
+</tr>
+</tbody>
+</table>
+<table>
+<thead>
+<tr>
+<th>Option</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--template FILE</code></td>
+<td>Template file (alternative to spec)</td>
+</tr>
+<tr>
+<td><code>--params FILE</code></td>
+<td>Parameters YAML file</td>
+</tr>
+<tr>
+<td><code>--output-dir DIR</code></td>
+<td>Output directory for scripts</td>
+</tr>
+<tr>
+<td><code>--collection NAME</code></td>
+<td>Add jobs to collection</td>
+</tr>
+<tr>
+<td><code>--slurm-args-file FILE</code></td>
+<td>Python file with SLURM args logic</td>
+</tr>
+<tr>
+<td><code>--dry-run</code></td>
+<td>Show preview without writing</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Examples:</strong></p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-11-1"><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a>slurmkit<span class="w"> </span>generate<span class="w"> </span>job_spec.yaml
+</span><span id="__span-11-2"><a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a>slurmkit<span class="w"> </span>generate<span class="w"> </span>job_spec.yaml<span class="w"> </span>--collection<span class="w"> </span>my_exp
+</span><span id="__span-11-3"><a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a>slurmkit<span class="w"> </span>generate<span class="w"> </span>job_spec.yaml<span class="w"> </span>--dry-run
+</span><span id="__span-11-4"><a id="__codelineno-11-4" name="__codelineno-11-4" href="#__codelineno-11-4"></a>slurmkit<span class="w"> </span>generate<span class="w"> </span>--template<span class="w"> </span>train.j2<span class="w"> </span>--params<span class="w"> </span>params.yaml<span class="w"> </span>--output-dir<span class="w"> </span>scripts/
+</span></code></pre></div>
+<hr />
+<h3 id="slurmkit-submit">slurmkit submit<a class="headerlink" href="#slurmkit-submit" title="Permanent link">&para;</a></h3>
+<p>Submit job scripts.</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-12-1"><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a>slurmkit<span class="w"> </span>submit<span class="w"> </span><span class="o">[</span>paths...<span class="o">]</span><span class="w"> </span><span class="o">[</span>options<span class="o">]</span>
+</span><span id="__span-12-2"><a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a>slurmkit<span class="w"> </span>submit<span class="w"> </span>--collection<span class="w"> </span>NAME<span class="w"> </span><span class="o">[</span>options<span class="o">]</span>
+</span></code></pre></div>
+<table>
+<thead>
+<tr>
+<th>Argument</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>paths</code></td>
+<td>Job script(s) or directory</td>
+</tr>
+</tbody>
+</table>
+<table>
+<thead>
+<tr>
+<th>Option</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--collection NAME</code></td>
+<td>Submit from or add to collection</td>
+</tr>
+<tr>
+<td><code>--filter FILTER</code></td>
+<td>For collection: <code>unsubmitted</code> or <code>all</code></td>
+</tr>
+<tr>
+<td><code>--delay SECONDS</code></td>
+<td>Delay between submissions</td>
+</tr>
+<tr>
+<td><code>--dry-run</code></td>
+<td>Show what would be submitted</td>
+</tr>
+<tr>
+<td><code>-y, --yes</code></td>
+<td>Skip confirmation</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Examples:</strong></p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-13-1"><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a>slurmkit<span class="w"> </span>submit<span class="w"> </span>jobs/exp1/scripts/
+</span><span id="__span-13-2"><a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a>slurmkit<span class="w"> </span>submit<span class="w"> </span>train_lr0.01.job<span class="w"> </span>train_lr0.1.job
+</span><span id="__span-13-3"><a id="__codelineno-13-3" name="__codelineno-13-3" href="#__codelineno-13-3"></a>slurmkit<span class="w"> </span>submit<span class="w"> </span>--collection<span class="w"> </span>my_exp
+</span><span id="__span-13-4"><a id="__codelineno-13-4" name="__codelineno-13-4" href="#__codelineno-13-4"></a>slurmkit<span class="w"> </span>submit<span class="w"> </span>--collection<span class="w"> </span>my_exp<span class="w"> </span>--filter<span class="w"> </span>all<span class="w"> </span>--delay<span class="w"> </span><span class="m">1</span>
+</span></code></pre></div>
+<hr />
+<h3 id="slurmkit-resubmit">slurmkit resubmit<a class="headerlink" href="#slurmkit-resubmit" title="Permanent link">&para;</a></h3>
+<p>Resubmit failed jobs.</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-14-1"><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a>slurmkit<span class="w"> </span>resubmit<span class="w"> </span><span class="o">[</span>job_ids...<span class="o">]</span><span class="w"> </span><span class="o">[</span>options<span class="o">]</span>
+</span><span id="__span-14-2"><a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a>slurmkit<span class="w"> </span>resubmit<span class="w"> </span>--collection<span class="w"> </span>NAME<span class="w"> </span><span class="o">[</span>options<span class="o">]</span>
+</span></code></pre></div>
+<table>
+<thead>
+<tr>
+<th>Argument</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>job_ids</code></td>
+<td>Job ID(s) to resubmit</td>
+</tr>
+</tbody>
+</table>
+<table>
+<thead>
+<tr>
+<th>Option</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--collection NAME</code></td>
+<td>Resubmit from collection</td>
+</tr>
+<tr>
+<td><code>--filter FILTER</code></td>
+<td>For collection: <code>failed</code> or <code>all</code></td>
+</tr>
+<tr>
+<td><code>--template FILE</code></td>
+<td>Template override for regenerated resubmission scripts</td>
+</tr>
+<tr>
+<td><code>--extra-params K=V,...</code></td>
+<td>Extra parameters merged into regenerated template context</td>
+</tr>
+<tr>
+<td><code>--extra-params-file FILE</code></td>
+<td>Python file with <code>get_extra_params(context) -&gt; dict</code></td>
+</tr>
+<tr>
+<td><code>--extra-params-function NAME</code></td>
+<td>Function name in <code>--extra-params-file</code> (default: <code>get_extra_params</code>)</td>
+</tr>
+<tr>
+<td><code>--select-file FILE</code></td>
+<td>Python file with <code>should_resubmit(context) -&gt; bool</code></td>
+</tr>
+<tr>
+<td><code>--select-function NAME</code></td>
+<td>Function name in <code>--select-file</code> (default: <code>should_resubmit</code>)</td>
+</tr>
+<tr>
+<td><code>--submission-group NAME</code></td>
+<td>Submission group label (default: auto-generated <code>resubmit_YYYYMMDD_HHMMSS</code>)</td>
+</tr>
+<tr>
+<td><code>--jobs-dir PATH</code></td>
+<td>Override jobs directory</td>
+</tr>
+<tr>
+<td><code>--regenerate</code></td>
+<td>Force regeneration before resubmitting (requires <code>--collection</code>)</td>
+</tr>
+<tr>
+<td><code>--no-regenerate</code></td>
+<td>Reuse existing script path without regeneration</td>
+</tr>
+<tr>
+<td><code>--dry-run</code></td>
+<td>Show what would be resubmitted</td>
+</tr>
+<tr>
+<td><code>-y, --yes</code></td>
+<td>Skip confirmation</td>
+</tr>
+</tbody>
+</table>
+<p><code>resubmit</code> defaults are mode-specific:
+- Collection mode (<code>--collection</code>): regenerate scripts by default.
+- Job ID mode (<code>slurmkit resubmit &lt;job_id...&gt;</code>): reuse existing scripts by default.</p>
+<p><strong>Examples:</strong></p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-15-1"><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a>slurmkit<span class="w"> </span>resubmit<span class="w"> </span><span class="m">12345678</span>
+</span><span id="__span-15-2"><a id="__codelineno-15-2" name="__codelineno-15-2" href="#__codelineno-15-2"></a>slurmkit<span class="w"> </span>resubmit<span class="w"> </span>--collection<span class="w"> </span>my_exp<span class="w"> </span>--filter<span class="w"> </span>failed
+</span><span id="__span-15-3"><a id="__codelineno-15-3" name="__codelineno-15-3" href="#__codelineno-15-3"></a>slurmkit<span class="w"> </span>resubmit<span class="w"> </span>--collection<span class="w"> </span>my_exp<span class="w"> </span>--extra-params<span class="w"> </span><span class="s2">&quot;checkpoint=last.pt&quot;</span>
+</span><span id="__span-15-4"><a id="__codelineno-15-4" name="__codelineno-15-4" href="#__codelineno-15-4"></a>slurmkit<span class="w"> </span>resubmit<span class="w"> </span>--collection<span class="w"> </span>my_exp<span class="w"> </span>--no-regenerate
+</span><span id="__span-15-5"><a id="__codelineno-15-5" name="__codelineno-15-5" href="#__codelineno-15-5"></a>slurmkit<span class="w"> </span>resubmit<span class="w"> </span>--collection<span class="w"> </span>my_exp<span class="w"> </span>--submission-group<span class="w"> </span>retry_after_fix
+</span><span id="__span-15-6"><a id="__codelineno-15-6" name="__codelineno-15-6" href="#__codelineno-15-6"></a>slurmkit<span class="w"> </span>resubmit<span class="w"> </span>--collection<span class="w"> </span>my_exp<span class="w"> </span>--select-file<span class="w"> </span>callbacks.py<span class="w"> </span>--select-function<span class="w"> </span>should_resubmit
+</span></code></pre></div>
+<hr />
+<h3 id="slurmkit-collection">slurmkit collection<a class="headerlink" href="#slurmkit-collection" title="Permanent link">&para;</a></h3>
+<p>Manage job collections.</p>
+<h4 id="collection-create">collection create<a class="headerlink" href="#collection-create" title="Permanent link">&para;</a></h4>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-16-1"><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a>slurmkit<span class="w"> </span>collection<span class="w"> </span>create<span class="w"> </span>&lt;name&gt;<span class="w"> </span><span class="o">[</span>--description<span class="w"> </span>TEXT<span class="o">]</span>
+</span></code></pre></div>
+<h4 id="collection-list">collection list<a class="headerlink" href="#collection-list" title="Permanent link">&para;</a></h4>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-17-1"><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a>slurmkit<span class="w"> </span>collection<span class="w"> </span>list<span class="w"> </span><span class="o">[</span>--attempt-mode<span class="w"> </span>MODE<span class="o">]</span>
+</span></code></pre></div>
+<table>
+<thead>
+<tr>
+<th>Option</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--attempt-mode MODE</code></td>
+<td><code>primary</code> or <code>latest</code> effective attempt (default: <code>latest</code>)</td>
+</tr>
+</tbody>
+</table>
+<h4 id="collection-show">collection show<a class="headerlink" href="#collection-show" title="Permanent link">&para;</a></h4>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-18-1"><a id="__codelineno-18-1" name="__codelineno-18-1" href="#__codelineno-18-1"></a>slurmkit<span class="w"> </span>collection<span class="w"> </span>show<span class="w"> </span>&lt;name&gt;<span class="w"> </span><span class="o">[</span>options<span class="o">]</span>
+</span></code></pre></div>
+<table>
+<thead>
+<tr>
+<th>Option</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--format FORMAT</code></td>
+<td>Output: <code>table</code>, <code>json</code>, <code>yaml</code></td>
+</tr>
+<tr>
+<td><code>--state STATE</code></td>
+<td>Filter: <code>all</code>, <code>pending</code>, <code>running</code>, <code>completed</code>, <code>failed</code></td>
+</tr>
+<tr>
+<td><code>--attempt-mode MODE</code></td>
+<td><code>primary</code> or <code>latest</code> effective attempt (default: <code>latest</code>)</td>
+</tr>
+<tr>
+<td><code>--submission-group NAME</code></td>
+<td>Restrict to jobs that have resubmissions in this group</td>
+</tr>
+<tr>
+<td><code>--show-primary</code></td>
+<td>Include primary job id/state columns in table output</td>
+</tr>
+<tr>
+<td><code>--show-history</code></td>
+<td>Include compact attempt history in table output</td>
+</tr>
+</tbody>
+</table>
+<h4 id="collection-update">collection update<a class="headerlink" href="#collection-update" title="Permanent link">&para;</a></h4>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-19-1"><a id="__codelineno-19-1" name="__codelineno-19-1" href="#__codelineno-19-1"></a>slurmkit<span class="w"> </span>collection<span class="w"> </span>update<span class="w"> </span>&lt;name&gt;
+</span></code></pre></div>
+<p>Refresh job states from SLURM.</p>
+<h4 id="collection-analyze">collection analyze<a class="headerlink" href="#collection-analyze" title="Permanent link">&para;</a></h4>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-20-1"><a id="__codelineno-20-1" name="__codelineno-20-1" href="#__codelineno-20-1"></a>slurmkit<span class="w"> </span>collection<span class="w"> </span>analyze<span class="w"> </span>&lt;name&gt;<span class="w"> </span><span class="o">[</span>options<span class="o">]</span>
+</span></code></pre></div>
+<p>Analyze how job states vary across parameter values.</p>
+<table>
+<thead>
+<tr>
+<th>Option</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--format FORMAT</code></td>
+<td>Output: <code>table</code>, <code>json</code></td>
+</tr>
+<tr>
+<td><code>--no-refresh</code></td>
+<td>Skip SLURM refresh and analyze stored collection data</td>
+</tr>
+<tr>
+<td><code>--min-support N</code></td>
+<td>Minimum sample size for top risky/stable summaries (default: 3)</td>
+</tr>
+<tr>
+<td><code>--param KEY</code></td>
+<td>Analyze only selected parameter key(s); repeatable</td>
+</tr>
+<tr>
+<td><code>--attempt-mode MODE</code></td>
+<td>Use <code>primary</code> or <code>latest</code> attempt state (default: <code>primary</code>)</td>
+</tr>
+<tr>
+<td><code>--submission-group NAME</code></td>
+<td>Restrict to a submission group and analyze latest attempt within group</td>
+</tr>
+<tr>
+<td><code>--top-k N</code></td>
+<td>Number of rows in risky/stable summaries (default: 10)</td>
+</tr>
+</tbody>
+</table>
+<h4 id="collection-groups">collection groups<a class="headerlink" href="#collection-groups" title="Permanent link">&para;</a></h4>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-21-1"><a id="__codelineno-21-1" name="__codelineno-21-1" href="#__codelineno-21-1"></a>slurmkit<span class="w"> </span>collection<span class="w"> </span>groups<span class="w"> </span>&lt;name&gt;<span class="w"> </span><span class="o">[</span>--format<span class="w"> </span>FORMAT<span class="o">]</span>
+</span></code></pre></div>
+<p>List submission groups and job counts in a collection.</p>
+<table>
+<thead>
+<tr>
+<th>Option</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--format FORMAT</code></td>
+<td>Output: <code>table</code>, <code>json</code>, <code>yaml</code></td>
+</tr>
+</tbody>
+</table>
+<h4 id="collection-delete">collection delete<a class="headerlink" href="#collection-delete" title="Permanent link">&para;</a></h4>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-22-1"><a id="__codelineno-22-1" name="__codelineno-22-1" href="#__codelineno-22-1"></a>slurmkit<span class="w"> </span>collection<span class="w"> </span>delete<span class="w"> </span>&lt;name&gt;<span class="w"> </span><span class="o">[</span>--keep-scripts<span class="o">]</span><span class="w"> </span><span class="o">[</span>--keep-outputs<span class="o">]</span><span class="w"> </span><span class="o">[</span>-y<span class="o">]</span>
+</span></code></pre></div>
+<table>
+<thead>
+<tr>
+<th>Option</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--keep-scripts</code></td>
+<td>Don't delete script files</td>
+</tr>
+<tr>
+<td><code>--keep-outputs</code></td>
+<td>Don't delete output files</td>
+</tr>
+<tr>
+<td><code>-y, --yes</code></td>
+<td>Skip confirmation</td>
+</tr>
+</tbody>
+</table>
+<h4 id="collection-add">collection add<a class="headerlink" href="#collection-add" title="Permanent link">&para;</a></h4>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-23-1"><a id="__codelineno-23-1" name="__codelineno-23-1" href="#__codelineno-23-1"></a>slurmkit<span class="w"> </span>collection<span class="w"> </span>add<span class="w"> </span>&lt;name&gt;<span class="w"> </span>&lt;job_id&gt;<span class="w"> </span><span class="o">[</span>job_id...<span class="o">]</span>
+</span></code></pre></div>
+<h4 id="collection-remove">collection remove<a class="headerlink" href="#collection-remove" title="Permanent link">&para;</a></h4>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-24-1"><a id="__codelineno-24-1" name="__codelineno-24-1" href="#__codelineno-24-1"></a>slurmkit<span class="w"> </span>collection<span class="w"> </span>remove<span class="w"> </span>&lt;name&gt;<span class="w"> </span>&lt;job_id&gt;<span class="w"> </span><span class="o">[</span>job_id...<span class="o">]</span>
+</span></code></pre></div>
+<p><strong>Examples:</strong></p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-25-1"><a id="__codelineno-25-1" name="__codelineno-25-1" href="#__codelineno-25-1"></a>slurmkit<span class="w"> </span>collection<span class="w"> </span>create<span class="w"> </span>my_exp<span class="w"> </span>--description<span class="w"> </span><span class="s2">&quot;Training sweep&quot;</span>
+</span><span id="__span-25-2"><a id="__codelineno-25-2" name="__codelineno-25-2" href="#__codelineno-25-2"></a>slurmkit<span class="w"> </span>collection<span class="w"> </span>list
+</span><span id="__span-25-3"><a id="__codelineno-25-3" name="__codelineno-25-3" href="#__codelineno-25-3"></a>slurmkit<span class="w"> </span>collection<span class="w"> </span>show<span class="w"> </span>my_exp<span class="w"> </span>--state<span class="w"> </span>failed
+</span><span id="__span-25-4"><a id="__codelineno-25-4" name="__codelineno-25-4" href="#__codelineno-25-4"></a>slurmkit<span class="w"> </span>collection<span class="w"> </span>show<span class="w"> </span>my_exp<span class="w"> </span>--attempt-mode<span class="w"> </span>latest<span class="w"> </span>--show-primary<span class="w"> </span>--show-history
+</span><span id="__span-25-5"><a id="__codelineno-25-5" name="__codelineno-25-5" href="#__codelineno-25-5"></a>slurmkit<span class="w"> </span>collection<span class="w"> </span>show<span class="w"> </span>my_exp<span class="w"> </span>--submission-group<span class="w"> </span>retry_after_fix
+</span><span id="__span-25-6"><a id="__codelineno-25-6" name="__codelineno-25-6" href="#__codelineno-25-6"></a>slurmkit<span class="w"> </span>collection<span class="w"> </span>update<span class="w"> </span>my_exp
+</span><span id="__span-25-7"><a id="__codelineno-25-7" name="__codelineno-25-7" href="#__codelineno-25-7"></a>slurmkit<span class="w"> </span>collection<span class="w"> </span>analyze<span class="w"> </span>my_exp<span class="w"> </span>--min-support<span class="w"> </span><span class="m">5</span><span class="w"> </span>--param<span class="w"> </span>algo<span class="w"> </span>--param<span class="w"> </span>learning_rate
+</span><span id="__span-25-8"><a id="__codelineno-25-8" name="__codelineno-25-8" href="#__codelineno-25-8"></a>slurmkit<span class="w"> </span>collection<span class="w"> </span>analyze<span class="w"> </span>my_exp<span class="w"> </span>--attempt-mode<span class="w"> </span>latest<span class="w"> </span>--format<span class="w"> </span>json
+</span><span id="__span-25-9"><a id="__codelineno-25-9" name="__codelineno-25-9" href="#__codelineno-25-9"></a>slurmkit<span class="w"> </span>collection<span class="w"> </span>analyze<span class="w"> </span>my_exp<span class="w"> </span>--submission-group<span class="w"> </span>retry_after_fix
+</span><span id="__span-25-10"><a id="__codelineno-25-10" name="__codelineno-25-10" href="#__codelineno-25-10"></a>slurmkit<span class="w"> </span>collection<span class="w"> </span>groups<span class="w"> </span>my_exp
+</span><span id="__span-25-11"><a id="__codelineno-25-11" name="__codelineno-25-11" href="#__codelineno-25-11"></a>slurmkit<span class="w"> </span>--ui<span class="w"> </span>rich<span class="w"> </span>collection<span class="w"> </span>show<span class="w"> </span>my_exp
+</span><span id="__span-25-12"><a id="__codelineno-25-12" name="__codelineno-25-12" href="#__codelineno-25-12"></a>slurmkit<span class="w"> </span>--ui<span class="w"> </span>auto<span class="w"> </span>collection<span class="w"> </span>analyze<span class="w"> </span>my_exp
+</span><span id="__span-25-13"><a id="__codelineno-25-13" name="__codelineno-25-13" href="#__codelineno-25-13"></a>slurmkit<span class="w"> </span>collection<span class="w"> </span>delete<span class="w"> </span>my_exp<span class="w"> </span>--keep-outputs
+</span><span id="__span-25-14"><a id="__codelineno-25-14" name="__codelineno-25-14" href="#__codelineno-25-14"></a>slurmkit<span class="w"> </span>collection<span class="w"> </span>add<span class="w"> </span>my_exp<span class="w"> </span><span class="m">12345678</span><span class="w"> </span><span class="m">12345679</span>
+</span></code></pre></div>
+<hr />
+<h3 id="slurmkit-sync">slurmkit sync<a class="headerlink" href="#slurmkit-sync" title="Permanent link">&para;</a></h3>
+<p>Sync job states for cross-cluster tracking.</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-26-1"><a id="__codelineno-26-1" name="__codelineno-26-1" href="#__codelineno-26-1"></a>slurmkit<span class="w"> </span>sync<span class="w"> </span><span class="o">[</span>options<span class="o">]</span>
+</span></code></pre></div>
+<table>
+<thead>
+<tr>
+<th>Option</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--collection NAME...</code></td>
+<td>Sync specific collections</td>
+</tr>
+<tr>
+<td><code>--output FILE</code></td>
+<td>Output file path</td>
+</tr>
+<tr>
+<td><code>--push</code></td>
+<td>Git commit and push sync file</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Examples:</strong></p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-27-1"><a id="__codelineno-27-1" name="__codelineno-27-1" href="#__codelineno-27-1"></a>slurmkit<span class="w"> </span>sync
+</span><span id="__span-27-2"><a id="__codelineno-27-2" name="__codelineno-27-2" href="#__codelineno-27-2"></a>slurmkit<span class="w"> </span>sync<span class="w"> </span>--collection<span class="w"> </span>exp1<span class="w"> </span>exp2
+</span><span id="__span-27-3"><a id="__codelineno-27-3" name="__codelineno-27-3" href="#__codelineno-27-3"></a>slurmkit<span class="w"> </span>sync<span class="w"> </span>--push
+</span></code></pre></div>
+<hr />
+<h3 id="slurmkit-notify">slurmkit notify<a class="headerlink" href="#slurmkit-notify" title="Permanent link">&para;</a></h3>
+<p>Send job and collection lifecycle notifications to configured routes (<code>webhook</code>, <code>slack</code>, <code>discord</code>, <code>email</code>).</p>
+<h4 id="notify-job">notify job<a class="headerlink" href="#notify-job" title="Permanent link">&para;</a></h4>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-28-1"><a id="__codelineno-28-1" name="__codelineno-28-1" href="#__codelineno-28-1"></a>slurmkit<span class="w"> </span>notify<span class="w"> </span>job<span class="w"> </span><span class="o">[</span>options<span class="o">]</span>
+</span></code></pre></div>
+<table>
+<thead>
+<tr>
+<th>Option</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--job-id JOB_ID</code></td>
+<td>SLURM job ID (defaults to <code>SLURM_JOB_ID</code>)</td>
+</tr>
+<tr>
+<td><code>--collection NAME</code></td>
+<td>Optional collection to narrow metadata lookup</td>
+</tr>
+<tr>
+<td><code>--exit-code N</code></td>
+<td>Exit code used to derive event (<code>0</code> =&gt; completed, nonzero =&gt; failed)</td>
+</tr>
+<tr>
+<td><code>--on MODE</code></td>
+<td><code>failed</code> (default) or <code>always</code></td>
+</tr>
+<tr>
+<td><code>--route NAME</code></td>
+<td>Route name filter (repeatable)</td>
+</tr>
+<tr>
+<td><code>--tail-lines N</code></td>
+<td>Override failure output tail line count</td>
+</tr>
+<tr>
+<td><code>--strict</code></td>
+<td>Require all attempted routes to succeed</td>
+</tr>
+<tr>
+<td><code>--dry-run</code></td>
+<td>Preview payload/routes without sending deliveries</td>
+</tr>
+</tbody>
+</table>
+<p>Examples:</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-29-1"><a id="__codelineno-29-1" name="__codelineno-29-1" href="#__codelineno-29-1"></a>slurmkit<span class="w"> </span>notify<span class="w"> </span>job<span class="w"> </span>--job-id<span class="w"> </span><span class="m">12345</span><span class="w"> </span>--exit-code<span class="w"> </span><span class="m">1</span>
+</span><span id="__span-29-2"><a id="__codelineno-29-2" name="__codelineno-29-2" href="#__codelineno-29-2"></a>slurmkit<span class="w"> </span>notify<span class="w"> </span>job<span class="w"> </span>--job-id<span class="w"> </span><span class="m">12345</span><span class="w"> </span>--exit-code<span class="w"> </span><span class="m">0</span><span class="w"> </span>--on<span class="w"> </span>always
+</span><span id="__span-29-3"><a id="__codelineno-29-3" name="__codelineno-29-3" href="#__codelineno-29-3"></a>slurmkit<span class="w"> </span>notify<span class="w"> </span>job<span class="w"> </span>--job-id<span class="w"> </span><span class="m">12345</span><span class="w"> </span>--route<span class="w"> </span>team_slack<span class="w"> </span>--route<span class="w"> </span>custom_ops
+</span><span id="__span-29-4"><a id="__codelineno-29-4" name="__codelineno-29-4" href="#__codelineno-29-4"></a>slurmkit<span class="w"> </span>notify<span class="w"> </span>job<span class="w"> </span>--job-id<span class="w"> </span><span class="m">12345</span><span class="w"> </span>--dry-run
+</span></code></pre></div>
+<h4 id="notify-test">notify test<a class="headerlink" href="#notify-test" title="Permanent link">&para;</a></h4>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-30-1"><a id="__codelineno-30-1" name="__codelineno-30-1" href="#__codelineno-30-1"></a>slurmkit<span class="w"> </span>notify<span class="w"> </span><span class="nb">test</span><span class="w"> </span><span class="o">[</span>options<span class="o">]</span>
+</span></code></pre></div>
+<table>
+<thead>
+<tr>
+<th>Option</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--route NAME</code></td>
+<td>Route name filter (repeatable)</td>
+</tr>
+<tr>
+<td><code>--strict</code></td>
+<td>Require all attempted routes to succeed</td>
+</tr>
+<tr>
+<td><code>--dry-run</code></td>
+<td>Preview payload/routes without sending deliveries</td>
+</tr>
+</tbody>
+</table>
+<p>Examples:</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-31-1"><a id="__codelineno-31-1" name="__codelineno-31-1" href="#__codelineno-31-1"></a>slurmkit<span class="w"> </span>notify<span class="w"> </span><span class="nb">test</span>
+</span><span id="__span-31-2"><a id="__codelineno-31-2" name="__codelineno-31-2" href="#__codelineno-31-2"></a>slurmkit<span class="w"> </span>notify<span class="w"> </span><span class="nb">test</span><span class="w"> </span>--route<span class="w"> </span>team_slack
+</span><span id="__span-31-3"><a id="__codelineno-31-3" name="__codelineno-31-3" href="#__codelineno-31-3"></a>slurmkit<span class="w"> </span>notify<span class="w"> </span><span class="nb">test</span><span class="w"> </span>--dry-run
+</span><span id="__span-31-4"><a id="__codelineno-31-4" name="__codelineno-31-4" href="#__codelineno-31-4"></a>slurmkit<span class="w"> </span>notify<span class="w"> </span><span class="nb">test</span><span class="w"> </span>--route<span class="w"> </span>team_email<span class="w"> </span>--dry-run
+</span></code></pre></div>
+<h4 id="notify-collection-final">notify collection-final<a class="headerlink" href="#notify-collection-final" title="Permanent link">&para;</a></h4>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-32-1"><a id="__codelineno-32-1" name="__codelineno-32-1" href="#__codelineno-32-1"></a>slurmkit<span class="w"> </span>notify<span class="w"> </span>collection-final<span class="w"> </span><span class="o">[</span>options<span class="o">]</span>
+</span></code></pre></div>
+<table>
+<thead>
+<tr>
+<th>Option</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--job-id JOB_ID</code></td>
+<td>Triggering SLURM job ID (defaults to <code>SLURM_JOB_ID</code>)</td>
+</tr>
+<tr>
+<td><code>--trigger-exit-code EXIT_CODE</code></td>
+<td>Optional trigger exit code for trigger-aware terminal inference (<code>0</code> completed, non-zero failed)</td>
+</tr>
+<tr>
+<td><code>--collection NAME</code></td>
+<td>Optional collection name (otherwise resolved by job ID)</td>
+</tr>
+<tr>
+<td><code>--route NAME</code></td>
+<td>Route name filter (repeatable)</td>
+</tr>
+<tr>
+<td><code>--strict</code></td>
+<td>Require all attempted routes to succeed</td>
+</tr>
+<tr>
+<td><code>--dry-run</code></td>
+<td>Preview payload/routes without sending deliveries</td>
+</tr>
+<tr>
+<td><code>--force</code></td>
+<td>Bypass deduplication for repeated terminal snapshots</td>
+</tr>
+<tr>
+<td><code>--no-refresh</code></td>
+<td>Skip SLURM refresh before finality check</td>
+</tr>
+</tbody>
+</table>
+<p>Examples:</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-33-1"><a id="__codelineno-33-1" name="__codelineno-33-1" href="#__codelineno-33-1"></a>slurmkit<span class="w"> </span>notify<span class="w"> </span>collection-final<span class="w"> </span>--job-id<span class="w"> </span><span class="m">12345</span>
+</span><span id="__span-33-2"><a id="__codelineno-33-2" name="__codelineno-33-2" href="#__codelineno-33-2"></a>slurmkit<span class="w"> </span>notify<span class="w"> </span>collection-final<span class="w"> </span>--job-id<span class="w"> </span><span class="m">12345</span><span class="w"> </span>--collection<span class="w"> </span>my_exp
+</span><span id="__span-33-3"><a id="__codelineno-33-3" name="__codelineno-33-3" href="#__codelineno-33-3"></a>slurmkit<span class="w"> </span>notify<span class="w"> </span>collection-final<span class="w"> </span>--job-id<span class="w"> </span><span class="m">12345</span><span class="w"> </span>--trigger-exit-code<span class="w"> </span><span class="m">1</span>
+</span><span id="__span-33-4"><a id="__codelineno-33-4" name="__codelineno-33-4" href="#__codelineno-33-4"></a>slurmkit<span class="w"> </span>notify<span class="w"> </span>collection-final<span class="w"> </span>--job-id<span class="w"> </span><span class="m">12345</span><span class="w"> </span>--route<span class="w"> </span>team_slack<span class="w"> </span>--strict
+</span><span id="__span-33-5"><a id="__codelineno-33-5" name="__codelineno-33-5" href="#__codelineno-33-5"></a>slurmkit<span class="w"> </span>notify<span class="w"> </span>collection-final<span class="w"> </span>--job-id<span class="w"> </span><span class="m">12345</span><span class="w"> </span>--no-refresh<span class="w"> </span>--dry-run
+</span></code></pre></div>
+<hr />
+<h2 id="exit-codes">Exit Codes<a class="headerlink" href="#exit-codes" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Code</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>0</td>
+<td>Success</td>
+</tr>
+<tr>
+<td>1</td>
+<td>General error</td>
+</tr>
+<tr>
+<td>2</td>
+<td>File not found / ambiguous match</td>
+</tr>
+<tr>
+<td>130</td>
+<td>Interrupted (Ctrl+C)</td>
+</tr>
+</tbody>
+</table>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+    
+      
+      <nav class="md-footer__inner md-grid" aria-label="Footer" >
+        
+          
+          <a href="../sync/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Cross-Cluster Sync">
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+            </div>
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Previous
+              </span>
+              <div class="md-ellipsis">
+                Cross-Cluster Sync
+              </div>
+            </div>
+          </a>
+        
+        
+          
+          <a href="../api/" class="md-footer__link md-footer__link--next" aria-label="Next: Overview">
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Next
+              </span>
+              <div class="md-ellipsis">
+                Overview
+              </div>
+            </div>
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M4 11v2h12l-5.5 5.5 1.42 1.42L19.84 12l-7.92-7.92L10.5 5.5 16 11z"/></svg>
+            </div>
+          </a>
+        
+      </nav>
+    
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+        
+<div class="md-social">
+  
+    
+    
+    
+    
+      
+      
+    
+    <a href="https://github.com/Awni00/slurmkit" target="_blank" rel="noopener" title="github.com" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.tabs", "navigation.tabs.sticky", "navigation.sections", "navigation.expand", "navigation.top", "navigation.footer", "search.suggest", "search.highlight", "search.share", "content.code.copy", "content.code.annotate", "toc.follow"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>
