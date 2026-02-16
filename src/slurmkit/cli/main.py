@@ -632,6 +632,31 @@ For more information on a command, run: slurmkit <command> --help
         help="Job ID(s) to remove",
     )
 
+    # collection cancel
+    coll_cancel_parser = collection_subparsers.add_parser(
+        "cancel",
+        help="Cancel running/pending jobs in collection",
+    )
+    coll_cancel_parser.add_argument(
+        "name",
+        help="Collection name",
+    )
+    coll_cancel_parser.add_argument(
+        "--no-refresh",
+        action="store_true",
+        help="Don't refresh job states from SLURM before cancellation",
+    )
+    coll_cancel_parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Show what would be cancelled without calling scancel",
+    )
+    coll_cancel_parser.add_argument(
+        "-y", "--yes",
+        action="store_true",
+        help="Skip confirmation prompt",
+    )
+
     # sync
     sync_parser = subparsers.add_parser(
         "sync",
@@ -862,6 +887,8 @@ def main(argv: Optional[List[str]] = None) -> int:
                 return commands.cmd_collection_add(args)
             elif args.collection_action == "remove":
                 return commands.cmd_collection_remove(args)
+            elif args.collection_action == "cancel":
+                return commands.cmd_collection_cancel(args)
             else:
                 parser.parse_args([args.command, "--help"])
                 return 1

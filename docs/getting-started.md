@@ -174,6 +174,9 @@ Update job states:
 
 ```bash
 slurmkit collection update my_experiment
+
+# Preview active jobs that would be cancelled
+slurmkit collection cancel my_experiment --dry-run
 ```
 
 ### 6. Resubmit Failed Jobs

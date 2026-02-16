@@ -150,6 +150,9 @@ slurmkit submit --collection exp1
 # Update job states
 slurmkit collection update exp1
 
+# Preview active jobs that would be cancelled
+slurmkit collection cancel exp1 --dry-run
+
 # View collection status
 slurmkit collection show exp1
 
@@ -204,6 +207,7 @@ slurmkit submit --collection exp1 --dry-run
 slurmkit submit --collection exp1
 slurmkit status exp1
 slurmkit collection update exp1
+slurmkit collection cancel exp1 --dry-run
 slurmkit collection show exp1
 slurmkit collection analyze exp1 --attempt-mode latest
 slurmkit collection groups exp1
@@ -352,6 +356,7 @@ Key features at a glance:
 **2) Collection Tracking and Analysis**
 
 - Create, inspect, and refresh collections: `slurmkit collection create exp1`, `slurmkit collection show exp1`, `slurmkit collection update exp1`
+- Cancel active jobs across primary and resubmission attempts: `slurmkit collection cancel exp1 --dry-run`
 - Analyze outcomes by parameter values and latest attempts: `slurmkit collection analyze exp1 --attempt-mode latest --top-k 10`
 - Inspect resubmission waves and attempt history: `slurmkit collection groups exp1`, `slurmkit collection show exp1 --show-history`
 - Resubmit failed jobs with deterministic regeneration by default in collection mode, including optional selection and parameter callbacks (e.g., checkpoint dir): `slurmkit resubmit --collection exp1 --filter failed --select-file callbacks.py --extra-params-file extra.py`
@@ -382,6 +387,9 @@ slurmkit collection show my_exp --attempt-mode latest --show-primary
 
 # Update states from SLURM
 slurmkit collection update my_exp
+
+# Preview which active jobs would be cancelled
+slurmkit collection cancel my_exp --dry-run
 
 # Submission-group summary
 slurmkit collection groups my_exp

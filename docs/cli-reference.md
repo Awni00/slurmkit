@@ -307,6 +307,20 @@ slurmkit collection update <name>
 
 Refresh job states from SLURM.
 
+#### collection cancel
+
+```bash
+slurmkit collection cancel <name> [--no-refresh] [--dry-run] [-y]
+```
+
+Cancel all currently running or pending jobs in the collection, including active resubmission attempts.
+
+| Option | Description |
+|--------|-------------|
+| `--no-refresh` | Skip refreshing states from SLURM before selecting cancellation targets |
+| `--dry-run` | Show cancellation targets without calling `scancel` |
+| `-y, --yes` | Skip confirmation prompt |
+
 #### collection analyze
 
 ```bash
@@ -370,6 +384,7 @@ slurmkit collection show my_exp --state failed
 slurmkit collection show my_exp --attempt-mode latest --show-primary --show-history
 slurmkit collection show my_exp --submission-group retry_after_fix
 slurmkit collection update my_exp
+slurmkit collection cancel my_exp --dry-run
 slurmkit collection analyze my_exp --min-support 5 --param algo --param learning_rate
 slurmkit collection analyze my_exp --attempt-mode latest --format json
 slurmkit collection analyze my_exp --submission-group retry_after_fix

@@ -38,6 +38,7 @@ from slurmkit.collections import (
     LEGACY_SUBMISSION_GROUP,
 )
 from slurmkit.slurm import (
+    cancel_job,
     find_job_output,
     get_jobs_data,
     get_sacct_info,
@@ -1638,6 +1639,111 @@ def cmd_collection_update(args: Any) -> int:
 
     print(f"Updated {updated} job state(s).")
     return 0
+
+
+def cmd_collection_cancel(args: Any) -> int:
+    """Cancel all running/pending jobs in a collection."""
+    config = get_configured_config(args)
+    manager = CollectionManager(config=config)
+
+    if not manager.exists(args.name):
+        print(f"Error: Collection not found: {args.name}")
+        return 1
+
+    collection = manager.load(args.name)
+
+    if not getattr(args, "no_refresh", False):
+        collection.refresh_states()
+        manager.save(collection)
+
+    active_states = {"pending", "running"}
+    cancellation_targets: List[Dict[str, Any]] = []
+
+    for job in collection.jobs:
+        job_id = job.get("job_id")
+        job_state = collection._normalize_state(job.get("state"))
+        if job_id and job_state in active_states:
+            cancellation_targets.append(
+                {
+                    "job_id": str(job_id),
+                    "job_name": job.get("job_name", "unknown"),
+                    "attempt_label": "primary",
+                    "state": str(job.get("state") or "UNKNOWN"),
+                }
+            )
+
+        for idx, resub in enumerate(job.get("resubmissions", []) or [], start=1):
+            resub_id = resub.get("job_id")
+            resub_state = collection._normalize_state(resub.get("state"))
+            if resub_id and resub_state in active_states:
+                cancellation_targets.append(
+                    {
+                        "job_id": str(resub_id),
+                        "job_name": job.get("job_name", "unknown"),
+                        "attempt_label": f"resubmission #{idx}",
+                        "state": str(resub.get("state") or "UNKNOWN"),
+                    }
+                )
+
+    deduped_targets: List[Dict[str, Any]] = []
+    seen_job_ids = set()
+    for target in cancellation_targets:
+        job_id = target["job_id"]
+        if job_id in seen_job_ids:
+            continue
+        seen_job_ids.add(job_id)
+        deduped_targets.append(target)
+
+    if not deduped_targets:
+        print(f"No running or pending jobs found in collection '{args.name}'.")
+        return 0
+
+    print(f"Will cancel {len(deduped_targets)} job(s) in collection '{args.name}':")
+    for target in deduped_targets:
+        print(
+            f"  - {target['job_name']} [{target['attempt_label']}] "
+            f"(ID: {target['job_id']}, State: {target['state']})"
+        )
+
+    if args.dry_run:
+        print("\n[DRY RUN] No jobs were cancelled.")
+        return 0
+
+    if not args.yes:
+        if not prompt_yes_no(f"\nCancel these {len(deduped_targets)} job(s)? [y/N]: "):
+            print("Aborted.")
+            return 0
+
+    cancelled_ids = set()
+    failures = 0
+    for target in deduped_targets:
+        success, message = cancel_job(target["job_id"], dry_run=False)
+        if success:
+            cancelled_ids.add(target["job_id"])
+            print(
+                f"Cancelled: {target['job_name']} [{target['attempt_label']}] "
+                f"(ID: {target['job_id']})"
+            )
+        else:
+            failures += 1
+            print(
+                f"Error cancelling {target['job_id']} "
+                f"({target['job_name']} [{target['attempt_label']}]): {message}",
+                file=sys.stderr,
+            )
+
+    if cancelled_ids:
+        for job in collection.jobs:
+            if str(job.get("job_id")) in cancelled_ids:
+                job["state"] = "CANCELLED"
+            for resub in job.get("resubmissions", []) or []:
+                if str(resub.get("job_id")) in cancelled_ids:
+                    resub["state"] = "CANCELLED"
+        collection._touch()
+        manager.save(collection)
+
+    print(f"\nCancelled {len(cancelled_ids)}/{len(deduped_targets)} job(s).")
+    return 0 if failures == 0 else 1
 
 
 def cmd_collection_delete(args: Any) -> int:

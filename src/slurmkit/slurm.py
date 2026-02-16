@@ -6,6 +6,7 @@ This module provides functions for:
 - Querying pending/running jobs via squeue
 - Finding job output files
 - Submitting jobs via sbatch
+- Canceling jobs via scancel
 - Parsing SLURM command outputs
 
 These utilities wrap SLURM CLI commands and parse their outputs into
@@ -652,6 +653,37 @@ def submit_job(
 
     except FileNotFoundError:
         return False, None, "sbatch command not found. Is SLURM installed?"
+
+
+def cancel_job(
+    job_id: str,
+    dry_run: bool = False,
+) -> Tuple[bool, str]:
+    """
+    Cancel a running or pending job using scancel.
+
+    Args:
+        job_id: SLURM job ID.
+        dry_run: If True, return command preview without executing.
+
+    Returns:
+        Tuple of (success, message).
+    """
+    cmd = ["scancel", str(job_id)]
+
+    if dry_run:
+        return True, f"[dry-run] {' '.join(cmd)}"
+
+    try:
+        result = run_command(cmd)
+        if result.returncode == 0:
+            return True, f"Cancelled job {job_id}"
+
+        error_msg = result.stderr.strip() or result.stdout.strip()
+        return False, f"scancel failed: {error_msg}"
+
+    except FileNotFoundError:
+        return False, "scancel command not found. Is SLURM installed?"
 
 
 # =============================================================================

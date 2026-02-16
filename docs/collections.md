@@ -126,6 +126,19 @@ Refresh job states from SLURM:
 slurmkit collection update my_experiment
 ```
 
+### Cancel Active Jobs in a Collection
+
+Cancel all running or pending jobs tracked in the collection (including active resubmissions):
+
+```bash
+slurmkit collection cancel my_experiment
+```
+
+Options:
+- `--dry-run` - Preview targets without calling `scancel`
+- `--no-refresh` - Skip SLURM refresh before selecting targets
+- `-y` - Skip confirmation prompt
+
 ### Analyze Status by Parameter
 
 Find patterns between parameter values and job outcomes:
@@ -258,6 +271,12 @@ Update states from SLURM:
 
 ```bash
 slurmkit collection update my_experiment
+```
+
+Cancel all currently active jobs in the collection:
+
+```bash
+slurmkit collection cancel my_experiment --dry-run
 ```
 
 ### 4. Resubmit Failed Jobs
