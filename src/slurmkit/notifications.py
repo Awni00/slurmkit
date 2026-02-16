@@ -41,6 +41,14 @@ from slurmkit.collections import (
     JOB_STATE_UNKNOWN,
 )
 from slurmkit.config import Config, get_config
+from slurmkit.notification_formatters import (
+    apply_formatter_callback,
+    render_default_chat,
+    render_default_email_body,
+    render_default_email_subject,
+    resolve_formatter_callback_path,
+    resolve_global_formatter_callback,
+)
 from slurmkit.slurm import find_job_output
 
 try:
@@ -97,6 +105,7 @@ class NotificationRoute:
     smtp_password: Optional[str] = None
     smtp_starttls: bool = True
     smtp_ssl: bool = False
+    formatter_callback: Optional[str] = None
 
 
 @dataclass
@@ -106,6 +115,7 @@ class RouteResolution:
     routes: List[NotificationRoute]
     errors: List[str]
     skipped: List[str]
+    warnings: List[str] = field(default_factory=list)
 
 
 @dataclass
@@ -119,6 +129,7 @@ class DeliveryResult:
     status_code: Optional[int] = None
     error: Optional[str] = None
     dry_run: bool = False
+    warning: Optional[str] = None
 
 
 @dataclass
@@ -554,7 +565,12 @@ class NotificationService:
             ),
         )
 
-    def _parse_route(self, raw_route: Dict[str, Any], defaults: NotificationDefaults) -> NotificationRoute:
+    def _parse_route(
+        self,
+        raw_route: Dict[str, Any],
+        defaults: NotificationDefaults,
+        global_formatter_callback: Optional[str],
+    ) -> Tuple[NotificationRoute, Optional[str]]:
         """Validate and normalize a single notification route."""
         name = str(raw_route.get("name", "")).strip()
         if not name:
@@ -688,6 +704,11 @@ class NotificationService:
         timeout_seconds = _to_positive_float(raw_route.get("timeout_seconds"), defaults.timeout_seconds)
         max_attempts = _to_positive_int(raw_route.get("max_attempts"), defaults.max_attempts)
         backoff_seconds = _to_non_negative_float(raw_route.get("backoff_seconds"), defaults.backoff_seconds)
+        formatter_callback, formatter_warning = resolve_formatter_callback_path(
+            route_config=raw_route,
+            route_name=name,
+            global_callback_path=global_formatter_callback,
+        )
 
         return NotificationRoute(
             name=name,
@@ -707,7 +728,8 @@ class NotificationService:
             smtp_password=smtp_password,
             smtp_starttls=smtp_starttls,
             smtp_ssl=smtp_ssl,
-        )
+            formatter_callback=formatter_callback,
+        ), formatter_warning
 
     def resolve_routes(
         self,
@@ -726,7 +748,7 @@ class NotificationService:
             warnings: Optional list to receive config fallback warnings.
 
         Returns:
-            RouteResolution with routes, parsing errors, and skipped route names.
+            RouteResolution with routes, parsing errors, skipped route names, and warnings.
         """
         notifications_cfg = self._effective_notifications_config(
             collection_name=collection_name,
@@ -736,12 +758,19 @@ class NotificationService:
             collection_name=collection_name,
             warnings=warnings,
         )
+        global_formatter_callback, global_formatter_warning = resolve_global_formatter_callback(
+            notifications_cfg=notifications_cfg
+        )
         raw_routes = notifications_cfg.get("routes", []) or []
         if not isinstance(raw_routes, list):
+            unresolved_warnings: List[str] = []
+            if global_formatter_warning:
+                unresolved_warnings.append(global_formatter_warning)
             return RouteResolution(
                 routes=[],
                 errors=["Configuration key 'notifications.routes' must be a list."],
                 skipped=[],
+                warnings=unresolved_warnings,
             )
 
         selected = set(route_names or [])
@@ -749,6 +778,9 @@ class NotificationService:
         routes: List[NotificationRoute] = []
         errors: List[str] = []
         skipped: List[str] = []
+        route_warnings: List[str] = []
+        if global_formatter_warning:
+            route_warnings.append(global_formatter_warning)
 
         for idx, raw in enumerate(raw_routes):
             if not isinstance(raw, dict):
@@ -768,10 +800,16 @@ class NotificationService:
                 continue
 
             try:
-                route = self._parse_route(raw, defaults)
+                route, parse_warning = self._parse_route(
+                    raw,
+                    defaults,
+                    global_formatter_callback=global_formatter_callback,
+                )
             except NotificationConfigError as exc:
                 errors.append(str(exc))
                 continue
+            if parse_warning:
+                route_warnings.append(parse_warning)
 
             known_names.add(route.name)
 
@@ -792,7 +830,15 @@ class NotificationService:
             for name in unknown:
                 errors.append(f"Unknown notification route '{name}'.")
 
-        return RouteResolution(routes=routes, errors=errors, skipped=skipped)
+        deduped_warnings: List[str] = []
+        seen_warnings: set = set()
+        for message in route_warnings:
+            if message in seen_warnings:
+                continue
+            seen_warnings.add(message)
+            deduped_warnings.append(message)
+
+        return RouteResolution(routes=routes, errors=errors, skipped=skipped, warnings=deduped_warnings)
 
     def resolve_collection_for_job(
         self,
@@ -1524,113 +1570,20 @@ class NotificationService:
             },
         }
 
-    def _render_human_message(self, payload: Dict[str, Any]) -> str:
-        """Render human-readable message for chat webhook adapters."""
-        event = payload.get("event")
-        job = payload.get("job", {}) or {}
-        collection = payload.get("collection", {}) or {}
-
-        if event == EVENT_JOB_FAILED:
-            title = "SLURMKIT ALERT: Job failed"
-        elif event == EVENT_JOB_COMPLETED:
-            title = "SLURMKIT: Job completed"
-        elif event == EVENT_COLLECTION_FAILED:
-            title = "SLURMKIT ALERT: Collection failed"
-        elif event == EVENT_COLLECTION_COMPLETED:
-            title = "SLURMKIT: Collection completed"
-        else:
-            title = "SLURMKIT: Test notification"
-
-        lines = [title, f"Event: {event}"]
-
-        if event in (EVENT_COLLECTION_COMPLETED, EVENT_COLLECTION_FAILED):
-            lines.append(f"Collection: {collection.get('name') or 'unknown'}")
-            report = payload.get("collection_report", {}) or {}
-            summary = report.get("summary", {}) or {}
-            counts = summary.get("counts", {}) or {}
-            lines.append(f"Total jobs: {summary.get('total_jobs', 'unknown')}")
-            lines.append(
-                "Counts: "
-                f"completed={counts.get('completed', 0)}, "
-                f"failed={counts.get('failed', 0)}, "
-                f"unknown={counts.get('unknown', 0)}, "
-                f"running={counts.get('running', 0)}, "
-                f"pending={counts.get('pending', 0)}"
-            )
-
-            failed_jobs = report.get("failed_jobs", []) or []
-            if failed_jobs:
-                first = failed_jobs[0]
-                lines.append(
-                    f"Sample issue: {first.get('job_name')} ({first.get('job_id')}) state={first.get('state')}"
-                )
-
-            ai_summary = payload.get("ai_summary")
-            if ai_summary:
-                lines.append("AI summary:")
-                lines.append(ai_summary)
-
-        else:
-            lines.append(f"Job: {job.get('job_name') or 'unknown'}")
-            lines.append(f"Job ID: {job.get('job_id') or 'unknown'}")
-            if collection:
-                lines.append(f"Collection: {collection.get('name') or 'unknown'}")
-            if job.get("exit_code") is not None:
-                lines.append(f"Exit code: {job.get('exit_code')}")
-            if job.get("state"):
-                lines.append(f"State: {job.get('state')}")
-
-            output_tail = job.get("output_tail")
-            if output_tail:
-                lines.append("Output tail:")
-                lines.append(output_tail)
-
-            ai_summary = payload.get("ai_summary")
-            if ai_summary:
-                lines.append("AI summary:")
-                lines.append(ai_summary)
-
-        lines.append(f"Host: {payload.get('host', {}).get('hostname', 'unknown')}")
-
-        return "\n".join(lines)
-
     def _route_payload(self, route: NotificationRoute, base_payload: Dict[str, Any]) -> Dict[str, Any]:
-        """Build adapter-specific payload for a notification route."""
+        """Build route-scoped canonical payload with route metadata."""
         payload = copy.deepcopy(base_payload)
         payload.setdefault("meta", {})
         payload["meta"]["route_name"] = route.name
         payload["meta"]["route_type"] = route.route_type
-
-        if route.route_type == "webhook":
-            return payload
-        if route.route_type == "slack":
-            return {"text": self._render_human_message(payload)}
-        if route.route_type == "discord":
-            return {"content": self._render_human_message(payload)}
-        if route.route_type == "email":
-            return payload
-        raise NotificationConfigError(f"Unsupported route type '{route.route_type}'.")
-
-    def _render_email_subject(self, payload: Dict[str, Any]) -> str:
-        """Render concise subject line for email delivery."""
-        event = payload.get("event")
-        job = payload.get("job", {}) or {}
-        collection = payload.get("collection", {}) or {}
-
-        if event == EVENT_JOB_FAILED:
-            return f"SLURMKIT ALERT: job_failed ({job.get('job_id') or 'unknown'})"
-        if event == EVENT_JOB_COMPLETED:
-            return f"SLURMKIT: job_completed ({job.get('job_id') or 'unknown'})"
-        if event == EVENT_COLLECTION_FAILED:
-            return f"SLURMKIT ALERT: collection_failed ({collection.get('name') or 'unknown'})"
-        if event == EVENT_COLLECTION_COMPLETED:
-            return f"SLURMKIT: collection_completed ({collection.get('name') or 'unknown'})"
-        return "SLURMKIT: test_notification"
+        return payload
 
     def _send_email(
         self,
         route: NotificationRoute,
         payload: Dict[str, Any],
+        subject: Optional[str] = None,
+        body: Optional[str] = None,
         dry_run: bool = False,
     ) -> DeliveryResult:
         """Send text email through SMTP with retries."""
@@ -1656,10 +1609,12 @@ class NotificationService:
         for attempts in range(1, route.max_attempts + 1):
             try:
                 message = EmailMessage()
-                message["Subject"] = self._render_email_subject(payload)
+                message["Subject"] = (
+                    subject if subject is not None else render_default_email_subject(payload)
+                )
                 message["From"] = route.email_from
                 message["To"] = ", ".join(route.email_to)
-                message.set_content(self._render_human_message(payload))
+                message.set_content(body if body is not None else render_default_email_body(payload))
 
                 if route.smtp_ssl:
                     with smtplib.SMTP_SSL(
@@ -1803,15 +1758,56 @@ class NotificationService:
         """Dispatch payload to all selected routes."""
         results = []
         for route in routes:
-            if route.route_type == "email":
-                route_payload = copy.deepcopy(payload)
-                route_payload.setdefault("meta", {})
-                route_payload["meta"]["route_name"] = route.name
-                route_payload["meta"]["route_type"] = route.route_type
-                result = self._send_email(route, route_payload, dry_run=dry_run)
-            else:
-                route_payload = self._route_payload(route, payload)
+            route_payload = self._route_payload(route, payload)
+            formatter_overrides: Dict[str, str] = {}
+            formatter_warning: Optional[str] = None
+
+            if route.route_type in {"slack", "discord", "email"}:
+                formatter_overrides, formatter_warning = apply_formatter_callback(
+                    payload=route_payload,
+                    callback_loader=self._load_callback,
+                    callback_path=route.formatter_callback,
+                )
+
+            if route.route_type == "webhook":
                 result = self._send_json(route, route_payload, dry_run=dry_run)
+            elif route.route_type == "slack":
+                chat_message = (
+                    formatter_overrides["chat"]
+                    if "chat" in formatter_overrides
+                    else render_default_chat(route_payload)
+                )
+                result = self._send_json(route, {"text": chat_message}, dry_run=dry_run)
+            elif route.route_type == "discord":
+                chat_message = (
+                    formatter_overrides["chat"]
+                    if "chat" in formatter_overrides
+                    else render_default_chat(route_payload)
+                )
+                result = self._send_json(route, {"content": chat_message}, dry_run=dry_run)
+            elif route.route_type == "email":
+                subject = (
+                    formatter_overrides["email_subject"]
+                    if "email_subject" in formatter_overrides
+                    else render_default_email_subject(route_payload)
+                )
+                body = (
+                    formatter_overrides["email_body"]
+                    if "email_body" in formatter_overrides
+                    else render_default_email_body(route_payload)
+                )
+                result = self._send_email(
+                    route,
+                    route_payload,
+                    subject=subject,
+                    body=body,
+                    dry_run=dry_run,
+                )
+            else:
+                raise NotificationConfigError(f"Unsupported route type '{route.route_type}'.")
+
+            if formatter_warning:
+                result.warning = formatter_warning
             results.append(result)
         return results
 

@@ -8,7 +8,13 @@ import yaml
 
 from slurmkit.collections import CollectionManager
 from slurmkit.config import Config
+from slurmkit.notification_formatters import (
+    render_default_chat,
+    render_default_email_body,
+    render_default_email_subject,
+)
 from slurmkit.notifications import (
+    DeliveryResult,
     EVENT_COLLECTION_COMPLETED,
     EVENT_JOB_COMPLETED,
     EVENT_JOB_FAILED,
@@ -365,6 +371,315 @@ def test_job_ai_callback_enrichment_updates_payload(tmp_path, monkeypatch):
     assert warning is None
     assert payload["ai_status"] == "available"
     assert payload["ai_summary"] == "Job AI summary for 777"
+
+
+def test_dispatch_applies_global_formatter_callback_for_chat_and_email(tmp_path, monkeypatch):
+    """Global formatter callback should apply to both chat and email route rendering."""
+    module_path = tmp_path / "formatter_cb_global.py"
+    module_path.write_text(
+        "def render(payload):\n"
+        "    name = payload.get('meta', {}).get('route_name', 'unknown')\n"
+        "    return {\n"
+        "        'chat': f'chat-{name}',\n"
+        "        'email_subject': f'subject-{name}',\n"
+        "        'email_body': f'body-{name}',\n"
+        "    }\n",
+        encoding="utf-8",
+    )
+    monkeypatch.syspath_prepend(str(tmp_path))
+
+    config = _make_config(
+        tmp_path,
+        {
+            "notifications": {
+                "formatter": {"callback": "formatter_cb_global:render"},
+                "routes": [
+                    {"name": "team_slack", "type": "slack", "url": "https://example.test/slack"},
+                    {
+                        "name": "team_email",
+                        "type": "email",
+                        "to": "ops@example.com",
+                        "from": "noreply@example.com",
+                        "smtp_host": "smtp.example.com",
+                    },
+                ],
+            }
+        },
+    )
+    service = NotificationService(config=config)
+    routes = service.resolve_routes(event=None).routes
+    payload = service.build_test_payload()
+    captured = {"json": {}, "email": {}}
+
+    def fake_send_json(route, payload, dry_run=False):
+        captured["json"][route.name] = payload
+        return DeliveryResult(route_name=route.name, route_type=route.route_type, success=True, attempts=0, dry_run=True)
+
+    def fake_send_email(route, payload, subject=None, body=None, dry_run=False):
+        captured["email"][route.name] = {"subject": subject, "body": body}
+        return DeliveryResult(route_name=route.name, route_type=route.route_type, success=True, attempts=0, dry_run=True)
+
+    monkeypatch.setattr(service, "_send_json", fake_send_json)
+    monkeypatch.setattr(service, "_send_email", fake_send_email)
+
+    results = service.dispatch(payload=payload, routes=routes, dry_run=True)
+
+    assert all(result.success for result in results)
+    assert all(result.warning is None for result in results)
+    assert captured["json"]["team_slack"]["text"] == "chat-team_slack"
+    assert captured["email"]["team_email"]["subject"] == "subject-team_email"
+    assert captured["email"]["team_email"]["body"] == "body-team_email"
+
+
+def test_route_formatter_callback_overrides_global_callback(tmp_path, monkeypatch):
+    """Route-level formatter callback should take precedence over global callback."""
+    module_path = tmp_path / "formatter_cb_override.py"
+    module_path.write_text(
+        "def global_render(_payload):\n"
+        "    return {'chat': 'global-chat'}\n"
+        "def route_render(_payload):\n"
+        "    return {'chat': 'route-chat'}\n",
+        encoding="utf-8",
+    )
+    monkeypatch.syspath_prepend(str(tmp_path))
+
+    config = _make_config(
+        tmp_path,
+        {
+            "notifications": {
+                "formatter": {"callback": "formatter_cb_override:global_render"},
+                "routes": [
+                    {
+                        "name": "team_slack",
+                        "type": "slack",
+                        "url": "https://example.test/slack",
+                        "formatter_callback": "formatter_cb_override:route_render",
+                    }
+                ],
+            }
+        },
+    )
+    service = NotificationService(config=config)
+    routes = service.resolve_routes(event=None).routes
+    payload = service.build_test_payload()
+    captured = {}
+
+    def fake_send_json(route, payload, dry_run=False):
+        captured[route.name] = payload
+        return DeliveryResult(route_name=route.name, route_type=route.route_type, success=True, attempts=0, dry_run=True)
+
+    monkeypatch.setattr(service, "_send_json", fake_send_json)
+
+    results = service.dispatch(payload=payload, routes=routes, dry_run=True)
+    assert results[0].warning is None
+    assert captured["team_slack"]["text"] == "route-chat"
+
+
+def test_route_formatter_callback_null_disables_global_callback(tmp_path, monkeypatch):
+    """Route-level null formatter_callback should disable a configured global callback."""
+    module_path = tmp_path / "formatter_cb_null.py"
+    module_path.write_text(
+        "def global_render(_payload):\n"
+        "    return {'chat': 'global-chat'}\n",
+        encoding="utf-8",
+    )
+    monkeypatch.syspath_prepend(str(tmp_path))
+
+    config = _make_config(
+        tmp_path,
+        {
+            "notifications": {
+                "formatter": {"callback": "formatter_cb_null:global_render"},
+                "routes": [
+                    {
+                        "name": "team_slack",
+                        "type": "slack",
+                        "url": "https://example.test/slack",
+                        "formatter_callback": None,
+                    }
+                ],
+            }
+        },
+    )
+    service = NotificationService(config=config)
+    routes = service.resolve_routes(event=None).routes
+    payload = service.build_test_payload()
+    captured = {}
+
+    def fake_send_json(route, payload, dry_run=False):
+        captured[route.name] = payload
+        return DeliveryResult(route_name=route.name, route_type=route.route_type, success=True, attempts=0, dry_run=True)
+
+    monkeypatch.setattr(service, "_send_json", fake_send_json)
+
+    results = service.dispatch(payload=payload, routes=routes, dry_run=True)
+    assert results[0].warning is None
+    assert captured["team_slack"]["text"].startswith("SLURMKIT: Test notification")
+
+
+def test_formatter_callback_failure_falls_back_with_warning(tmp_path, monkeypatch):
+    """Formatter callback failures should not block delivery and should fall back safely."""
+    module_path = tmp_path / "formatter_cb_fail.py"
+    module_path.write_text(
+        "def broken(_payload):\n"
+        "    raise RuntimeError('boom')\n",
+        encoding="utf-8",
+    )
+    monkeypatch.syspath_prepend(str(tmp_path))
+
+    config = _make_config(
+        tmp_path,
+        {
+            "notifications": {
+                "formatter": {"callback": "formatter_cb_fail:broken"},
+                "routes": [{"name": "team_slack", "type": "slack", "url": "https://example.test/slack"}],
+            }
+        },
+    )
+    service = NotificationService(config=config)
+    routes = service.resolve_routes(event=None).routes
+    payload = service.build_test_payload()
+    captured = {}
+
+    def fake_send_json(route, payload, dry_run=False):
+        captured[route.name] = payload
+        return DeliveryResult(route_name=route.name, route_type=route.route_type, success=True, attempts=0, dry_run=True)
+
+    monkeypatch.setattr(service, "_send_json", fake_send_json)
+
+    results = service.dispatch(payload=payload, routes=routes, dry_run=True)
+    assert "failed" in (results[0].warning or "")
+    assert captured["team_slack"]["text"] == render_default_chat(service._route_payload(routes[0], payload))
+
+
+def test_formatter_callback_invalid_output_falls_back_with_warning(tmp_path, monkeypatch):
+    """Invalid formatter callback fields should be ignored with warnings and safe fallback."""
+    module_path = tmp_path / "formatter_cb_invalid.py"
+    module_path.write_text(
+        "def invalid(_payload):\n"
+        "    return {'chat': 123, 'unknown_field': 'x'}\n",
+        encoding="utf-8",
+    )
+    monkeypatch.syspath_prepend(str(tmp_path))
+
+    config = _make_config(
+        tmp_path,
+        {
+            "notifications": {
+                "formatter": {"callback": "formatter_cb_invalid:invalid"},
+                "routes": [{"name": "team_slack", "type": "slack", "url": "https://example.test/slack"}],
+            }
+        },
+    )
+    service = NotificationService(config=config)
+    routes = service.resolve_routes(event=None).routes
+    payload = service.build_test_payload()
+    captured = {}
+
+    def fake_send_json(route, payload, dry_run=False):
+        captured[route.name] = payload
+        return DeliveryResult(route_name=route.name, route_type=route.route_type, success=True, attempts=0, dry_run=True)
+
+    monkeypatch.setattr(service, "_send_json", fake_send_json)
+
+    results = service.dispatch(payload=payload, routes=routes, dry_run=True)
+    assert "unsupported keys" in (results[0].warning or "")
+    assert "fields must be strings" in (results[0].warning or "")
+    assert captured["team_slack"]["text"] == render_default_chat(service._route_payload(routes[0], payload))
+
+
+def test_webhook_route_ignores_formatter_callback(tmp_path, monkeypatch):
+    """Webhook route payload should remain canonical and skip formatter callback execution."""
+    config = _make_config(
+        tmp_path,
+        {
+            "notifications": {
+                "formatter": {"callback": "missing.module:fn"},
+                "routes": [{"name": "hook", "type": "webhook", "url": "https://example.test/hook"}],
+            }
+        },
+    )
+    service = NotificationService(config=config)
+    routes = service.resolve_routes(event=None).routes
+    payload = service.build_test_payload()
+    captured = {}
+
+    def fake_send_json(route, payload, dry_run=False):
+        captured[route.name] = payload
+        return DeliveryResult(route_name=route.name, route_type=route.route_type, success=True, attempts=0, dry_run=True)
+
+    monkeypatch.setattr(service, "_send_json", fake_send_json)
+
+    results = service.dispatch(payload=payload, routes=routes, dry_run=True)
+    assert results[0].warning is None
+    assert captured["hook"]["event"] == EVENT_TEST
+    assert captured["hook"]["meta"]["route_name"] == "hook"
+    assert captured["hook"]["meta"]["route_type"] == "webhook"
+
+
+def test_resolve_routes_warns_on_invalid_global_formatter_callback_type(tmp_path):
+    """Global formatter callback type errors should be surfaced as route warnings."""
+    config = _make_config(
+        tmp_path,
+        {
+            "notifications": {
+                "formatter": {"callback": 123},
+                "routes": [{"name": "hook", "type": "webhook", "url": "https://example.test/hook"}],
+            }
+        },
+    )
+    service = NotificationService(config=config)
+    resolution = service.resolve_routes(event=EVENT_JOB_FAILED)
+
+    assert resolution.errors == []
+    assert len(resolution.routes) == 1
+    assert len(resolution.warnings) == 1
+    assert "notifications.formatter.callback" in resolution.warnings[0]
+    assert resolution.routes[0].formatter_callback is None
+
+
+def test_resolve_routes_warns_on_invalid_route_formatter_callback_type(tmp_path):
+    """Invalid route formatter_callback type should warn and continue with fallback formatter."""
+    config = _make_config(
+        tmp_path,
+        {
+            "notifications": {
+                "routes": [
+                    {
+                        "name": "hook",
+                        "type": "webhook",
+                        "url": "https://example.test/hook",
+                        "formatter_callback": 123,
+                    }
+                ]
+            }
+        },
+    )
+    service = NotificationService(config=config)
+    resolution = service.resolve_routes(event=EVENT_JOB_FAILED)
+
+    assert resolution.errors == []
+    assert len(resolution.routes) == 1
+    assert len(resolution.warnings) == 1
+    assert "formatter_callback" in resolution.warnings[0]
+    assert resolution.routes[0].formatter_callback is None
+
+
+def test_default_email_formatter_helpers(tmp_path):
+    """Default email subject/body helpers should match fallback formatter output."""
+    config = _make_config(
+        tmp_path,
+        {
+            "notifications": {
+                "routes": [{"name": "hook", "type": "webhook", "url": "https://example.test/hook"}],
+            }
+        },
+    )
+    service = NotificationService(config=config)
+    payload = service.build_test_payload()
+
+    assert render_default_email_subject(payload) == "SLURMKIT: test_notification"
+    assert render_default_email_body(payload).startswith("SLURMKIT: Test notification")
 
 
 def test_dispatch_retries_then_succeeds(tmp_path, monkeypatch):

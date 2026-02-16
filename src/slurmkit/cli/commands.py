@@ -1877,12 +1877,17 @@ def _compute_notification_exit_code(
 def _print_notification_results(
     delivery_results: List[Any],
     route_errors: List[str],
+    route_warnings: Optional[List[str]] = None,
 ) -> None:
     """Print human-readable delivery summary."""
     for error in route_errors:
         print(f"[route-error] {error}")
+    for warning in route_warnings or []:
+        print(f"[route-warning] {warning}")
 
     for result in delivery_results:
+        if result.warning:
+            print(f"[delivery-warning] {result.route_name} ({result.route_type}) - {result.warning}")
         if result.success:
             mode = "dry-run" if result.dry_run else "sent"
             attempts = f"{result.attempts} attempt(s)" if not result.dry_run else "no request sent"
@@ -1955,7 +1960,11 @@ def cmd_notify_job(args: Any) -> int:
         routes=route_resolution.routes,
         dry_run=args.dry_run,
     )
-    _print_notification_results(delivery_results, route_resolution.errors)
+    _print_notification_results(
+        delivery_results,
+        route_resolution.errors,
+        route_resolution.warnings,
+    )
 
     success_count = sum(1 for result in delivery_results if result.success)
     attempted_count = len(delivery_results) + len(route_resolution.errors)
@@ -1995,7 +2004,11 @@ def cmd_notify_test(args: Any) -> int:
         routes=route_resolution.routes,
         dry_run=args.dry_run,
     )
-    _print_notification_results(delivery_results, route_resolution.errors)
+    _print_notification_results(
+        delivery_results,
+        route_resolution.errors,
+        route_resolution.warnings,
+    )
 
     success_count = sum(1 for result in delivery_results if result.success)
     attempted_count = len(delivery_results) + len(route_resolution.errors)
@@ -2129,7 +2142,11 @@ def cmd_notify_collection_final(args: Any) -> int:
                 routes=route_resolution.routes,
                 dry_run=args.dry_run,
             )
-            _print_notification_results(delivery_results, route_resolution.errors)
+            _print_notification_results(
+                delivery_results,
+                route_resolution.errors,
+                route_resolution.warnings,
+            )
 
             success_count = sum(1 for result in delivery_results if result.success)
             attempted_count = len(delivery_results) + len(route_resolution.errors)

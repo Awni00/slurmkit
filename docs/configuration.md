@@ -110,6 +110,10 @@ notifications:
     backoff_seconds: 0.5
     output_tail_lines: 40
 
+  formatter:
+    # Optional global formatter callback for slack/discord/email routes
+    callback: null  # "module.path:function_name"
+
   job:
     ai:
       enabled: false
@@ -130,6 +134,7 @@ notifications:
       url: "${SLACK_WEBHOOK_URL}"
       enabled: true
       events: [job_failed, collection_failed]
+      formatter_callback: null  # Optional route override, null disables global callback
       headers: {}
       timeout_seconds: 5
       max_attempts: 3
@@ -288,6 +293,7 @@ Use `notifications.routes` to define where `slurmkit notify` sends events.
 - `enabled` - Optional boolean (default: `true`)
 - `events` - Optional list of subscribed events
 - `headers` - Optional HTTP headers map for `webhook`; supports `${ENV_VAR}` interpolation
+- `formatter_callback` - Optional callback override in `module.path:function_name` format; `null` disables global callback for this route
 - `timeout_seconds` - Optional request timeout override
 - `max_attempts` - Optional retry attempts override
 - `backoff_seconds` - Optional retry backoff override
@@ -312,6 +318,25 @@ Supported events:
 - If `events` is omitted on a route, it defaults to `notifications.defaults.events`.
 - If `notifications.defaults.events` is omitted, it defaults to `[job_failed]`.
 - Retry and timeout values fall back from route settings to `notifications.defaults`.
+
+### Formatter Callback Settings
+
+`notifications.formatter.callback` configures an optional global formatter callback for `slack`, `discord`, and `email` routes.
+Route-level `formatter_callback` takes precedence over global callback.
+Setting `formatter_callback: null` (or empty string) on a route disables the global callback for that route.
+
+Callback contract:
+- Signature: `def format_notification(payload: Dict[str, Any]) -> Dict[str, Any]`
+- Input payload includes route metadata under `payload["meta"]`.
+- Supported return keys:
+  - `chat` (used by `slack` and `discord`)
+  - `email_subject`
+  - `email_body`
+
+Failure behavior:
+- Callback load/execute/validation failures never block delivery.
+- slurmkit falls back to built-in formatter output and emits warnings in CLI output.
+- `webhook` routes always receive canonical JSON payloads and are not formatter-customized.
 
 ### Job Notification AI Settings
 

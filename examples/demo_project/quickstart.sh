@@ -192,6 +192,7 @@ step "7" "Notification demos (optional)"
 
 echo "This can demo: notify test, notify job, and notify collection-final."
 echo "For live delivery (non-dry-run), ensure route credentials are configured."
+echo "Formatter callback demo module is available at notification_formatter_callback.py."
 echo "Example:"
 echo "  export DEMO_WEBHOOK_URL='https://example.com/your-webhook'"
 echo "  # or for local email testing:"
@@ -223,6 +224,8 @@ if [[ "$notify_choice" =~ ^[Yy]$ ]]; then
         echo ""
         echo "Running notification demos:"
         run_demo_cmd "notify test" slurmkit notify test "${NOTIFY_FLAGS[@]}"
+        run_demo_cmd "notify test (local_email formatter callback route)" \
+            slurmkit notify test --route local_email "${NOTIFY_FLAGS[@]}"
         run_demo_cmd "notify job (failed)" slurmkit notify job --job-id 990002 --exit-code 1 "${NOTIFY_FLAGS[@]}"
         run_demo_cmd "notify job (completed)" slurmkit notify job --job-id 990001 --exit-code 0 --on always "${NOTIFY_FLAGS[@]}"
         run_demo_cmd "notify collection-final (terminal failed)" \
@@ -241,6 +244,10 @@ if [[ "$notify_choice" =~ ^[Yy]$ ]]; then
     echo "  slurmkit notify collection-final --collection demo_terminal_failed --job-id 990002 --no-refresh --dry-run"
     echo "  # fallback collection (no spec notifications block) uses .slurm-kit/config.yaml"
     echo "  slurmkit notify job --collection demo_terminal_completed --job-id 990011 --exit-code 0 --on always --dry-run"
+    echo "  # formatter callback demo (global + route override)"
+    echo "  # set notifications.formatter.callback: notification_formatter_callback:format_notification"
+    echo "  # set routes[].formatter_callback as needed (or null to opt out)"
+    echo "  slurmkit notify test --route local_email --dry-run"
 else
     echo "Skipped notification demos."
 fi
@@ -282,6 +289,8 @@ echo "     ./setup_dummy_jobs.py --include-non-terminal"
 echo "     export PYTHONPATH=\"\$PWD:\$PYTHONPATH\""
 echo "     # demo_terminal_failed uses spec-level notifications override"
 echo "     slurmkit notify collection-final --collection demo_terminal_failed --job-id 990002 --no-refresh --dry-run"
+echo "     # formatter callback demo"
+echo "     slurmkit notify test --route local_email --dry-run"
 echo ""
 echo "See README.md for more detailed workflows and examples."
 echo ""

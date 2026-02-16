@@ -11,6 +11,7 @@ demo_project/
 ├── README.md
 ├── quickstart.sh
 ├── collection_ai_callback.py
+├── notification_formatter_callback.py
 ├── setup_dummy_jobs.py
 ├── templates/
 │   ├── training.job.j2
@@ -276,6 +277,54 @@ slurmkit notify job --collection demo_terminal_completed --job-id 990011 --exit-
 ```
 
 Look for `ai_status` and `ai_summary` in payload preview.
+
+### 6) Formatter callback demo
+
+This demo project includes a callback module at `notification_formatter_callback.py`.
+Add callback settings to `.slurm-kit/config.yaml` like this:
+
+- global callback: `notification_formatter_callback:format_notification`
+- route override for `local_email`: `notification_formatter_callback:format_local_email`
+- explicit global opt-out on `team_email` via `formatter_callback: null`
+
+Run from the demo directory so callback modules resolve cleanly:
+
+```bash
+cd examples/demo_project
+```
+
+If you run notify from another working directory, set:
+
+```bash
+export PYTHONPATH="/Users/awni/Documents/project-code/slurmkit/examples/demo_project:$PYTHONPATH"
+```
+
+Dry-run still validates callback loading/shape:
+
+```bash
+slurmkit notify test --route local_email --dry-run
+slurmkit notify job --collection demo_terminal_failed --job-id 990002 --exit-code 1 --route local_email --dry-run
+```
+
+To inspect formatted email subject/body, run live against local SMTP (`aiosmtpd` from setup above):
+
+```bash
+slurmkit notify test --route local_email
+slurmkit notify job --collection demo_terminal_failed --job-id 990002 --exit-code 1 --route local_email
+```
+
+Use these edits to experiment with precedence behavior:
+
+```yaml
+notifications:
+  formatter:
+    callback: "notification_formatter_callback:format_notification"
+  routes:
+    - name: local_email
+      formatter_callback: "notification_formatter_callback:format_local_email"
+    - name: team_email
+      formatter_callback: null
+```
 
 ## End-to-End Cluster Workflow (Real SLURM)
 

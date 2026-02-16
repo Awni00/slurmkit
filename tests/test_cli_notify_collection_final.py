@@ -660,3 +660,59 @@ def test_cmd_notify_collection_final_with_email_route_output(tmp_path, monkeypat
     out = capsys.readouterr().out
     assert exit_code == 0
     assert "team_email (email)" in out
+
+
+def test_cmd_notify_collection_final_prints_route_and_delivery_warnings(tmp_path, monkeypatch, capsys):
+    """Collection-final command should surface route and delivery warnings in output."""
+    config = _make_config(
+        tmp_path,
+        {
+            "collections_dir": ".job-collections/",
+            "notifications": {
+                "routes": [
+                    {
+                        "name": "r",
+                        "type": "webhook",
+                        "url": "https://example.test/hook",
+                        "events": ["collection_completed"],
+                    }
+                ]
+            },
+        },
+    )
+    manager = CollectionManager(config=config)
+    c = manager.create("exp")
+    c.add_job(job_name="job", job_id="100", state="COMPLETED")
+    manager.save(c)
+    service = NotificationService(config=config)
+
+    def fake_resolve_routes(**_kwargs):
+        return Namespace(
+            routes=[Namespace(name="r", route_type="webhook")],
+            errors=[],
+            skipped=[],
+            warnings=["route formatter callback ignored for this route"],
+        )
+
+    def fake_dispatch(payload, routes, dry_run=False):
+        return [
+            DeliveryResult(
+                route_name=routes[0].name,
+                route_type=routes[0].route_type,
+                success=True,
+                attempts=1,
+                warning="formatter callback failed; fallback applied",
+            )
+        ]
+
+    monkeypatch.setattr(service, "resolve_routes", fake_resolve_routes)
+    monkeypatch.setattr(service, "dispatch", fake_dispatch)
+    monkeypatch.setattr(commands, "get_configured_config", lambda _args: config)
+    monkeypatch.setattr(commands, "NotificationService", lambda config=None: service)
+
+    exit_code = commands.cmd_notify_collection_final(_args(job_id="100"))
+    out = capsys.readouterr().out
+
+    assert exit_code == 0
+    assert "[route-warning]" in out
+    assert "[delivery-warning]" in out

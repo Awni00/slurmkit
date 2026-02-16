@@ -265,6 +265,46 @@ def test_cmd_notify_job_with_email_route_output(monkeypatch, capsys):
     assert "team_email (email)" in out
 
 
+def test_cmd_notify_job_prints_route_and_delivery_warnings(monkeypatch, capsys):
+    """notify job should print route warnings and delivery warnings without failing success flow."""
+    fake_service = _FakeService()
+    fake_service.route_resolution = RouteResolution(
+        routes=[Namespace(name="team_slack", route_type="slack")],
+        errors=[],
+        skipped=[],
+        warnings=["global formatter callback is invalid; ignoring"],
+    )
+    fake_service.delivery_results = [
+        DeliveryResult(
+            route_name="team_slack",
+            route_type="slack",
+            success=True,
+            attempts=1,
+            warning="formatter callback failed; fallback applied",
+        )
+    ]
+
+    monkeypatch.setattr(commands, "get_configured_config", lambda _args: object())
+    monkeypatch.setattr(commands, "NotificationService", lambda config=None: fake_service)
+
+    args = Namespace(
+        job_id="123",
+        collection=None,
+        exit_code=1,
+        on="failed",
+        route=None,
+        tail_lines=None,
+        strict=False,
+        dry_run=False,
+    )
+    exit_code = commands.cmd_notify_job(args)
+    out = capsys.readouterr().out
+
+    assert exit_code == 0
+    assert "[route-warning]" in out
+    assert "[delivery-warning]" in out
+
+
 def test_cmd_notify_job_ai_callback_success_attaches_payload_fields(monkeypatch):
     """Successful job AI callback should enrich payload before dispatch."""
     fake_service = _FakeService()

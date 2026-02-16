@@ -25,6 +25,9 @@ notifications:
     backoff_seconds: 0.5
     output_tail_lines: 40
 
+  formatter:
+    callback: null  # "module.path:function_name"
+
   job:
     ai:
       enabled: false
@@ -44,6 +47,7 @@ notifications:
       type: slack
       url: "${SLACK_WEBHOOK_URL}"
       events: [job_failed, collection_failed]
+      formatter_callback: null
 
     - name: personal_discord
       type: discord
@@ -72,6 +76,13 @@ notifications:
 
 Route-level settings override `notifications.defaults`.
 
+Formatter callback precedence:
+1. `notifications.routes[].formatter_callback` (if provided)
+2. `notifications.formatter.callback` (global)
+3. Built-in default formatter
+
+Set `formatter_callback: null` (or empty string) on a route to opt out of global callback.
+
 `url`, `headers`, and email fields support `${ENV_VAR}` interpolation. Missing env vars are reported as route configuration errors at runtime.
 
 For `type: email`:
@@ -79,6 +90,15 @@ For `type: email`:
 - `to` supports string, comma-separated string, or list of strings
 - `smtp_starttls` and `smtp_ssl` cannot both be `true`
 - `smtp_username` and `smtp_password` must be set together (or both omitted)
+
+Formatter callback contract (`module:function`):
+- Signature: `def format_notification(payload: Dict[str, Any]) -> Dict[str, Any]`
+- Payload includes `meta.route_name` and `meta.route_type`.
+- Supported return keys:
+  - `chat` for `slack`/`discord`
+  - `email_subject` for `email`
+  - `email_body` for `email`
+- Invalid callback output is partially ignored by field and missing/invalid fields fall back to built-in formatter output.
 
 ### Collection-Specific Overrides from `spec.yaml`
 
@@ -206,5 +226,9 @@ Collection-final payload additionally includes:
 Test payload includes deterministic baseline fields and does not run AI callbacks.
 
 For `slack`/`discord`, slurmkit sends a human-readable summary with key metadata.
+Optional formatter callbacks can override message text via `chat`.
 
 For `email`, slurmkit sends plain-text emails through SMTP with built-in subject/body formatting.
+Optional formatter callbacks can override `email_subject` and `email_body`.
+
+If formatter callbacks fail (load/execute/validation), delivery still proceeds with built-in formatter output and warnings are shown in CLI output.
