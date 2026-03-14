@@ -103,8 +103,11 @@ parameters:
     learning_rate: [0.001, 0.01, 0.1]
     batch_size: [32, 64]
     model: [resnet18, resnet50]
+    n_trials: [3]
+  # Optional parser for derived/effective params
+  parse: params_logic.py:parse_params
   # Optional filter for grid mode
-  filter: params_filter.py:include_params
+  filter: params_logic.py:include_params
 
 # SLURM arguments
 slurm_args:
@@ -167,6 +170,40 @@ parameters:
 
 Generates 4 jobs: `(0.001, 32), (0.001, 64), (0.01, 32), (0.01, 64)`
 
+### Parameter Parsing
+
+Use a Python callback to derive effective parameters before filtering,
+job naming, SLURM logic, and template rendering:
+
+```yaml
+parameters:
+  mode: grid
+  values:
+    algorithm: [algo_a, algo_b]
+    dataset: [small, large]
+    n_trials: [3]
+  parse: params_logic.py:parse_params
+```
+
+```python
+# params_logic.py
+def parse_params(params: dict) -> list[dict]:
+    return [
+        {
+            **params,
+            "seed": seed,
+            "profile": f"{params['algorithm']}_{seed}",
+        }
+        for seed in range(params["n_trials"])
+    ]
+```
+
+The callback may return either one effective parameter mapping or a list of them.
+Returning `[]` drops the source entry entirely.
+Use `path.py:function_name` to override the function, or a bare `path.py` to use the default `parse_params`.
+Parse file paths are resolved relative to the job spec file.
+Parsed params are the ones exposed to templates, job naming, and `get_slurm_args(...)`.
+
 ### Grid Filtering
 
 For incompatible parameter combinations, add a filter function to trim the grid:
@@ -177,18 +214,24 @@ parameters:
   values:
     algorithm: [algo_a, algo_b]
     dataset: [small, large]
-  filter: params_filter.py:include_params
+    n_trials: [3]
+  parse: params_logic.py:parse_params
+  filter: params_logic.py:include_params
 ```
 
 ```python
-# params_filter.py
+# params_logic.py
 def include_params(params: dict) -> bool:
-    # Exclude algo_b with small dataset
-    return not (params.get("algorithm") == "algo_b" and params.get("dataset") == "small")
+    # Exclude algo_b with small dataset and drop one parsed trial
+    return not (
+        (params.get("algorithm") == "algo_b" and params.get("dataset") == "small")
+        or (params.get("dataset") == "small" and params.get("seed", 0) > 0)
+    )
 ```
 
 Filters only apply to grid mode; list mode ignores them.
 Use `path.py:function_name` to override the function, or a bare `path.py` to use the default `include_params`.
+For grid mode, filtering happens after parsing, so filters can use derived fields and apply per parsed child entry.
 Filter file paths are resolved relative to the job spec file.
 
 ### List Mode

@@ -115,8 +115,11 @@ parameters:
   values:
     learning_rate: [0.001, 0.01, 0.1]
     batch_size: [32, 64]
+    n_trials: [3]
+  # Optional: derive effective params before filtering/rendering
+  parse: params_logic.py:parse_params
   # Optional: exclude incompatible combinations
-  filter: params_filter.py:include_params
+  filter: params_logic.py:include_params
 
 slurm_args:
   defaults:

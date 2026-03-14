@@ -225,7 +225,9 @@ parameters:
   values:
     algorithm: [algo_a, algo_b]
     dataset: [small, large]
-  filter: params_filter.py:include_params
+    n_trials: [3]
+  parse: params_logic.py:parse_params
+  filter: params_logic.py:include_params
 ```
 ```
 

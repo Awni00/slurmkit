@@ -469,6 +469,58 @@ def test_cmd_generate_accepts_compact_slurm_args_spec(monkeypatch, tmp_path):
     assert "--partition=custom" in script_text
 
 
+def test_cmd_generate_applies_parse_callback_from_params_file(monkeypatch, tmp_path):
+    """cmd_generate should expand and store parsed params from the params YAML spec."""
+    template = tmp_path / "train.job.j2"
+    template.write_text(
+        "#!/bin/bash\n"
+        "echo {{ label }} {{ seed }}\n",
+        encoding="utf-8",
+    )
+    parse_file = tmp_path / "params_logic.py"
+    parse_file.write_text(
+        "def parse_params(params):\n"
+        "    return [\n"
+        "        {'run': params['run'], 'label': f\"job_{params['run']}\", 'seed': seed}\n"
+        "        for seed in range(2)\n"
+        "    ]\n",
+        encoding="utf-8",
+    )
+    params = tmp_path / "params.yaml"
+    params.write_text(
+        "mode: list\n"
+        "values:\n"
+        "  - run: 1\n"
+        "parse: params_logic.py:parse_params\n",
+        encoding="utf-8",
+    )
+    output_dir = tmp_path / "scripts"
+
+    collection = Collection("exp1")
+    manager = _FakeManager(collection)
+    monkeypatch.setattr(commands, "get_configured_config", lambda _args: _FakeConfig(tmp_path))
+    monkeypatch.setattr(commands, "CollectionManager", lambda config=None: manager)
+
+    args = Namespace(
+        spec_file=None,
+        template=str(template),
+        params=str(params),
+        output_dir=str(output_dir),
+        collection="exp1",
+        slurm_args_file=None,
+        dry_run=False,
+    )
+    exit_code = commands.cmd_generate(args)
+
+    assert exit_code == 0
+    assert len(collection.jobs) == 2
+    assert collection.jobs[0]["parameters"] == {"run": 1, "label": "job_1", "seed": 0}
+    assert collection.jobs[1]["parameters"] == {"run": 1, "label": "job_1", "seed": 1}
+    assert (output_dir / "labeljob_1_run1_seed0.job").exists()
+    script_text = (output_dir / "labeljob_1_run1_seed1.job").read_text(encoding="utf-8")
+    assert "job_1 1" in script_text
+
+
 def test_cmd_generate_spec_file_persists_spec_path(monkeypatch, tmp_path):
     """cmd_generate with spec should persist spec_path relative to project root."""
     template = tmp_path / "templates" / "train.job.j2"

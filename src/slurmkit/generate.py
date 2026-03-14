@@ -68,6 +68,7 @@ def expand_grid(
 def expand_parameters(
     spec: Dict[str, Any],
     filter_func: Optional[Callable[[Dict[str, Any]], bool]] = None,
+    parse_func: Optional[Callable[[Dict[str, Any]], Union[Dict[str, Any], List[Dict[str, Any]]]]] = None,
 ) -> List[Dict[str, Any]]:
     """
     Expand a parameter specification into a list of parameter dicts.
@@ -83,6 +84,9 @@ def expand_parameters(
                     For list mode, list of param dicts.
         filter_func: Optional predicate for grid mode to include/exclude
             combinations.
+        parse_func: Optional callback to derive effective parameters for each
+            generated job before filtering and rendering. The callback may
+            return a single dict or a list of dicts.
 
     Returns:
         List of parameter dictionaries.
@@ -99,11 +103,28 @@ def expand_parameters(
     mode = spec.get("mode", "grid")
     values = spec.get("values", {})
 
-    if mode == "list":
-        if isinstance(values, list):
-            return values
+    if parse_func is None:
+        parse_spec = spec.get("parse")
+        if callable(parse_spec):
+            parse_func = parse_spec
         else:
-            return [values]
+            parsed_parse = parse_python_file_function_spec(
+                parse_spec,
+                default_function="parse_params",
+                spec_label="Parameter parser",
+            )
+            if parsed_parse is not None:
+                parse_func = load_param_parse_function(
+                    parsed_parse["file"],
+                    parsed_parse["function"],
+                )
+
+    if mode == "list":
+        param_list = values if isinstance(values, list) else [values]
+        expanded = []
+        for params in param_list:
+            expanded.extend(normalize_param_parse_output(params, parse_func))
+        return expanded
 
     elif mode == "grid":
         if filter_func is None:
@@ -121,15 +142,58 @@ def expand_parameters(
                         parsed_filter["file"],
                         parsed_filter["function"],
                     )
-        return list(expand_grid(values, filter_func=filter_func))
+        expanded = []
+        for params in expand_grid(values):
+            parsed_params = normalize_param_parse_output(params, parse_func)
+            for effective_params in parsed_params:
+                if filter_func is not None and not filter_func(effective_params):
+                    continue
+                expanded.append(effective_params)
+        return expanded
 
     else:
         raise ValueError(f"Unknown parameter mode: {mode}. Use 'grid' or 'list'.")
 
 
 # =============================================================================
-# Parameter Filter Logic
+# Parameter Parser / Filter Logic
 # =============================================================================
+
+def normalize_param_parse_output(
+    params: Dict[str, Any],
+    parse_func: Optional[Callable[[Dict[str, Any]], Union[Dict[str, Any], List[Dict[str, Any]]]]],
+) -> List[Dict[str, Any]]:
+    """Apply the parameter parser and normalize its output to a list."""
+    if parse_func is None:
+        return [params]
+
+    if not isinstance(params, dict):
+        raise TypeError(
+            "Parameter parser requires each parameter entry to be a mapping, "
+            f"got {type(params).__name__}."
+        )
+
+    parsed = parse_func(dict(params))
+    if isinstance(parsed, dict):
+        return [dict(parsed)]
+
+    if not isinstance(parsed, list):
+        raise TypeError(
+            "Parameter parser must return a mapping or list of mappings, "
+            f"got {type(parsed).__name__}."
+        )
+
+    normalized = []
+    for item in parsed:
+        if not isinstance(item, dict):
+            raise TypeError(
+                "Parameter parser lists must contain only mappings, "
+                f"got {type(item).__name__}."
+            )
+        normalized.append(dict(item))
+
+    return normalized
+
 
 def parse_python_file_function_spec(
     spec: Any,
@@ -200,6 +264,37 @@ def resolve_python_file_function_spec(
     }
 
 
+def load_param_parse_function(
+    file_path: Union[str, Path],
+    function_name: str = "parse_params",
+) -> Callable[[Dict[str, Any]], Union[Dict[str, Any], List[Dict[str, Any]]]]:
+    """
+    Load a Python function for deriving effective job parameters.
+
+    The function should have signature:
+        def parse_params(params: dict) -> dict | list[dict]
+    """
+    file_path = Path(file_path)
+
+    if not file_path.exists():
+        raise FileNotFoundError(f"Parameter parser file not found: {file_path}")
+
+    spec = importlib.util.spec_from_file_location("param_parse_module", file_path)
+    if spec is None or spec.loader is None:
+        raise ImportError(f"Could not load module from {file_path}")
+
+    module = importlib.util.module_from_spec(spec)
+    sys.modules["param_parse_module"] = module
+    spec.loader.exec_module(module)
+
+    if not hasattr(module, function_name):
+        raise AttributeError(
+            f"Function '{function_name}' not found in {file_path}"
+        )
+
+    return getattr(module, function_name)
+
+
 def load_param_filter_function(
     file_path: Union[str, Path],
     function_name: str = "include_params",
@@ -244,35 +339,52 @@ def load_param_filter_function(
     return getattr(module, function_name)
 
 
-def resolve_parameters_filter_spec(
+def resolve_parameters_callback_specs(
     parameters: Dict[str, Any],
     base_dir: Union[str, Path],
 ) -> Dict[str, Any]:
     """
-    Resolve filter file paths in a parameter spec relative to base_dir.
+    Resolve filter and parse file paths in a parameter spec relative to base_dir.
 
     Returns a shallow-copied spec without mutating the input.
     """
     if not isinstance(parameters, dict):
         return parameters
 
-    filter_spec = parameters.get("filter")
-    if callable(filter_spec):
-        return parameters
-
-    resolved_filter = resolve_python_file_function_spec(
-        filter_spec,
-        base_dir=base_dir,
-        default_function="include_params",
-        spec_label="Parameter filter",
-    )
-    if resolved_filter is None:
-        return parameters
-
     resolved = parameters.copy()
-    resolved["filter"] = resolved_filter
+    changed = False
+
+    for key, default_function, spec_label in (
+        ("parse", "parse_params", "Parameter parser"),
+        ("filter", "include_params", "Parameter filter"),
+    ):
+        callback_spec = parameters.get(key)
+        if callable(callback_spec):
+            continue
+
+        resolved_callback = resolve_python_file_function_spec(
+            callback_spec,
+            base_dir=base_dir,
+            default_function=default_function,
+            spec_label=spec_label,
+        )
+        if resolved_callback is None:
+            continue
+        resolved[key] = resolved_callback
+        changed = True
+
+    if not changed:
+        return parameters
 
     return resolved
+
+
+def resolve_parameters_filter_spec(
+    parameters: Dict[str, Any],
+    base_dir: Union[str, Path],
+) -> Dict[str, Any]:
+    """Backward-compatible wrapper for parameter callback path resolution."""
+    return resolve_parameters_callback_specs(parameters, base_dir)
 
 
 # =============================================================================
@@ -472,7 +584,24 @@ class JobGenerator:
         self.slurm_logic_file = Path(slurm_logic_file) if slurm_logic_file else None
         self.slurm_logic_function = slurm_logic_function
 
-        # Parameter filter logic (optional)
+        # Parameter parse / filter logic (optional)
+        self.param_parse_func = None
+        if isinstance(self.parameters, dict):
+            parse_spec = self.parameters.get("parse")
+            if callable(parse_spec):
+                self.param_parse_func = parse_spec
+            else:
+                parsed_parse = parse_python_file_function_spec(
+                    parse_spec,
+                    default_function="parse_params",
+                    spec_label="Parameter parser",
+                )
+                if parsed_parse is not None:
+                    self.param_parse_func = load_param_parse_function(
+                        parsed_parse["file"],
+                        parsed_parse["function"],
+                    )
+
         self.param_filter_func = None
         if isinstance(self.parameters, dict) and self.parameters.get("mode", "grid") == "grid":
             filter_spec = self.parameters.get("filter")
@@ -598,7 +727,7 @@ class JobGenerator:
         if not Path(template_path).is_absolute():
             template_path = spec_dir / template_path
 
-        parameters = resolve_parameters_filter_spec(
+        parameters = resolve_parameters_callback_specs(
             spec.get("parameters", {}),
             base_dir=spec_dir,
         )
@@ -662,6 +791,7 @@ class JobGenerator:
         param_list = expand_parameters(
             self.parameters,
             filter_func=self.param_filter_func,
+            parse_func=self.param_parse_func,
         )
 
         generated = []
@@ -707,6 +837,7 @@ class JobGenerator:
         param_list = expand_parameters(
             self.parameters,
             filter_func=self.param_filter_func,
+            parse_func=self.param_parse_func,
         )
 
         if index >= len(param_list):
@@ -735,6 +866,7 @@ class JobGenerator:
             expand_parameters(
                 self.parameters,
                 filter_func=self.param_filter_func,
+                parse_func=self.param_parse_func,
             )
         )
 
@@ -748,6 +880,7 @@ class JobGenerator:
         param_list = expand_parameters(
             self.parameters,
             filter_func=self.param_filter_func,
+            parse_func=self.param_parse_func,
         )
         return [
             generate_job_name(params, pattern=self.job_name_pattern, env=self._env)

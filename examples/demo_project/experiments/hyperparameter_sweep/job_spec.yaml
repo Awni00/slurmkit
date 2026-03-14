@@ -7,8 +7,8 @@ output_dir: ../../jobs/hyperparameter_sweep/job_scripts
 logs_dir: ../../jobs/hyperparameter_sweep/logs
 
 # Parameter grid - generates all combinations
-# This creates: 2 algorithms × 2 datasets × 2 configs = 8 combos
-# The filter below excludes algo_b + small, leaving 6 jobs total
+# This creates: 2 algorithms × 2 datasets × 2 configs = 8 source combos
+# The parse hook expands each source combo into 2 seeded trials
 parameters:
   mode: grid
   values:
@@ -24,8 +24,14 @@ parameters:
     # Fixed parameter: how long each job runs (in seconds)
     duration: [15]
 
+    # Number of seeded trials to create per source combo
+    n_trials: [2]
+
+  # Optional parse hook to derive effective params before filtering/rendering
+  parse: params_logic.py:parse_params
+
   # Optional filter to exclude incompatible combinations
-  filter: params_filter.py:include_params
+  filter: params_logic.py:include_params
 
 # SLURM resource configuration
 slurm_args:
@@ -43,8 +49,8 @@ slurm_args:
   logic: slurm_logic.py:get_slurm_args
 
 # Job naming pattern
-# This creates readable names like: demo_algo_a_small_default
-job_name_pattern: "demo_{{ algorithm }}_{{ dataset }}_{{ config }}"
+# This uses derived profile + trial seed from params_logic.py
+job_name_pattern: "demo_{{ profile }}_seed{{ seed }}"
 
 # Optional collection-specific notification overrides.
 # These settings apply when notify resolves this collection and take precedence

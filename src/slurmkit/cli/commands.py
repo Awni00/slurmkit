@@ -53,7 +53,7 @@ from slurmkit.generate import (
     load_job_spec,
     expand_parameters,
     parse_python_file_function_spec,
-    resolve_parameters_filter_spec,
+    resolve_parameters_callback_specs,
 )
 from slurmkit.sync import SyncManager
 from slurmkit.notifications import (
@@ -852,7 +852,7 @@ def cmd_generate(args: Any) -> int:
         with open(params_path, "r") as f:
             parameters = yaml.safe_load(f) or {}
 
-        parameters_for_gen = resolve_parameters_filter_spec(
+        parameters_for_gen = resolve_parameters_callback_specs(
             parameters,
             base_dir=params_path.parent,
         )

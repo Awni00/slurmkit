@@ -19,7 +19,7 @@ demo_project/
 ├── experiments/
 │   ├── hyperparameter_sweep/
 │   │   ├── job_spec.yaml
-│   │   ├── params_filter.py
+│   │   ├── params_logic.py
 │   │   └── slurm_logic.py
 │   └── model_comparison/
 │       └── job_spec.yaml
