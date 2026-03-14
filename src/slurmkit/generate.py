@@ -110,12 +110,16 @@ def expand_parameters(
             filter_spec = spec.get("filter")
             if callable(filter_spec):
                 filter_func = filter_spec
-            elif isinstance(filter_spec, dict):
-                filter_file = filter_spec.get("file", "")
-                if filter_file:
+            else:
+                parsed_filter = parse_python_file_function_spec(
+                    filter_spec,
+                    default_function="include_params",
+                    spec_label="Parameter filter",
+                )
+                if parsed_filter is not None:
                     filter_func = load_param_filter_function(
-                        filter_file,
-                        filter_spec.get("function", "include_params"),
+                        parsed_filter["file"],
+                        parsed_filter["function"],
                     )
         return list(expand_grid(values, filter_func=filter_func))
 
@@ -126,6 +130,75 @@ def expand_parameters(
 # =============================================================================
 # Parameter Filter Logic
 # =============================================================================
+
+def parse_python_file_function_spec(
+    spec: Any,
+    *,
+    default_function: str,
+    spec_label: str,
+) -> Optional[Dict[str, str]]:
+    """
+    Parse callback spec for python-file-backed functions.
+
+    Supports either a legacy mapping with ``file`` / ``function`` keys or a
+    compact string form ``path.py:function_name``. A bare ``path.py`` uses the
+    provided default function.
+    """
+    if spec is None:
+        return None
+
+    if isinstance(spec, str):
+        normalized = spec.strip()
+        if not normalized:
+            return None
+        if ":" in normalized:
+            file_path, function_name = normalized.rsplit(":", 1)
+            if not file_path.strip() or not function_name.strip():
+                raise ValueError(
+                    f"{spec_label} must use 'path.py:function_name' or 'path.py' format."
+                )
+            return {
+                "file": file_path.strip(),
+                "function": function_name.strip(),
+            }
+        return {"file": normalized, "function": default_function}
+
+    if not isinstance(spec, dict):
+        return None
+
+    file_path = str(spec.get("file", "")).strip()
+    if not file_path:
+        return None
+
+    function_name = str(spec.get("function", default_function)).strip() or default_function
+    return {"file": file_path, "function": function_name}
+
+
+def resolve_python_file_function_spec(
+    spec: Any,
+    *,
+    base_dir: Union[str, Path],
+    default_function: str,
+    spec_label: str,
+) -> Optional[Dict[str, str]]:
+    """Resolve relative callback file paths against ``base_dir``."""
+    parsed = parse_python_file_function_spec(
+        spec,
+        default_function=default_function,
+        spec_label=spec_label,
+    )
+    if parsed is None:
+        return None
+
+    file_path = Path(parsed["file"])
+    if not file_path.is_absolute():
+        file_path = Path(base_dir) / file_path
+
+    return {
+        "file": str(file_path),
+        "function": parsed["function"],
+    }
+
 
 def load_param_filter_function(
     file_path: Union[str, Path],
@@ -184,21 +257,19 @@ def resolve_parameters_filter_spec(
         return parameters
 
     filter_spec = parameters.get("filter")
-    if not isinstance(filter_spec, dict):
+    if callable(filter_spec):
         return parameters
 
-    filter_file = filter_spec.get("file", "")
-    if not filter_file:
+    resolved_filter = resolve_python_file_function_spec(
+        filter_spec,
+        base_dir=base_dir,
+        default_function="include_params",
+        spec_label="Parameter filter",
+    )
+    if resolved_filter is None:
         return parameters
-
-    base_dir = Path(base_dir)
-    filter_path = Path(filter_file)
-    if not filter_path.is_absolute():
-        filter_path = base_dir / filter_file
 
     resolved = parameters.copy()
-    resolved_filter = filter_spec.copy()
-    resolved_filter["file"] = str(filter_path)
     resolved["filter"] = resolved_filter
 
     return resolved
@@ -407,12 +478,16 @@ class JobGenerator:
             filter_spec = self.parameters.get("filter")
             if callable(filter_spec):
                 self.param_filter_func = filter_spec
-            elif isinstance(filter_spec, dict):
-                filter_file = filter_spec.get("file", "")
-                if filter_file:
+            else:
+                parsed_filter = parse_python_file_function_spec(
+                    filter_spec,
+                    default_function="include_params",
+                    spec_label="Parameter filter",
+                )
+                if parsed_filter is not None:
                     self.param_filter_func = load_param_filter_function(
-                        filter_file,
-                        filter_spec.get("function", "include_params"),
+                        parsed_filter["file"],
+                        parsed_filter["function"],
                     )
 
         # SLURM arguments - merge config defaults with job spec defaults
@@ -532,15 +607,15 @@ class JobGenerator:
         slurm_logic_function = "get_slurm_args"
         slurm_args = spec.get("slurm_args", {})
 
-        if "logic" in slurm_args:
-            logic_spec = slurm_args["logic"]
-            logic_file = logic_spec.get("file", "")
-            if logic_file:
-                if not Path(logic_file).is_absolute():
-                    slurm_logic_file = spec_dir / logic_file
-                else:
-                    slurm_logic_file = Path(logic_file)
-            slurm_logic_function = logic_spec.get("function", "get_slurm_args")
+        logic_spec = resolve_python_file_function_spec(
+            slurm_args.get("logic"),
+            base_dir=spec_dir,
+            default_function="get_slurm_args",
+            spec_label="SLURM args logic",
+        )
+        if logic_spec is not None:
+            slurm_logic_file = Path(logic_spec["file"])
+            slurm_logic_function = logic_spec["function"]
 
         logs_dir = spec.get("logs_dir")
         if logs_dir and not Path(logs_dir).is_absolute():

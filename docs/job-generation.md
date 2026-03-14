@@ -104,9 +104,7 @@ parameters:
     batch_size: [32, 64]
     model: [resnet18, resnet50]
   # Optional filter for grid mode
-  filter:
-    file: params_filter.py
-    function: include_params
+  filter: params_filter.py:include_params
 
 # SLURM arguments
 slurm_args:
@@ -118,9 +116,7 @@ slurm_args:
     gpus: 1
 
   # Optional: Python function for dynamic logic
-  logic:
-    file: slurm_logic.py
-    function: get_slurm_args
+  logic: slurm_logic.py:get_slurm_args
 
 # Jinja2 pattern for job names
 job_name_pattern: "{{ model }}_lr{{ learning_rate }}_bs{{ batch_size }}"
@@ -181,9 +177,7 @@ parameters:
   values:
     algorithm: [algo_a, algo_b]
     dataset: [small, large]
-  filter:
-    file: params_filter.py
-    function: include_params  # Optional, defaults to "include_params"
+  filter: params_filter.py:include_params
 ```
 
 ```python
@@ -194,6 +188,7 @@ def include_params(params: dict) -> bool:
 ```
 
 Filters only apply to grid mode; list mode ignores them.
+Use `path.py:function_name` to override the function, or a bare `path.py` to use the default `include_params`.
 Filter file paths are resolved relative to the job spec file.
 
 ### List Mode
@@ -296,9 +291,7 @@ slurm_args:
     mem: "32G"
     gpus: 1
 
-  logic:
-    file: slurm_logic.py
-    function: get_slurm_args  # Optional, defaults to "get_slurm_args"
+  logic: slurm_logic.py:get_slurm_args
 ```
 
 ## Job Naming

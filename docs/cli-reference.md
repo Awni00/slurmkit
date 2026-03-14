@@ -171,7 +171,7 @@ slurmkit generate --template FILE --params FILE [options]
 | `--params FILE` | Parameters YAML file |
 | `--output-dir DIR` | Output directory for scripts |
 | `--collection NAME` | Add jobs to collection |
-| `--slurm-args-file FILE` | Python file with SLURM args logic |
+| `--slurm-args SPEC` | Python SLURM args callback as `FILE[:FUNCTION]` |
 | `--dry-run` | Show preview without writing |
 
 **Examples:**

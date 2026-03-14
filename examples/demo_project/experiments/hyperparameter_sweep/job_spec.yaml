@@ -25,9 +25,7 @@ parameters:
     duration: [15]
 
   # Optional filter to exclude incompatible combinations
-  filter:
-    file: params_filter.py
-    function: include_params
+  filter: params_filter.py:include_params
 
 # SLURM resource configuration
 slurm_args:
@@ -42,9 +40,7 @@ slurm_args:
 
   # Dynamic resource allocation based on parameters
   # See slurm_logic.py for implementation
-  logic:
-    file: slurm_logic.py
-    function: get_slurm_args
+  logic: slurm_logic.py:get_slurm_args
 
 # Job naming pattern
 # This creates readable names like: demo_algo_a_small_default

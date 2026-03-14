@@ -225,9 +225,7 @@ parameters:
   values:
     algorithm: [algo_a, algo_b]
     dataset: [small, large]
-  filter:
-    file: params_filter.py
-    function: include_params
+  filter: params_filter.py:include_params
 ```
 ```
 

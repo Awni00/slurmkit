@@ -114,6 +114,24 @@ class TestExpandParameters:
             result = expand_parameters(spec)
             assert result == [{"a": 2, "b": "x"}]
 
+    def test_grid_mode_with_filter_compact_spec(self):
+        """Test parameter expansion with compact FILE:FUNCTION filter syntax."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            filter_path = Path(tmpdir) / "filter.py"
+            filter_path.write_text(
+                "def keep_only_two(params):\n"
+                "    return params.get('a') == 2\n"
+            )
+
+            spec = {
+                "mode": "grid",
+                "values": {"a": [1, 2], "b": ["x"]},
+                "filter": f"{filter_path}:keep_only_two",
+            }
+
+            result = expand_parameters(spec)
+            assert result == [{"a": 2, "b": "x"}]
+
     def test_list_mode_ignores_filter(self):
         """Test that list mode ignores filter logic."""
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -229,6 +247,43 @@ echo "Batch size: {{ batch_size }}"
 
             generator = JobGenerator.from_spec(spec_path)
             assert generator.count_jobs() == 1
+
+    def test_generator_from_spec_with_compact_callback_specs(self, template_dir):
+        """Test compact FILE:FUNCTION specs for both filter and SLURM logic."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            spec_path = Path(tmpdir) / "spec.yaml"
+            filter_path = Path(tmpdir) / "params_filter.py"
+            logic_path = Path(tmpdir) / "slurm_logic.py"
+            filter_path.write_text(
+                "def keep_high_lr(params):\n"
+                "    return params.get('learning_rate') == 0.1\n"
+            )
+            logic_path.write_text(
+                "def choose_slurm(params, defaults):\n"
+                "    args = defaults.copy()\n"
+                "    args['partition'] = 'high_lr'\n"
+                "    return args\n"
+            )
+
+            spec_data = {
+                "template": str(Path(template_dir) / "test.job.j2"),
+                "parameters": {
+                    "mode": "grid",
+                    "values": {"learning_rate": [0.01, 0.1], "batch_size": [32]},
+                    "filter": "params_filter.py:keep_high_lr",
+                },
+                "slurm_args": {
+                    "defaults": {"partition": "gpu", "time": "1:00:00"},
+                    "logic": "slurm_logic.py:choose_slurm",
+                },
+            }
+            with open(spec_path, "w") as f:
+                yaml.dump(spec_data, f)
+
+            generator = JobGenerator.from_spec(spec_path)
+            assert generator.count_jobs() == 1
+            preview = generator.preview(0)
+            assert "--partition=high_lr" in preview
 
     def test_generator_preview(self, template_dir):
         """Test previewing a generated job."""

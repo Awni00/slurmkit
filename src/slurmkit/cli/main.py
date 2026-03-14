@@ -272,9 +272,11 @@ For more information on a command, run: slurmkit <command> --help
         help="Add generated jobs to collection (creates if needed)",
     )
     generate_parser.add_argument(
+        "--slurm-args",
         "--slurm-args-file",
-        metavar="FILE",
-        help="Python file with SLURM args logic function",
+        dest="slurm_args_file",
+        metavar="SPEC",
+        help="Python SLURM args callback as FILE[:FUNCTION]",
     )
     generate_parser.add_argument(
         "--dry-run",

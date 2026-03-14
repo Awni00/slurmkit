@@ -110,6 +110,25 @@ def test_resubmit_parser_regenerate_flags():
     assert args_no.regenerate is False
 
 
+def test_generate_parser_accepts_compact_slurm_args_spec():
+    """Generate parser should accept compact FILE:FUNCTION SLURM logic specs."""
+    parser = create_parser()
+    args = parser.parse_args(
+        [
+            "generate",
+            "--template",
+            "train.job.j2",
+            "--params",
+            "params.yaml",
+            "--slurm-args",
+            "logic.py:pick_args",
+        ]
+    )
+
+    assert args.command == "generate"
+    assert args.slurm_args_file == "logic.py:pick_args"
+
+
 def test_cmd_resubmit_callbacks_and_merge_no_regenerate(monkeypatch, tmp_path):
     """Selection and extra-params callbacks should be applied per job."""
     cb_file = tmp_path / "callbacks.py"
@@ -403,6 +422,51 @@ def test_cmd_generate_persists_generation_metadata(monkeypatch, tmp_path):
     assert generation_meta["slurm_logic_function"] == "get_slurm_args"
     assert isinstance(generation_meta["slurm_defaults"], dict)
     assert collection.parameters == yaml.safe_load(params.read_text(encoding="utf-8"))
+
+
+def test_cmd_generate_accepts_compact_slurm_args_spec(monkeypatch, tmp_path):
+    """cmd_generate should parse FILE:FUNCTION SLURM logic specs."""
+    template = tmp_path / "train.job.j2"
+    template.write_text(
+        "#!/bin/bash\n"
+        "#SBATCH --partition={{ slurm.partition }}\n"
+        "echo {{ run }}\n",
+        encoding="utf-8",
+    )
+    params = tmp_path / "params.yaml"
+    params.write_text("mode: list\nvalues:\n  - run: 1\n", encoding="utf-8")
+    logic = tmp_path / "logic.py"
+    logic.write_text(
+        "def pick_args(params, defaults):\n"
+        "    args = defaults.copy()\n"
+        "    args['partition'] = 'custom'\n"
+        "    return args\n",
+        encoding="utf-8",
+    )
+    output_dir = tmp_path / "scripts"
+
+    collection = Collection("exp1")
+    manager = _FakeManager(collection)
+    monkeypatch.setattr(commands, "get_configured_config", lambda _args: _FakeConfig(tmp_path))
+    monkeypatch.setattr(commands, "CollectionManager", lambda config=None: manager)
+
+    args = Namespace(
+        spec_file=None,
+        template=str(template),
+        params=str(params),
+        output_dir=str(output_dir),
+        collection="exp1",
+        slurm_args_file=f"{logic}:pick_args",
+        dry_run=False,
+    )
+    exit_code = commands.cmd_generate(args)
+
+    assert exit_code == 0
+    generation_meta = collection.meta["generation"]
+    assert generation_meta["slurm_logic_file"] == str(logic)
+    assert generation_meta["slurm_logic_function"] == "pick_args"
+    script_text = (output_dir / "run1.job").read_text(encoding="utf-8")
+    assert "--partition=custom" in script_text
 
 
 def test_cmd_generate_spec_file_persists_spec_path(monkeypatch, tmp_path):

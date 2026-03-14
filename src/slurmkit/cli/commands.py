@@ -52,6 +52,7 @@ from slurmkit.generate import (
     generate_jobs_from_spec,
     load_job_spec,
     expand_parameters,
+    parse_python_file_function_spec,
     resolve_parameters_filter_spec,
 )
 from slurmkit.sync import SyncManager
@@ -859,12 +860,24 @@ def cmd_generate(args: Any) -> int:
         # Determine output directory
         output_dir = Path(args.output_dir) if args.output_dir else Path(".")
 
+        slurm_logic_spec = parse_python_file_function_spec(
+            args.slurm_args_file,
+            default_function="get_slurm_args",
+            spec_label="SLURM args logic",
+        )
+        slurm_logic_file = None
+        slurm_logic_function = "get_slurm_args"
+        if slurm_logic_spec is not None:
+            slurm_logic_file = slurm_logic_spec["file"]
+            slurm_logic_function = slurm_logic_spec["function"]
+
         # Create generator
         generator = JobGenerator(
             template_path=template_path,
             parameters=parameters_for_gen,
             slurm_defaults=config.get_slurm_defaults(),
-            slurm_logic_file=args.slurm_args_file,
+            slurm_logic_file=slurm_logic_file,
+            slurm_logic_function=slurm_logic_function,
             config=config,
         )
 
