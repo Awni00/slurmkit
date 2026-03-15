@@ -17,7 +17,9 @@ from slurmkit.config import (
     CONFIG_FILENAME,
     JOB_LOGS_SUBDIR,
     JOB_SCRIPTS_SUBDIR,
+    LOCKS_SUBDIR,
     METADATA_DIRNAME,
+    COLLECTION_LOCKS_SUBDIR,
 )
 
 from .configuration import normalize_config_data
@@ -96,6 +98,7 @@ def _ensure_new_layout(project_root: Path) -> Tuple[Path, Path]:
     collections_dir = _collections_dir(project_root)
     collections_dir.mkdir(parents=True, exist_ok=True)
     (new_metadata_dir / "sync").mkdir(parents=True, exist_ok=True)
+    (new_metadata_dir / LOCKS_SUBDIR / COLLECTION_LOCKS_SUBDIR).mkdir(parents=True, exist_ok=True)
 
     old_collections_dir = project_root / OLD_COLLECTIONS_DIRNAME
     if old_collections_dir.exists():

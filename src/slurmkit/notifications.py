@@ -1428,9 +1428,9 @@ class NotificationService:
         timeout_seconds: float = 10.0,
     ) -> Iterator[None]:
         """Acquire an exclusive lock for collection-final notification workflow."""
-        collection_path = self.collection_manager._get_path(collection_name)
-        collection_path.parent.mkdir(parents=True, exist_ok=True)
-        lock_path = collection_path.with_suffix(collection_path.suffix + ".lock")
+        lock_dir = self.config.collection_locks_dir
+        lock_dir.mkdir(parents=True, exist_ok=True)
+        lock_path = lock_dir / f"{collection_name}.lock"
 
         fd = os.open(str(lock_path), os.O_CREAT | os.O_RDWR, 0o644)
         start = time.time()

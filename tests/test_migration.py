@@ -66,6 +66,7 @@ def test_run_migration_converts_old_collection_and_creates_backup(tmp_path):
     assert "output_dir" not in migrated_spec
     assert "logs_dir" not in migrated_spec
     assert (project_root / ".slurmkit" / "config.yaml").exists()
+    assert (project_root / ".slurmkit" / "locks" / "collections").exists()
 
 
 def test_run_migration_is_idempotent_for_v2_collection(tmp_path):

@@ -32,6 +32,8 @@ CONFIG_FILENAME = "config.yaml"
 COLLECTIONS_SUBDIR = "collections"
 SYNC_SUBDIR = "sync"
 BACKUPS_SUBDIR = "backups"
+LOCKS_SUBDIR = "locks"
+COLLECTION_LOCKS_SUBDIR = "collections"
 JOB_SCRIPTS_SUBDIR = "job_scripts"
 JOB_LOGS_SUBDIR = "logs"
 
@@ -278,6 +280,14 @@ class Config:
     def backups_dir(self) -> Path:
         return self.metadata_dir / BACKUPS_SUBDIR
 
+    @property
+    def locks_dir(self) -> Path:
+        return self.metadata_dir / LOCKS_SUBDIR
+
+    @property
+    def collection_locks_dir(self) -> Path:
+        return self.locks_dir / COLLECTION_LOCKS_SUBDIR
+
     def get_output_patterns(self) -> List[str]:
         """
         Get output file patterns in priority order.
@@ -417,6 +427,7 @@ def init_config(
     config_path.parent.mkdir(parents=True, exist_ok=True)
     (root / METADATA_DIRNAME / COLLECTIONS_SUBDIR).mkdir(parents=True, exist_ok=True)
     (root / METADATA_DIRNAME / SYNC_SUBDIR).mkdir(parents=True, exist_ok=True)
+    (root / METADATA_DIRNAME / LOCKS_SUBDIR / COLLECTION_LOCKS_SUBDIR).mkdir(parents=True, exist_ok=True)
     with open(config_path, "w") as f:
         yaml.dump(config_data, f, default_flow_style=False, sort_keys=False)
 

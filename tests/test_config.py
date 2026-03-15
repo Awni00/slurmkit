@@ -87,6 +87,7 @@ class TestConfig:
             assert config.get("ui.show_banner") is True
             assert config.collections_dir == Path(tmpdir) / ".slurmkit" / "collections"
             assert config.sync_dir == Path(tmpdir) / ".slurmkit" / "sync"
+            assert config.collection_locks_dir == Path(tmpdir) / ".slurmkit" / "locks" / "collections"
 
     def test_load_from_file(self):
         """Test loading config from a YAML file."""
@@ -151,6 +152,7 @@ class TestInitConfig:
             assert config_path == Path(tmpdir) / ".slurmkit" / "config.yaml"
             assert (Path(tmpdir) / ".slurmkit" / "collections").exists()
             assert (Path(tmpdir) / ".slurmkit" / "sync").exists()
+            assert (Path(tmpdir) / ".slurmkit" / "locks" / "collections").exists()
 
     def test_raises_if_exists(self):
         """Test that init_config raises if file exists and overwrite=False."""

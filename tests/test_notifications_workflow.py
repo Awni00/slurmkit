@@ -80,3 +80,5 @@ def test_collection_final_notification_uses_attempts_schema(tmp_path):
     assert result.exit_code == 0
     assert result.payload["collection"]["name"] == "exp1"
     assert result.payload["collection_report"]["summary"]["counts"]["completed"] == 1
+    assert (tmp_path / ".slurmkit" / "locks" / "collections" / "exp1.lock").exists()
+    assert not (tmp_path / ".slurmkit" / "collections" / "exp1.yaml.lock").exists()
