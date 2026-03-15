@@ -82,7 +82,9 @@ class TestConfig:
         with tempfile.TemporaryDirectory() as tmpdir:
             config = Config(project_root=tmpdir)
             assert config.get("jobs_dir") == DEFAULT_CONFIG["jobs_dir"]
-            assert config.get("ui.mode") == "plain"
+            assert config.get("ui.mode") == "auto"
+            assert config.get("ui.interactive") is True
+            assert config.get("ui.show_banner") is True
 
     def test_load_from_file(self):
         """Test loading config from a YAML file."""

@@ -2,9 +2,14 @@
 
 import json
 from argparse import Namespace
+from importlib import import_module
 
-from slurmkit.cli.main import create_parser
 from slurmkit.cli import commands
+from slurmkit.cli.app import app as cli_app
+from typer.testing import CliRunner
+
+runner = CliRunner()
+cli_module = import_module("slurmkit.cli.app")
 
 
 class _FakeCollection:
@@ -276,41 +281,75 @@ def _analysis_payload_all_single_value():
 
 
 def test_collection_analyze_parser_args():
-    """Parser accepts and maps collection analyze arguments."""
-    parser = create_parser()
-    args = parser.parse_args(
-        [
-            "--ui",
-            "plain",
-            "collection",
-            "analyze",
-            "my_collection",
-            "--format",
-            "json",
-            "--no-refresh",
-            "--min-support",
-            "5",
-            "--param",
-            "algo",
-            "--param",
-            "lr",
-            "--attempt-mode",
-            "latest",
-            "--top-k",
-            "7",
-        ]
-    )
-    assert args.command == "collection"
-    assert args.collection_action == "analyze"
-    assert args.ui == "plain"
-    assert args.name == "my_collection"
-    assert args.format == "json"
-    assert args.no_refresh is True
-    assert args.min_support == 5
-    assert args.param == ["algo", "lr"]
-    assert args.attempt_mode == "latest"
-    assert args.submission_group is None
-    assert args.top_k == 7
+    """CLI accepts and maps collections analyze arguments."""
+    captured = {}
+
+    def _fake_impl(
+        _ctx,
+        *,
+        name,
+        format_name,
+        no_refresh,
+        min_support,
+        params,
+        attempt_mode,
+        submission_group,
+        top_k,
+    ):
+        captured.update(
+            {
+                "name": name,
+                "format_name": format_name,
+                "no_refresh": no_refresh,
+                "min_support": min_support,
+                "params": params,
+                "attempt_mode": attempt_mode,
+                "submission_group": submission_group,
+                "top_k": top_k,
+            }
+        )
+        return 0
+
+    monkeypatch = None
+    # keep local monkeypatch-free by patching directly and restoring after invoke
+    original = cli_module._collection_analyze_impl
+    cli_module._collection_analyze_impl = _fake_impl
+    try:
+        result = runner.invoke(
+            cli_app,
+            [
+                "--ui",
+                "plain",
+                "collections",
+                "analyze",
+                "my_collection",
+                "--format",
+                "json",
+                "--no-refresh",
+                "--min-support",
+                "5",
+                "--param",
+                "algo",
+                "--param",
+                "lr",
+                "--attempt-mode",
+                "latest",
+                "--top-k",
+                "7",
+            ],
+        )
+    finally:
+        cli_module._collection_analyze_impl = original
+
+    assert result.exit_code == 0
+    assert captured["name"] == "my_collection"
+    assert captured["format_name"] == "json"
+    assert captured["no_refresh"] is True
+    assert captured["min_support"] == 5
+    assert captured["params"] == ["algo", "lr"]
+    assert captured["attempt_mode"] == "latest"
+    assert captured["submission_group"] is None
+    assert captured["top_k"] == 7
 
 
 def test_cmd_collection_analyze_json_no_refresh(monkeypatch, capsys):

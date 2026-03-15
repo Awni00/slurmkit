@@ -177,8 +177,8 @@ export PYTHONPATH="$PWD:$PYTHONPATH"
 Create generated job-script projects (still no real submission):
 
 ```bash
-slurmkit generate experiments/hyperparameter_sweep/job_spec.yaml --collection hp_sweep_demo
-slurmkit generate experiments/model_comparison/job_spec.yaml --collection model_comp_demo
+slurmkit generate experiments/hyperparameter_sweep/job_spec.yaml --into hp_sweep_demo
+slurmkit generate experiments/model_comparison/job_spec.yaml --into model_comp_demo
 ```
 
 ## Command Coverage Matrix
@@ -186,21 +186,23 @@ slurmkit generate experiments/model_comparison/job_spec.yaml --collection model_
 | Command | Demo status in this project | How to demo quickly |
 |---|---|---|
 | `slurmkit init` | Demoed | `slurmkit init` |
-| `slurmkit status` | Partially demoed | Best with real submitted jobs; run after `submit` on cluster |
-| `slurmkit find` | Demoed (dummy + real) | `slurmkit find 990002 --preview` |
-| `slurmkit clean outputs` | Partially demoed | Works best after real failed jobs exist |
+| `slurmkit status` | Demoed | `slurmkit status demo_terminal_failed` |
+| `slurmkit jobs status` | Partially demoed | Best with real submitted jobs; run after `submit` on cluster |
+| `slurmkit jobs find` | Demoed (dummy + real) | `slurmkit jobs find 990002 --preview` |
+| `slurmkit clean outputs` | Partially demoed | Collection-first; works best when tracked outputs exist |
+| `slurmkit jobs clean outputs` | Partially demoed | Raw experiment cleanup after real failed jobs exist |
 | `slurmkit clean wandb` | Not self-contained | Requires W&B setup/projects |
 | `slurmkit generate` | Demoed | Use the two `generate` commands above |
-| `slurmkit submit` | Demoed (`--dry-run` locally) | `slurmkit submit --collection hp_sweep_demo --dry-run` |
-| `slurmkit resubmit` | Demoed (`--dry-run`/fixture collections) | `slurmkit resubmit --collection demo_terminal_failed --filter failed --dry-run` |
-| `slurmkit collection create` | Demoed | `slurmkit collection create tmp_demo --description "tmp"` |
-| `slurmkit collection list` | Demoed | `slurmkit collection list` |
-| `slurmkit collection show` | Demoed | `slurmkit collection show demo_terminal_failed` |
-| `slurmkit collection analyze` | Demoed | `slurmkit collection analyze demo_terminal_failed --attempt-mode latest` |
-| `slurmkit collection update` | Partially demoed | Works best with real SLURM job IDs |
-| `slurmkit collection delete` | Demoed | `slurmkit collection delete tmp_demo -y` |
-| `slurmkit collection add` | Partially demoed | Best with discoverable job output files + IDs |
-| `slurmkit collection remove` | Demoed | `slurmkit collection remove demo_terminal_failed 990001` |
+| `slurmkit submit` | Demoed (`--dry-run` locally) | `slurmkit submit hp_sweep_demo --dry-run` |
+| `slurmkit resubmit` | Demoed (`--dry-run`/fixture collections) | `slurmkit resubmit demo_terminal_failed --filter failed --dry-run` |
+| `slurmkit collections create` | Demoed | `slurmkit collections create tmp_demo --description "tmp"` |
+| `slurmkit collections list` | Demoed | `slurmkit collections list` |
+| `slurmkit collections show` | Demoed | `slurmkit collections show demo_terminal_failed` |
+| `slurmkit collections analyze` | Demoed | `slurmkit collections analyze demo_terminal_failed --attempt-mode latest` |
+| `slurmkit collections refresh` | Partially demoed | Works best with real SLURM job IDs |
+| `slurmkit collections delete` | Demoed | `slurmkit collections delete tmp_demo -y` |
+| `slurmkit collections add` | Partially demoed | Best with discoverable job output files + IDs |
+| `slurmkit collections remove` | Demoed | `slurmkit collections remove demo_terminal_failed 990001` |
 | `slurmkit notify test` | Demoed | `slurmkit notify test --dry-run` |
 | `slurmkit notify job` | Demoed (dummy context + dry-run) | `slurmkit notify job --job-id 990002 --exit-code 1 --dry-run` |
 | `slurmkit notify collection-final` | Demoed | examples below |
@@ -329,12 +331,13 @@ notifications:
 ## End-to-End Cluster Workflow (Real SLURM)
 
 ```bash
-slurmkit generate experiments/hyperparameter_sweep/job_spec.yaml --collection hp_sweep
-slurmkit submit --collection hp_sweep --delay 2
-slurmkit status hyperparameter_sweep
-slurmkit collection update hp_sweep
-slurmkit collection show hp_sweep
-slurmkit resubmit --collection hp_sweep --filter failed
+slurmkit generate experiments/hyperparameter_sweep/job_spec.yaml --into hp_sweep
+slurmkit submit hp_sweep --delay 2
+slurmkit status hp_sweep
+slurmkit jobs status hyperparameter_sweep
+slurmkit collections refresh hp_sweep
+slurmkit collections show hp_sweep
+slurmkit resubmit hp_sweep --filter failed
 ```
 
 If you want notification hooks in a real job script:

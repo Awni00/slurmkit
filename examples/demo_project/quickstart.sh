@@ -116,7 +116,7 @@ success "Selected: $EXPERIMENT"
 
 step "3" "Preview job generation (dry run)"
 
-slurmkit generate "$JOB_SPEC" --dry-run || true
+slurmkit generate "$JOB_SPEC" --into "$COLLECTION" --dry-run
 
 echo ""
 read -p "Press Enter to continue with actual generation..."
@@ -127,7 +127,7 @@ read -p "Press Enter to continue with actual generation..."
 
 step "4" "Generate job scripts"
 
-slurmkit generate "$JOB_SPEC" --collection "$COLLECTION"
+slurmkit generate "$JOB_SPEC" --into "$COLLECTION"
 
 success "Jobs generated"
 
@@ -142,7 +142,7 @@ ls -lh "jobs/$EXPERIMENT/job_scripts/" | head -10
 
 step "5" "Review collection"
 
-slurmkit collection show "$COLLECTION"
+slurmkit collections show "$COLLECTION"
 
 # =============================================================================
 # Step 6: Submit Jobs (Optional)
@@ -160,20 +160,21 @@ if [[ "$submit_choice" =~ ^[Yy]$ ]]; then
     # Dry run first
     echo ""
     echo "Dry run:"
-    slurmkit submit --collection "$COLLECTION" --dry-run
+    slurmkit submit "$COLLECTION" --dry-run
 
     echo ""
     read -p "Proceed with actual submission? [y/N]: " confirm
 
     if [[ "$confirm" =~ ^[Yy]$ ]]; then
-        slurmkit submit --collection "$COLLECTION" --delay 2
+        slurmkit submit "$COLLECTION" --delay 2
         success "Jobs submitted!"
 
         echo ""
         echo "To monitor jobs:"
-        echo "  slurmkit status $EXPERIMENT"
-        echo "  slurmkit collection show $COLLECTION"
-        echo "  watch -n 10 'slurmkit collection show $COLLECTION'"
+        echo "  slurmkit status $COLLECTION"
+        echo "  slurmkit collections show $COLLECTION"
+        echo "  slurmkit jobs status $EXPERIMENT"
+        echo "  watch -n 10 'slurmkit collections show $COLLECTION'"
     else
         echo "Skipped submission."
     fi
@@ -181,7 +182,7 @@ else
     echo "Skipped submission."
     echo ""
     echo "To submit later:"
-    echo "  slurmkit submit --collection $COLLECTION"
+    echo "  slurmkit submit $COLLECTION"
 fi
 
 # =============================================================================
@@ -272,17 +273,18 @@ echo "     ls jobs/$EXPERIMENT/job_scripts/"
 echo "     cat jobs/$EXPERIMENT/job_scripts/<job_name>.job"
 echo ""
 echo "  2. Submit jobs (if not done already):"
-echo "     slurmkit submit --collection $COLLECTION"
+echo "     slurmkit submit $COLLECTION"
 echo ""
 echo "  3. Monitor progress:"
-echo "     slurmkit status $EXPERIMENT"
-echo "     slurmkit collection show $COLLECTION"
+echo "     slurmkit status $COLLECTION"
+echo "     slurmkit collections show $COLLECTION"
+echo "     slurmkit jobs status $EXPERIMENT"
 echo ""
 echo "  4. When jobs complete:"
-echo "     slurmkit find <JOB_ID> --preview"
+echo "     slurmkit jobs find <JOB_ID> --preview"
 echo ""
 echo "  5. Handle failures:"
-echo "     slurmkit resubmit --collection $COLLECTION --filter failed"
+echo "     slurmkit resubmit $COLLECTION --filter failed"
 echo ""
 echo "  6. Demo collection-final notifications:"
 echo "     ./setup_dummy_jobs.py --include-non-terminal"

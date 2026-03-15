@@ -1,9 +1,6 @@
-"""
-CLI module for slurmkit.
+"""CLI package exports."""
 
-This module provides the command-line interface for slurmkit.
-"""
-
+from slurmkit.cli.app import app
 from slurmkit.cli.main import main
 
-__all__ = ["main"]
+__all__ = ["app", "main"]

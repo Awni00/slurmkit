@@ -72,7 +72,9 @@ DEFAULT_CONFIG = {
 
     # CLI output UI defaults
     "ui": {
-        "mode": "plain",
+        "mode": "auto",
+        "interactive": True,
+        "show_banner": True,
     },
 
     # Notifications (webhook transports)

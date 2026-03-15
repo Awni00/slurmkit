@@ -3,10 +3,15 @@
 from __future__ import annotations
 
 from argparse import Namespace
+from importlib import import_module
 
 from slurmkit.collections import Collection
 from slurmkit.cli import commands
-from slurmkit.cli.main import create_parser
+from slurmkit.cli.app import app as cli_app
+from typer.testing import CliRunner
+
+runner = CliRunner()
+cli_module = import_module("slurmkit.cli.app")
 
 
 class _FakeManager:
@@ -33,16 +38,26 @@ def _build_collection() -> Collection:
     return collection
 
 
-def test_collection_cancel_parser_args():
-    """Parser should map collection cancel arguments."""
-    parser = create_parser()
-    args = parser.parse_args(["collection", "cancel", "exp1", "--dry-run", "--no-refresh", "-y"])
-    assert args.command == "collection"
-    assert args.collection_action == "cancel"
-    assert args.name == "exp1"
-    assert args.dry_run is True
-    assert args.no_refresh is True
-    assert args.yes is True
+def test_collection_cancel_cli_args(monkeypatch):
+    """CLI should map collection cancel arguments."""
+    captured = {}
+
+    monkeypatch.setattr(
+        cli_module,
+        "_collection_cancel_impl",
+        lambda _ctx, *, name, no_refresh, dry_run, yes: captured.update(
+            {"name": name, "no_refresh": no_refresh, "dry_run": dry_run, "yes": yes}
+        ) or 0,
+    )
+
+    result = runner.invoke(cli_app, ["collections", "cancel", "exp1", "--dry-run", "--no-refresh", "-y"])
+    assert result.exit_code == 0
+    assert captured == {
+        "name": "exp1",
+        "dry_run": True,
+        "no_refresh": True,
+        "yes": True,
+    }
 
 
 def test_cmd_collection_cancel_dry_run(monkeypatch, capsys):

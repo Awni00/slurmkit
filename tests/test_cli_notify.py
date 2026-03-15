@@ -1,10 +1,15 @@
 """Tests for notify CLI parser and command handlers."""
 
 from argparse import Namespace
+from importlib import import_module
 
 from slurmkit.cli import commands
-from slurmkit.cli.main import create_parser
+from slurmkit.cli.app import app as cli_app
 from slurmkit.notifications import DeliveryResult, RouteResolution
+from typer.testing import CliRunner
+
+runner = CliRunner()
+cli_module = import_module("slurmkit.cli.app")
 
 
 class _FakeService:
@@ -37,10 +42,18 @@ class _FakeService:
         return list(self.delivery_results)
 
 
-def test_notify_parser_job_args():
-    """Parser accepts notify job options."""
-    parser = create_parser()
-    args = parser.parse_args(
+def test_notify_job_cli_args(monkeypatch):
+    """CLI accepts notify job options."""
+    captured = {}
+
+    monkeypatch.setattr(
+        cli_module,
+        "_notify_job_impl",
+        lambda _ctx, **kwargs: captured.update(kwargs) or 0,
+    )
+
+    result = runner.invoke(
+        cli_app,
         [
             "notify",
             "job",
@@ -60,29 +73,32 @@ def test_notify_parser_job_args():
             "50",
             "--strict",
             "--dry-run",
-        ]
+        ],
     )
-    assert args.command == "notify"
-    assert args.notify_action == "job"
-    assert args.job_id == "123"
-    assert args.collection == "exp"
-    assert args.exit_code == 2
-    assert args.on == "always"
-    assert args.route == ["r1", "r2"]
-    assert args.tail_lines == 50
-    assert args.strict is True
-    assert args.dry_run is True
+    assert result.exit_code == 0
+    assert captured["job_id"] == "123"
+    assert captured["collection_name"] == "exp"
+    assert captured["exit_code"] == 2
+    assert captured["on"] == "always"
+    assert captured["routes"] == ["r1", "r2"]
+    assert captured["tail_lines"] == 50
+    assert captured["strict"] is True
+    assert captured["dry_run"] is True
 
 
-def test_notify_parser_test_args():
-    """Parser accepts notify test options."""
-    parser = create_parser()
-    args = parser.parse_args(["notify", "test", "--route", "r1", "--strict", "--dry-run"])
-    assert args.command == "notify"
-    assert args.notify_action == "test"
-    assert args.route == ["r1"]
-    assert args.strict is True
-    assert args.dry_run is True
+def test_notify_test_cli_args(monkeypatch):
+    """CLI accepts notify test options."""
+    captured = {}
+
+    monkeypatch.setattr(
+        cli_module,
+        "_notify_test_impl",
+        lambda _ctx, **kwargs: captured.update(kwargs) or 0,
+    )
+
+    result = runner.invoke(cli_app, ["notify", "test", "--route", "r1", "--strict", "--dry-run"])
+    assert result.exit_code == 0
+    assert captured == {"routes": ["r1"], "strict": True, "dry_run": True}
 
 
 def test_cmd_notify_job_skip_on_success_when_failed_only(monkeypatch, capsys):

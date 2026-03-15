@@ -1,14 +1,20 @@
 """Tests for `slurmkit notify collection-final` parser and handler behavior."""
 
 from argparse import Namespace
+from importlib import import_module
 from pathlib import Path
 
 import yaml
 
 from slurmkit.cli import commands
+from slurmkit.cli.app import app as cli_app
 from slurmkit.collections import CollectionManager
 from slurmkit.config import Config
 from slurmkit.notifications import DeliveryResult, NotificationService
+from typer.testing import CliRunner
+
+runner = CliRunner()
+cli_module = import_module("slurmkit.cli.app")
 
 
 def _make_config(tmp_path: Path, data: dict) -> Config:
@@ -37,41 +43,47 @@ def _args(**overrides):
 
 
 def test_notify_collection_final_parser_args():
-    """Parser accepts notify collection-final arguments."""
-    from slurmkit.cli.main import create_parser
+    """CLI accepts notify collection-final arguments."""
+    captured = {}
 
-    parser = create_parser()
-    args = parser.parse_args(
-        [
-            "notify",
-            "collection-final",
-            "--job-id",
-            "123",
-            "--trigger-exit-code",
-            "0",
-            "--collection",
-            "exp",
-            "--route",
-            "r1",
-            "--route",
-            "r2",
-            "--strict",
-            "--dry-run",
-            "--force",
-            "--no-refresh",
-        ]
-    )
+    original = cli_module._notify_collection_final_impl
+    cli_module._notify_collection_final_impl = lambda _ctx, **kwargs: captured.update(kwargs) or 0
+    try:
+        result = runner.invoke(
+            cli_app,
+            [
+                "notify",
+                "collection-final",
+                "--job-id",
+                "123",
+                "--trigger-exit-code",
+                "0",
+                "--collection",
+                "exp",
+                "--route",
+                "r1",
+                "--route",
+                "r2",
+                "--strict",
+                "--dry-run",
+                "--force",
+                "--no-refresh",
+            ],
+        )
+    finally:
+        cli_module._notify_collection_final_impl = original
 
-    assert args.command == "notify"
-    assert args.notify_action == "collection-final"
-    assert args.job_id == "123"
-    assert args.trigger_exit_code == 0
-    assert args.collection == "exp"
-    assert args.route == ["r1", "r2"]
-    assert args.strict is True
-    assert args.dry_run is True
-    assert args.force is True
-    assert args.no_refresh is True
+    assert result.exit_code == 0
+    assert captured == {
+        "job_id": "123",
+        "trigger_exit_code": 0,
+        "collection_name": "exp",
+        "routes": ["r1", "r2"],
+        "strict": True,
+        "dry_run": True,
+        "force": True,
+        "no_refresh": True,
+    }
 
 
 def test_cmd_notify_collection_final_non_terminal_skips(tmp_path, monkeypatch, capsys):

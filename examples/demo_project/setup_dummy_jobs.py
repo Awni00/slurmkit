@@ -201,9 +201,10 @@ def main() -> int:
         print(f"  - {name}")
     print("")
     print("Example commands:")
-    print(f"  slurmkit collection list")
-    print(f"  slurmkit collection show {failed_collection_name}")
-    print(f"  slurmkit collection analyze {failed_collection_name} --attempt-mode latest")
+    print("  slurmkit collections list")
+    print(f"  slurmkit status {failed_collection_name}")
+    print(f"  slurmkit collections show {failed_collection_name}")
+    print(f"  slurmkit collections analyze {failed_collection_name} --attempt-mode latest")
     print(
         "  slurmkit notify collection-final "
         f"--collection {failed_collection_name} --job-id {base_id}002 --no-refresh --dry-run"

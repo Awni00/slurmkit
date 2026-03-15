@@ -3,13 +3,18 @@
 from __future__ import annotations
 
 from argparse import Namespace
+from importlib import import_module
 from pathlib import Path
 
 import yaml
 
 from slurmkit.cli import commands
-from slurmkit.cli.main import create_parser
+from slurmkit.cli.app import app as cli_app
 from slurmkit.collections import Collection
+from typer.testing import CliRunner
+
+runner = CliRunner()
+cli_module = import_module("slurmkit.cli.app")
 
 
 class _FakeConfig:
@@ -64,69 +69,82 @@ def _build_resubmit_args(**overrides):
 
 
 def test_resubmit_parser_new_arguments():
-    """Parser accepts callback + submission-group + regenerate options."""
-    parser = create_parser()
-    args = parser.parse_args(
-        [
-            "resubmit",
-            "--collection",
-            "exp1",
-            "--submission-group",
-            "sg1",
-            "--extra-params-file",
-            "callbacks.py",
-            "--extra-params-function",
-            "my_extra",
-            "--select-file",
-            "callbacks.py",
-            "--select-function",
-            "my_select",
-            "--extra-params",
-            "checkpoint=last.pt",
-            "--dry-run",
-        ]
-    )
+    """CLI accepts callback + submission-group + regenerate options."""
+    captured = {}
 
-    assert args.command == "resubmit"
-    assert args.collection == "exp1"
-    assert args.submission_group == "sg1"
-    assert args.extra_params_file == "callbacks.py"
-    assert args.extra_params_function == "my_extra"
-    assert args.select_file == "callbacks.py"
-    assert args.select_function == "my_select"
-    assert args.extra_params == "checkpoint=last.pt"
-    assert args.regenerate is None
-    assert args.dry_run is True
+    original = cli_module._resubmit_collection_impl
+    cli_module._resubmit_collection_impl = lambda _ctx, **kwargs: captured.update(kwargs) or 0
+    try:
+        result = runner.invoke(
+            cli_app,
+            [
+                "resubmit",
+                "exp1",
+                "--submission-group",
+                "sg1",
+                "--extra-params-file",
+                "callbacks.py",
+                "--extra-params-function",
+                "my_extra",
+                "--select-file",
+                "callbacks.py",
+                "--select-function",
+                "my_select",
+                "--extra-params",
+                "checkpoint=last.pt",
+                "--dry-run",
+            ],
+        )
+    finally:
+        cli_module._resubmit_collection_impl = original
+
+    assert result.exit_code == 0
+    assert captured["collection_name"] == "exp1"
+    assert captured["submission_group"] == "sg1"
+    assert str(captured["extra_params_file"]) == "callbacks.py"
+    assert captured["extra_params_function"] == "my_extra"
+    assert str(captured["select_file"]) == "callbacks.py"
+    assert captured["select_function"] == "my_select"
+    assert captured["extra_params"] == "checkpoint=last.pt"
+    assert captured["regenerate"] is None
+    assert captured["dry_run"] is True
 
 
 def test_resubmit_parser_regenerate_flags():
-    """Parser exposes tri-state regenerate toggle."""
-    parser = create_parser()
+    """CLI exposes tri-state regenerate toggle."""
+    captured_yes = {}
+    captured_no = {}
 
-    args_yes = parser.parse_args(["resubmit", "--collection", "exp1", "--regenerate"])
-    assert args_yes.regenerate is True
+    original = cli_module._resubmit_collection_impl
+    try:
+        cli_module._resubmit_collection_impl = lambda _ctx, **kwargs: captured_yes.update(kwargs) or 0
+        result_yes = runner.invoke(cli_app, ["resubmit", "exp1", "--regenerate"])
+        assert result_yes.exit_code == 0
+        assert captured_yes["regenerate"] is True
 
-    args_no = parser.parse_args(["resubmit", "--collection", "exp1", "--no-regenerate"])
-    assert args_no.regenerate is False
+        cli_module._resubmit_collection_impl = lambda _ctx, **kwargs: captured_no.update(kwargs) or 0
+        result_no = runner.invoke(cli_app, ["resubmit", "exp1", "--no-regenerate"])
+        assert result_no.exit_code == 0
+        assert captured_no["regenerate"] is False
+    finally:
+        cli_module._resubmit_collection_impl = original
 
 
 def test_generate_parser_accepts_compact_slurm_args_spec():
-    """Generate parser should accept compact FILE:FUNCTION SLURM logic specs."""
-    parser = create_parser()
-    args = parser.parse_args(
-        [
-            "generate",
-            "--template",
-            "train.job.j2",
-            "--params",
-            "params.yaml",
-            "--slurm-args",
-            "logic.py:pick_args",
-        ]
-    )
+    """Generate should accept a spec path and --into collection."""
+    captured = {}
 
-    assert args.command == "generate"
-    assert args.slurm_args_file == "logic.py:pick_args"
+    original = cli_module._generate_impl
+    cli_module._generate_impl = lambda _ctx, **kwargs: captured.update(kwargs) or 0
+    try:
+        result = runner.invoke(cli_app, ["generate", "job_spec.yaml", "--into", "exp1", "--dry-run"])
+    finally:
+        cli_module._generate_impl = original
+
+    assert result.exit_code == 0
+    assert str(captured["spec"]) == "job_spec.yaml"
+    assert captured["into"] == "exp1"
+    assert captured["dry_run"] is True
 
 
 def test_cmd_resubmit_callbacks_and_merge_no_regenerate(monkeypatch, tmp_path):

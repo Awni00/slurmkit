@@ -4,9 +4,14 @@ from __future__ import annotations
 
 import json
 from argparse import Namespace
+from importlib import import_module
 
 from slurmkit.cli import commands
-from slurmkit.cli.main import create_parser
+from slurmkit.cli.app import app as cli_app
+from typer.testing import CliRunner
+
+runner = CliRunner()
+cli_module = import_module("slurmkit.cli.app")
 
 
 class _FakeCollection:
@@ -84,16 +89,48 @@ class _FakeManager:
         self.saved = True
 
 
-def test_collection_show_parser_new_args():
-    """Parser should include new show flags and default latest attempt mode."""
-    parser = create_parser()
-    args = parser.parse_args(["collection", "show", "exp1"])
-    assert args.command == "collection"
-    assert args.collection_action == "show"
-    assert args.attempt_mode == "latest"
-    assert args.submission_group is None
-    assert args.show_primary is False
-    assert args.show_history is False
+def test_collection_show_cli_new_args(monkeypatch):
+    """CLI should include new show flags and default latest attempt mode."""
+    captured = {}
+
+    def _fake_impl(
+        _ctx,
+        *,
+        name,
+        format_name,
+        state_filter,
+        attempt_mode,
+        submission_group,
+        show_primary,
+        show_history,
+        no_refresh,
+    ):
+        captured.update(
+            {
+                "name": name,
+                "format_name": format_name,
+                "state_filter": state_filter,
+                "attempt_mode": attempt_mode,
+                "submission_group": submission_group,
+                "show_primary": show_primary,
+                "show_history": show_history,
+                "no_refresh": no_refresh,
+            }
+        )
+        return 0
+
+    monkeypatch.setattr(cli_module, "_collection_show_impl", _fake_impl)
+
+    result = runner.invoke(
+        cli_app,
+        ["collections", "show", "exp1", "--show-primary", "--show-history"],
+    )
+    assert result.exit_code == 0
+    assert captured["name"] == "exp1"
+    assert captured["attempt_mode"] == "latest"
+    assert captured["submission_group"] is None
+    assert captured["show_primary"] is True
+    assert captured["show_history"] is True
 
 
 def test_cmd_collection_show_json_includes_effective_fields(monkeypatch, capsys):

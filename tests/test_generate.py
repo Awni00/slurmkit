@@ -12,7 +12,9 @@ from slurmkit.generate import (
     generate_job_name,
     JobGenerator,
     load_job_spec,
+    make_unique_job_name,
 )
+from slurmkit.collections import Collection
 
 
 class TestExpandGrid:
@@ -268,6 +270,35 @@ class TestExpandParameters:
 
             result = expand_parameters(spec)
             assert result == [{"trial": 1, "keep": True}]
+
+
+def test_make_unique_job_name_appends_numeric_suffix():
+    """Duplicate job names should be disambiguated with -N suffixes."""
+    assert make_unique_job_name("train", {"train"}) == "train-2"
+    assert make_unique_job_name("train", {"train", "train-2"}) == "train-3"
+
+
+def test_job_generator_plan_and_dry_run_are_append_only(tmp_path):
+    """Planning/dry-run should respect collection append mode without mutating it."""
+    template = tmp_path / "train.job.j2"
+    template.write_text("#!/bin/bash\necho {{ job_name }}\n", encoding="utf-8")
+    output_dir = tmp_path / "jobs"
+
+    collection = Collection("exp1")
+    collection.add_job(job_name="job", script_path=str(tmp_path / "job.job"))
+
+    generator = JobGenerator(
+        template_path=template,
+        parameters={"mode": "list", "values": [{"seed": 1}, {"seed": 2}]},
+        job_name_pattern="job",
+    )
+
+    plan = generator.plan(output_dir=output_dir, collection=collection)
+    assert [item["job_name"] for item in plan] == ["job-2", "job-3"]
+
+    generated = generator.generate(output_dir=output_dir, collection=collection, dry_run=True)
+    assert [item["job_name"] for item in generated] == ["job-2", "job-3"]
+    assert len(collection.jobs) == 1
 
     def test_parse_mode_requires_mapping_or_list_return(self):
         """Test parameter parsing rejects non-dict/list returns."""

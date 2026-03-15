@@ -3,9 +3,14 @@
 from __future__ import annotations
 
 from argparse import Namespace
+from importlib import import_module
 
 from slurmkit.cli import commands
-from slurmkit.cli.main import create_parser
+from slurmkit.cli.app import app as cli_app
+from typer.testing import CliRunner
+
+runner = CliRunner()
+cli_module = import_module("slurmkit.cli.app")
 
 
 class _FakeManager:
@@ -27,20 +32,42 @@ class _FakeManager:
         ]
 
 
-def test_collection_list_parser_attempt_mode_default_latest():
-    """Parser should default collection list attempt mode to latest."""
-    parser = create_parser()
-    args = parser.parse_args(["collection", "list"])
-    assert args.command == "collection"
-    assert args.collection_action == "list"
-    assert args.attempt_mode == "latest"
+def test_collection_list_cli_attempt_mode_default_latest(monkeypatch):
+    """CLI should default collections list attempt mode to latest."""
+    captured = {}
+
+    def _fake_impl(_ctx, attempt_mode):
+        captured["attempt_mode"] = attempt_mode
+        return 0
+
+    monkeypatch.setattr(
+        cli_module,
+        "_collection_list_impl",
+        _fake_impl,
+    )
+
+    result = runner.invoke(cli_app, ["collections", "list"])
+    assert result.exit_code == 0
+    assert captured["attempt_mode"] == "latest"
 
 
-def test_collection_list_parser_attempt_mode_primary():
-    """Parser should accept explicit primary attempt mode for list."""
-    parser = create_parser()
-    args = parser.parse_args(["collection", "list", "--attempt-mode", "primary"])
-    assert args.attempt_mode == "primary"
+def test_collection_list_cli_attempt_mode_primary(monkeypatch):
+    """CLI should accept explicit primary attempt mode for list."""
+    captured = {}
+
+    def _fake_impl(_ctx, attempt_mode):
+        captured["attempt_mode"] = attempt_mode
+        return 0
+
+    monkeypatch.setattr(
+        cli_module,
+        "_collection_list_impl",
+        _fake_impl,
+    )
+
+    result = runner.invoke(cli_app, ["collections", "list", "--attempt-mode", "primary"])
+    assert result.exit_code == 0
+    assert captured["attempt_mode"] == "primary"
 
 
 def test_cmd_collection_list_passes_attempt_mode(monkeypatch, capsys):

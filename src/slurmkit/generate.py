@@ -15,7 +15,7 @@ import importlib.util
 import itertools
 import sys
 from pathlib import Path
-from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple, Union
+from typing import Any, Callable, Dict, Iterable, Iterator, List, Optional, Tuple, Union
 
 import yaml
 from jinja2 import Environment, FileSystemLoader, Template
@@ -498,6 +498,29 @@ def generate_job_name(
     return template.render(**params)
 
 
+def make_unique_job_name(job_name: str, existing_names: Iterable[str]) -> str:
+    """
+    Make a generated job name unique by appending ``-N`` when needed.
+
+    Args:
+        job_name: Base generated job name.
+        existing_names: Already-reserved names in the target collection/plan.
+
+    Returns:
+        Unique job name.
+    """
+    taken = set(existing_names)
+    if job_name not in taken:
+        return job_name
+
+    suffix = 2
+    while True:
+        candidate = f"{job_name}-{suffix}"
+        if candidate not in taken:
+            return candidate
+        suffix += 1
+
+
 # =============================================================================
 # Job Spec Loading
 # =============================================================================
@@ -782,46 +805,77 @@ class JobGenerator:
             - parameters: Job parameters
             - slurm_args: Computed SLURM arguments
         """
+        generated = []
+        for item in self.plan(output_dir=output_dir, collection=collection):
+            job_info = self.generate_one(
+                output_dir=output_dir,
+                params=item["parameters"],
+                job_name=item["job_name"],
+                dry_run=dry_run,
+            )
+
+            generated.append(job_info)
+
+            # Dry-run planning must not mutate the target collection.
+            if collection is not None and not dry_run:
+                collection.add_job(
+                    job_name=item["job_name"],
+                    script_path=job_info["script_path"],
+                    parameters=item["parameters"],
+                )
+
+        return generated
+
+    def plan(
+        self,
+        output_dir: Union[str, Path],
+        collection: Optional[Collection] = None,
+    ) -> List[Dict[str, Any]]:
+        """
+        Plan generated jobs without mutating the filesystem or collection.
+
+        Args:
+            output_dir: Directory where scripts will be written.
+            collection: Optional target collection used for append-only naming.
+
+        Returns:
+            List of planned job entries with resolved unique names.
+        """
         output_dir = Path(output_dir)
 
-        if not dry_run:
-            output_dir.mkdir(parents=True, exist_ok=True)
-
-        # Expand parameters
         param_list = expand_parameters(
             self.parameters,
             filter_func=self.param_filter_func,
             parse_func=self.param_parse_func,
         )
 
-        generated = []
+        used_names = set()
+        if collection is not None:
+            used_names.update(
+                str(job.get("job_name"))
+                for job in collection.jobs
+                if job.get("job_name")
+            )
 
+        planned = []
         for params in param_list:
-            # Generate job name
-            job_name = generate_job_name(
+            base_job_name = generate_job_name(
                 params,
                 pattern=self.job_name_pattern,
                 env=self._env,
             )
-
-            job_info = self.generate_one(
-                output_dir=output_dir,
-                params=params,
-                job_name=job_name,
-                dry_run=dry_run,
+            job_name = make_unique_job_name(base_job_name, used_names)
+            used_names.add(job_name)
+            planned.append(
+                {
+                    "base_job_name": base_job_name,
+                    "job_name": job_name,
+                    "parameters": params,
+                    "script_path": output_dir / f"{job_name}.job",
+                }
             )
 
-            generated.append(job_info)
-
-            # Add to collection if provided
-            if collection is not None:
-                collection.add_job(
-                    job_name=job_name,
-                    script_path=job_info["script_path"],
-                    parameters=params,
-                )
-
-        return generated
+        return planned
 
     def preview(self, index: int = 0) -> str:
         """

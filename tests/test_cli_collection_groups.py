@@ -4,9 +4,14 @@ from __future__ import annotations
 
 import json
 from argparse import Namespace
+from importlib import import_module
 
 from slurmkit.cli import commands
-from slurmkit.cli.main import create_parser
+from slurmkit.cli.app import app as cli_app
+from typer.testing import CliRunner
+
+runner = CliRunner()
+cli_module = import_module("slurmkit.cli.app")
 
 
 class _FakeCollection:
@@ -33,14 +38,19 @@ class _FakeManager:
         return self.collection
 
 
-def test_collection_groups_parser_args():
-    """Parser should map collection groups arguments."""
-    parser = create_parser()
-    args = parser.parse_args(["collection", "groups", "exp1", "--format", "json"])
-    assert args.command == "collection"
-    assert args.collection_action == "groups"
-    assert args.name == "exp1"
-    assert args.format == "json"
+def test_collection_groups_cli_args(monkeypatch):
+    """CLI should map collections groups arguments."""
+    captured = {}
+
+    monkeypatch.setattr(
+        cli_module,
+        "_collection_groups_impl",
+        lambda _ctx, *, name, format_name: captured.update({"name": name, "format_name": format_name}) or 0,
+    )
+
+    result = runner.invoke(cli_app, ["collections", "groups", "exp1", "--format", "json"])
+    assert result.exit_code == 0
+    assert captured == {"name": "exp1", "format_name": "json"}
 
 
 def test_cmd_collection_groups_json(monkeypatch, capsys):
