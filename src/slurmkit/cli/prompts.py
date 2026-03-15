@@ -257,7 +257,7 @@ def pick_or_create_collection(
     """Prompt for an existing collection or create a new one inline."""
     options = _collection_options(manager)
     options.insert(0, (_CREATE_NEW_SENTINEL, f"+ create new collection ({default_name})"))
-    selected = prompt_choice(title, options, default_value=_CREATE_NEW_SENTINEL, fuzzy=True)
+    selected = prompt_choice(title, options, fuzzy=True)
     if selected is None:
         return None
     if selected != _CREATE_NEW_SENTINEL:

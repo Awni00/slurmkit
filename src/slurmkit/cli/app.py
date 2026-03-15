@@ -108,6 +108,15 @@ def _resolve_spec_path(state: CLIState, spec: Optional[Path]) -> Path:
     return selected
 
 
+def _default_collection_name_for_spec(spec_path: Path, spec_data: Dict[str, Any]) -> str:
+    raw_name = spec_data.get("name")
+    base_name = str(raw_name).strip() if raw_name is not None else ""
+    if not base_name:
+        base_name = spec_path.stem
+    date_suffix = datetime.now().strftime("%Y%m%d")
+    return f"{base_name}_{date_suffix}"
+
+
 def _resolve_collection_name(
     state: CLIState,
     manager: CollectionManager,
@@ -479,7 +488,7 @@ def _generate_impl(
 
     spec_data = load_job_spec(spec_path)
     manager = CollectionManager(config=state.config)
-    default_collection_name = spec_path.stem
+    default_collection_name = _default_collection_name_for_spec(spec_path, spec_data)
     collection_name = into
     if collection_name is None:
         if not can_prompt(state):
