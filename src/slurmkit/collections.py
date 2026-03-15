@@ -1,14 +1,10 @@
 """
-Job collections for organizing and tracking related SLURM jobs.
+Attempts-based job collections for organizing and tracking SLURM jobs.
 
-A collection is a group of related jobs that are typically generated and
-submitted together. Collections track:
-- The parameters used to generate jobs
-- Job metadata (names, IDs, states, paths)
-- Resubmission history
-- Cross-cluster information (hostname)
-
-Collections are stored as YAML files for human readability and git tracking.
+Collections are stored as YAML files with a v2 schema. Each tracked job keeps
+stable metadata plus an ordered list of attempts, where the first attempt is
+the primary/generated submission and later attempts are regenerated or reused
+resubmissions.
 """
 
 from __future__ import annotations
@@ -24,30 +20,23 @@ from typing import Any, Dict, Iterator, List, Optional, Set, Union
 import yaml
 
 from slurmkit.config import Config, get_config
-from slurmkit.slurm import get_sacct_info, get_job_status
+from slurmkit.slurm import get_sacct_info
 
 
-# =============================================================================
-# Constants
-# =============================================================================
+COLLECTION_SCHEMA_VERSION = 2
 
-DEFAULT_COLLECTION_NAME = "default"
-
-# Job states for filtering
 JOB_STATE_PENDING = "pending"
 JOB_STATE_RUNNING = "running"
 JOB_STATE_COMPLETED = "completed"
 JOB_STATE_FAILED = "failed"
 JOB_STATE_UNKNOWN = "unknown"
-LEGACY_SUBMISSION_GROUP = "legacy_ungrouped"
 
 
-# =============================================================================
-# Git Metadata Helpers
-# =============================================================================
+def _now_iso() -> str:
+    return datetime.now().isoformat(timespec="seconds")
+
 
 def _run_git_command(args: List[str]) -> Optional[str]:
-    """Run a git command and return stripped stdout, or None on failure."""
     try:
         result = subprocess.run(
             ["git", *args],
@@ -57,52 +46,29 @@ def _run_git_command(args: List[str]) -> Optional[str]:
         )
     except OSError:
         return None
-
     if result.returncode != 0:
         return None
-
     value = result.stdout.strip()
     return value if value else None
 
 
 @lru_cache(maxsize=1)
 def _get_git_metadata() -> Dict[str, Optional[str]]:
-    """Get current git branch and commit ID for logging."""
     return {
         "git_branch": _run_git_command(["rev-parse", "--abbrev-ref", "HEAD"]),
         "git_commit_id": _run_git_command(["rev-parse", "HEAD"]),
     }
 
 
-# =============================================================================
-# Collection Class
-# =============================================================================
+def _string_or_none(value: Any) -> Optional[str]:
+    if value is None:
+        return None
+    text = str(value).strip()
+    return text if text else None
+
 
 class Collection:
-    """
-    A collection of related SLURM jobs.
-
-    Collections track jobs that are generated and submitted together,
-    including their parameters, states, and resubmission history.
-
-    Attributes:
-        name: Collection name (also used as filename).
-        description: Human-readable description.
-        created_at: Creation timestamp.
-        updated_at: Last update timestamp.
-        cluster: Hostname where collection was created.
-        parameters: Generation parameters (grid/list specification).
-        jobs: List of job entries.
-
-    Example:
-        >>> collection = Collection("my_experiment")
-        >>> collection.add_job(
-        ...     job_name="train_lr0.01",
-        ...     script_path="jobs/exp/train_lr0.01.job",
-        ...     parameters={"learning_rate": 0.01}
-        ... )
-        >>> collection.save()
-    """
+    """A collection of related SLURM jobs stored in an attempts-based schema."""
 
     def __init__(
         self,
@@ -113,37 +79,141 @@ class Collection:
         cluster: Optional[str] = None,
         parameters: Optional[Dict[str, Any]] = None,
         jobs: Optional[List[Dict[str, Any]]] = None,
-        meta: Optional[Dict[str, Any]] = None,
+        generation: Optional[Dict[str, Any]] = None,
+        notifications: Optional[Dict[str, Any]] = None,
+        version: int = COLLECTION_SCHEMA_VERSION,
     ):
-        """
-        Initialize a collection.
-
-        Args:
-            name: Collection name.
-            description: Human-readable description.
-            created_at: Creation timestamp (ISO format).
-            updated_at: Last update timestamp (ISO format).
-            cluster: Hostname where collection was created.
-            parameters: Generation parameters specification.
-            jobs: List of job entries.
-            meta: Collection-level metadata (e.g., notification checkpoints).
-        """
+        self.version = version
         self.name = name
         self.description = description
         self.cluster = cluster or socket.gethostname()
-
-        now = datetime.now().isoformat(timespec="seconds")
+        now = _now_iso()
         self.created_at = created_at or now
         self.updated_at = updated_at or now
-
-        self.parameters = parameters or {}
-        self._jobs: List[Dict[str, Any]] = jobs or []
-        self.meta: Dict[str, Any] = meta or {}
+        self.parameters = dict(parameters or {})
+        self.generation = dict(generation or {})
+        self.notifications = dict(notifications or {})
+        self._jobs: List[Dict[str, Any]] = [
+            self._normalize_job(job)
+            for job in (jobs or [])
+        ]
 
     @property
     def jobs(self) -> List[Dict[str, Any]]:
-        """List of job entries in this collection."""
         return self._jobs
+
+    def _touch(self) -> None:
+        self.updated_at = _now_iso()
+
+    def _normalize_state(self, state: Optional[str]) -> str:
+        if state is None:
+            return JOB_STATE_UNKNOWN
+        state_upper = str(state).upper()
+        if state_upper in ("PENDING", "REQUEUED", "SUSPENDED"):
+            return JOB_STATE_PENDING
+        if state_upper in ("RUNNING", "COMPLETING"):
+            return JOB_STATE_RUNNING
+        if state_upper == "COMPLETED":
+            return JOB_STATE_COMPLETED
+        if state_upper in (
+            "FAILED",
+            "CANCELLED",
+            "TIMEOUT",
+            "NODE_FAIL",
+            "PREEMPTED",
+            "OUT_OF_MEMORY",
+        ):
+            return JOB_STATE_FAILED
+        return JOB_STATE_UNKNOWN
+
+    def _new_attempt(
+        self,
+        *,
+        kind: str,
+        job_id: Optional[str] = None,
+        state: Optional[str] = None,
+        hostname: Optional[str] = None,
+        submitted_at: Optional[str] = None,
+        started_at: Optional[str] = None,
+        completed_at: Optional[str] = None,
+        script_path: Optional[Union[str, Path]] = None,
+        output_path: Optional[Union[str, Path]] = None,
+        submission_group: Optional[str] = None,
+        attempt_job_name: Optional[str] = None,
+        parameters: Optional[Dict[str, Any]] = None,
+        extra_params: Optional[Dict[str, Any]] = None,
+        regenerated: Optional[bool] = None,
+    ) -> Dict[str, Any]:
+        git_metadata = _get_git_metadata()
+        return {
+            "kind": kind,
+            "job_id": _string_or_none(job_id),
+            "state": _string_or_none(state),
+            "hostname": _string_or_none(hostname) or socket.gethostname(),
+            "submitted_at": _string_or_none(submitted_at),
+            "started_at": _string_or_none(started_at),
+            "completed_at": _string_or_none(completed_at),
+            "script_path": str(script_path) if script_path else None,
+            "output_path": str(output_path) if output_path else None,
+            "submission_group": _string_or_none(submission_group),
+            "job_name": _string_or_none(attempt_job_name),
+            "parameters": dict(parameters or {}),
+            "extra_params": dict(extra_params or {}),
+            "regenerated": regenerated,
+            "git_branch": git_metadata["git_branch"],
+            "git_commit_id": git_metadata["git_commit_id"],
+        }
+
+    def _normalize_attempt(self, raw_attempt: Dict[str, Any], *, default_kind: str) -> Dict[str, Any]:
+        attempt = self._new_attempt(
+            kind=str(raw_attempt.get("kind") or default_kind),
+            job_id=raw_attempt.get("job_id"),
+            state=raw_attempt.get("state"),
+            hostname=raw_attempt.get("hostname"),
+            submitted_at=raw_attempt.get("submitted_at"),
+            started_at=raw_attempt.get("started_at"),
+            completed_at=raw_attempt.get("completed_at"),
+            script_path=raw_attempt.get("script_path"),
+            output_path=raw_attempt.get("output_path"),
+            submission_group=raw_attempt.get("submission_group"),
+            attempt_job_name=raw_attempt.get("job_name"),
+            parameters=raw_attempt.get("parameters"),
+            extra_params=raw_attempt.get("extra_params"),
+            regenerated=raw_attempt.get("regenerated"),
+        )
+        if raw_attempt.get("git_branch") is not None:
+            attempt["git_branch"] = raw_attempt.get("git_branch")
+        if raw_attempt.get("git_commit_id") is not None:
+            attempt["git_commit_id"] = raw_attempt.get("git_commit_id")
+        return attempt
+
+    def _normalize_job(self, raw_job: Dict[str, Any]) -> Dict[str, Any]:
+        attempts = raw_job.get("attempts") or []
+        if not isinstance(attempts, list) or not attempts:
+            raise ValueError("Collection jobs must define a non-empty 'attempts' list.")
+
+        normalized_attempts = []
+        for index, raw_attempt in enumerate(attempts):
+            if not isinstance(raw_attempt, dict):
+                raise ValueError("Collection attempt entries must be mappings.")
+            normalized_attempts.append(
+                self._normalize_attempt(
+                    raw_attempt,
+                    default_kind="primary" if index == 0 else "resubmission",
+                )
+            )
+
+        return {
+            "job_name": str(raw_job.get("job_name") or normalized_attempts[0].get("job_name") or "unnamed"),
+            "parameters": dict(raw_job.get("parameters") or normalized_attempts[0].get("parameters") or {}),
+            "attempts": normalized_attempts,
+        }
+
+    def primary_attempt(self, job: Dict[str, Any]) -> Dict[str, Any]:
+        return job["attempts"][0]
+
+    def latest_attempt(self, job: Dict[str, Any]) -> Dict[str, Any]:
+        return job["attempts"][-1]
 
     def add_job(
         self,
@@ -158,77 +228,40 @@ class Collection:
         started_at: Optional[str] = None,
         completed_at: Optional[str] = None,
     ) -> Dict[str, Any]:
-        """
-        Add a job to the collection.
-
-        Args:
-            job_name: Name of the job.
-            script_path: Path to the job script.
-            output_path: Path to the output file.
-            job_id: SLURM job ID (if submitted).
-            state: Current job state.
-            parameters: Job-specific parameters.
-            hostname: Hostname where job was submitted.
-            submitted_at: Submission timestamp.
-            started_at: Start timestamp.
-            completed_at: Completion timestamp.
-
-        Returns:
-            The created job entry dictionary.
-        """
-        git_metadata = _get_git_metadata()
-        job_entry = {
+        job = {
             "job_name": job_name,
-            "job_id": job_id,
-            "script_path": str(script_path) if script_path else None,
-            "output_path": str(output_path) if output_path else None,
-            "state": state,
-            "hostname": hostname or socket.gethostname(),
-            "parameters": parameters or {},
-            "submitted_at": submitted_at,
-            "started_at": started_at,
-            "completed_at": completed_at,
-            "resubmissions": [],
-            "git_branch": git_metadata["git_branch"],
-            "git_commit_id": git_metadata["git_commit_id"],
+            "parameters": dict(parameters or {}),
+            "attempts": [
+                self._new_attempt(
+                    kind="primary",
+                    job_id=job_id,
+                    state=state,
+                    hostname=hostname,
+                    submitted_at=submitted_at,
+                    started_at=started_at,
+                    completed_at=completed_at,
+                    script_path=script_path,
+                    output_path=output_path,
+                    attempt_job_name=job_name,
+                    parameters=parameters,
+                    regenerated=False,
+                )
+            ],
         }
-
-        self._jobs.append(job_entry)
+        self._jobs.append(job)
         self._touch()
-
-        return job_entry
+        return job
 
     def get_job(self, job_name: str) -> Optional[Dict[str, Any]]:
-        """
-        Get a job entry by name.
-
-        Args:
-            job_name: Name of the job to find.
-
-        Returns:
-            Job entry dictionary, or None if not found.
-        """
         for job in self._jobs:
             if job["job_name"] == job_name:
                 return job
         return None
 
     def get_job_by_id(self, job_id: str) -> Optional[Dict[str, Any]]:
-        """
-        Get a job entry by SLURM job ID.
-
-        Args:
-            job_id: SLURM job ID to find.
-
-        Returns:
-            Job entry dictionary, or None if not found.
-        """
         for job in self._jobs:
-            if job.get("job_id") == job_id:
-                return job
-            # Also check resubmissions
-            for resub in job.get("resubmissions", []):
-                if resub.get("job_id") == job_id:
+            for attempt in job.get("attempts", []):
+                if attempt.get("job_id") == job_id:
                     return job
         return None
 
@@ -243,42 +276,24 @@ class Collection:
         completed_at: Optional[str] = None,
         **kwargs: Any,
     ) -> bool:
-        """
-        Update an existing job entry.
-
-        Args:
-            job_name: Name of the job to update.
-            job_id: New SLURM job ID.
-            state: New state.
-            output_path: New output path.
-            submitted_at: Submission timestamp.
-            started_at: Start timestamp.
-            completed_at: Completion timestamp.
-            **kwargs: Additional fields to update.
-
-        Returns:
-            True if job was found and updated, False otherwise.
-        """
         job = self.get_job(job_name)
         if job is None:
             return False
-
+        attempt = self.primary_attempt(job)
         if job_id is not None:
-            job["job_id"] = job_id
+            attempt["job_id"] = _string_or_none(job_id)
         if state is not None:
-            job["state"] = state
+            attempt["state"] = _string_or_none(state)
         if output_path is not None:
-            job["output_path"] = str(output_path)
+            attempt["output_path"] = str(output_path)
         if submitted_at is not None:
-            job["submitted_at"] = submitted_at
+            attempt["submitted_at"] = _string_or_none(submitted_at)
         if started_at is not None:
-            job["started_at"] = started_at
+            attempt["started_at"] = _string_or_none(started_at)
         if completed_at is not None:
-            job["completed_at"] = completed_at
-
+            attempt["completed_at"] = _string_or_none(completed_at)
         for key, value in kwargs.items():
-            job[key] = value
-
+            attempt[key] = value
         self._touch()
         return True
 
@@ -294,63 +309,29 @@ class Collection:
         attempt_parameters: Optional[Dict[str, Any]] = None,
         regenerated: Optional[bool] = None,
     ) -> bool:
-        """
-        Record a job resubmission.
-
-        Args:
-            job_name: Name of the original job.
-            job_id: New SLURM job ID from resubmission.
-            extra_params: Additional parameters used for resubmission.
-            hostname: Hostname where resubmission occurred.
-            attempt_job_name: Job name used for this attempt (if regenerated).
-            attempt_script_path: Script path used for this attempt.
-            attempt_parameters: Effective template parameters used for this attempt.
-            regenerated: Whether the script was regenerated for this attempt.
-
-        Returns:
-            True if job was found and resubmission recorded, False otherwise.
-        """
         job = self.get_job(job_name)
         if job is None:
             return False
-
-        git_metadata = _get_git_metadata()
-        resubmission = {
-            "job_id": job_id,
-            "state": None,
-            "hostname": hostname or socket.gethostname(),
-            "submitted_at": datetime.now().isoformat(timespec="seconds"),
-            "extra_params": extra_params or {},
-            "submission_group": submission_group,
-            "job_name": attempt_job_name,
-            "script_path": str(attempt_script_path) if attempt_script_path else None,
-            "parameters": attempt_parameters or {},
-            "regenerated": regenerated,
-            "git_branch": git_metadata["git_branch"],
-            "git_commit_id": git_metadata["git_commit_id"],
-        }
-
-        if "resubmissions" not in job:
-            job["resubmissions"] = []
-
-        job["resubmissions"].append(resubmission)
+        attempt = self._new_attempt(
+            kind="resubmission",
+            job_id=job_id,
+            hostname=hostname,
+            submitted_at=_now_iso(),
+            submission_group=submission_group,
+            attempt_job_name=attempt_job_name or job_name,
+            script_path=attempt_script_path,
+            parameters=attempt_parameters,
+            extra_params=extra_params,
+            regenerated=regenerated,
+        )
+        job["attempts"].append(attempt)
         self._touch()
-
         return True
 
     def remove_job(self, job_name: str) -> bool:
-        """
-        Remove a job from the collection.
-
-        Args:
-            job_name: Name of the job to remove.
-
-        Returns:
-            True if job was found and removed, False otherwise.
-        """
-        for i, job in enumerate(self._jobs):
+        for index, job in enumerate(self._jobs):
             if job["job_name"] == job_name:
-                del self._jobs[i]
+                del self._jobs[index]
                 self._touch()
                 return True
         return False
@@ -361,118 +342,76 @@ class Collection:
         hostname: Optional[str] = None,
         submitted: Optional[bool] = None,
     ) -> List[Dict[str, Any]]:
-        """
-        Filter jobs by criteria.
-
-        Args:
-            state: Filter by normalized state (pending, running, completed, failed).
-            hostname: Filter by hostname.
-            submitted: If True, only submitted jobs. If False, only unsubmitted.
-
-        Returns:
-            List of matching job entries.
-        """
         result = []
-
         for job in self._jobs:
-            # Check submitted filter
+            primary = self.primary_attempt(job)
             if submitted is not None:
-                is_submitted = job.get("job_id") is not None
+                is_submitted = primary.get("job_id") is not None
                 if submitted != is_submitted:
                     continue
-
-            # Check hostname filter
-            if hostname is not None and job.get("hostname") != hostname:
+            if hostname is not None and primary.get("hostname") != hostname:
                 continue
-
-            # Check state filter
-            if state is not None:
-                job_state = self._normalize_state(job.get("state"))
-                if job_state != state:
-                    continue
-
+            if state is not None and self._normalize_state(primary.get("state")) != state:
+                continue
             result.append(job)
-
         return result
 
     def _normalize_attempt_mode(self, attempt_mode: str) -> str:
-        if attempt_mode not in ("primary", "latest"):
+        normalized = str(attempt_mode).strip().lower()
+        if normalized not in {"primary", "latest"}:
             raise ValueError("attempt_mode must be 'primary' or 'latest'")
-        return attempt_mode
+        return normalized
 
     def _normalize_submission_group(self, value: Optional[str]) -> Optional[str]:
         if value is None:
             return None
-        group = str(value).strip()
-        return group if group else None
+        text = str(value).strip()
+        return text if text else None
 
     def _effective_attempt_for_job(
         self,
         job: Dict[str, Any],
+        *,
         attempt_mode: str = "primary",
         submission_group: Optional[str] = None,
     ) -> Optional[Dict[str, Any]]:
-        """
-        Resolve effective attempt metadata for a job.
-
-        Returns None when submission_group is provided and no resubmission
-        in that group exists for the job.
-        """
         attempt_mode = self._normalize_attempt_mode(attempt_mode)
-        submission_group = self._normalize_submission_group(submission_group)
-        resubmissions = job.get("resubmissions", []) or []
+        group = self._normalize_submission_group(submission_group)
+        attempts = job["attempts"]
 
-        if submission_group is not None:
-            matched = []
-            for idx, resub in enumerate(resubmissions, start=1):
-                group = self._normalize_submission_group(resub.get("submission_group"))
-                if group is None:
-                    group = LEGACY_SUBMISSION_GROUP
-                if group == submission_group:
-                    matched.append((idx, resub, group))
+        if group is not None:
+            matched: List[tuple[int, Dict[str, Any]]] = []
+            for index, attempt in enumerate(attempts[1:], start=1):
+                if self._normalize_submission_group(attempt.get("submission_group")) == group:
+                    matched.append((index, attempt))
             if not matched:
                 return None
-
-            idx, resub, group = matched[-1]
+            attempt_index, attempt = matched[-1]
             return {
-                "job_id": resub.get("job_id"),
-                "state_raw": resub.get("state"),
-                "state": self._normalize_state(resub.get("state")),
-                "hostname": resub.get("hostname"),
-                "submitted_at": resub.get("submitted_at"),
+                "attempt": attempt,
+                "attempt_index": attempt_index,
+                "attempt_label": f"resubmission #{attempt_index}",
                 "is_primary": False,
-                "attempt_index": idx,
-                "attempt_label": f"resubmission #{idx}",
-                "submission_group": group,
+                "submission_group": self._normalize_submission_group(attempt.get("submission_group")),
             }
 
-        if attempt_mode == "latest" and resubmissions:
-            idx = len(resubmissions)
-            resub = resubmissions[-1]
-            group = self._normalize_submission_group(resub.get("submission_group"))
-            if group is None:
-                group = LEGACY_SUBMISSION_GROUP
+        if attempt_mode == "latest":
+            attempt_index = len(attempts) - 1
+            attempt = attempts[-1]
             return {
-                "job_id": resub.get("job_id"),
-                "state_raw": resub.get("state"),
-                "state": self._normalize_state(resub.get("state")),
-                "hostname": resub.get("hostname"),
-                "submitted_at": resub.get("submitted_at"),
-                "is_primary": False,
-                "attempt_index": idx,
-                "attempt_label": f"resubmission #{idx}",
-                "submission_group": group,
+                "attempt": attempt,
+                "attempt_index": attempt_index,
+                "attempt_label": "primary" if attempt_index == 0 else f"resubmission #{attempt_index}",
+                "is_primary": attempt_index == 0,
+                "submission_group": self._normalize_submission_group(attempt.get("submission_group")),
             }
 
+        attempt = attempts[0]
         return {
-            "job_id": job.get("job_id"),
-            "state_raw": job.get("state"),
-            "state": self._normalize_state(job.get("state")),
-            "hostname": job.get("hostname"),
-            "submitted_at": job.get("submitted_at"),
-            "is_primary": True,
+            "attempt": attempt,
             "attempt_index": 0,
             "attempt_label": "primary",
+            "is_primary": True,
             "submission_group": None,
         }
 
@@ -482,9 +421,8 @@ class Collection:
         submission_group: Optional[str] = None,
         state: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
-        """Return job views using effective attempt semantics."""
-        attempt_mode = self._normalize_attempt_mode(attempt_mode)
-        if state is not None and state not in {
+        state_filter = None if state is None else str(state).strip().lower()
+        if state_filter is not None and state_filter not in {
             JOB_STATE_PENDING,
             JOB_STATE_RUNNING,
             JOB_STATE_COMPLETED,
@@ -495,48 +433,48 @@ class Collection:
 
         rows: List[Dict[str, Any]] = []
         for job in self._jobs:
-            effective = self._effective_attempt_for_job(
+            resolved = self._effective_attempt_for_job(
                 job,
                 attempt_mode=attempt_mode,
                 submission_group=submission_group,
             )
-            if effective is None:
-                continue
-            if state is not None and effective["state"] != state:
+            if resolved is None:
                 continue
 
-            history: List[str] = []
-            primary_id = str(job.get("job_id") or "N/A")
-            primary_state = str(job.get("state") or "N/A")
-            history.append(f"{primary_id}({primary_state})")
-            for resub in job.get("resubmissions", []) or []:
-                resub_id = str(resub.get("job_id") or "N/A")
-                resub_state = str(resub.get("state") or "N/A")
-                history.append(f"{resub_id}({resub_state})")
+            primary = self.primary_attempt(job)
+            effective = resolved["attempt"]
+            effective_state = self._normalize_state(effective.get("state"))
+            if state_filter is not None and effective_state != state_filter:
+                continue
+
+            history = [
+                f"{str(attempt.get('job_id') or 'N/A')}({str(attempt.get('state') or 'N/A')})"
+                for attempt in job["attempts"]
+            ]
 
             rows.append(
                 {
-                    "job_name": job.get("job_name"),
-                    "parameters": job.get("parameters", {}) or {},
-                    "resubmissions_count": len(job.get("resubmissions", []) or []),
-                    "primary_job_id": job.get("job_id"),
-                    "primary_state_raw": job.get("state"),
-                    "primary_state": self._normalize_state(job.get("state")),
-                    "primary_hostname": job.get("hostname"),
-                    "effective_job_id": effective["job_id"],
-                    "effective_state_raw": effective["state_raw"],
-                    "effective_state": effective["state"],
-                    "effective_hostname": effective["hostname"],
-                    "effective_submitted_at": effective["submitted_at"],
-                    "effective_is_primary": effective["is_primary"],
-                    "effective_attempt_index": effective["attempt_index"],
-                    "effective_attempt_label": effective["attempt_label"],
-                    "effective_submission_group": effective["submission_group"],
+                    "job_name": job["job_name"],
+                    "parameters": dict(job.get("parameters", {}) or {}),
+                    "attempts_count": len(job["attempts"]),
+                    "resubmissions_count": max(len(job["attempts"]) - 1, 0),
+                    "primary_job_id": primary.get("job_id"),
+                    "primary_state_raw": primary.get("state"),
+                    "primary_state": self._normalize_state(primary.get("state")),
+                    "primary_hostname": primary.get("hostname"),
+                    "effective_job_id": effective.get("job_id"),
+                    "effective_state_raw": effective.get("state"),
+                    "effective_state": effective_state,
+                    "effective_hostname": effective.get("hostname"),
+                    "effective_submitted_at": effective.get("submitted_at"),
+                    "effective_is_primary": resolved["is_primary"],
+                    "effective_attempt_index": resolved["attempt_index"],
+                    "effective_attempt_label": resolved["attempt_label"],
+                    "effective_submission_group": resolved["submission_group"],
                     "attempt_history": history,
                     "job": job,
                 }
             )
-
         return rows
 
     def get_effective_summary(
@@ -544,7 +482,6 @@ class Collection:
         attempt_mode: str = "primary",
         submission_group: Optional[str] = None,
     ) -> Dict[str, int]:
-        """Get state summary for effective attempt semantics."""
         rows = self.get_effective_jobs(
             attempt_mode=attempt_mode,
             submission_group=submission_group,
@@ -559,8 +496,7 @@ class Collection:
             "not_submitted": 0,
         }
         for row in rows:
-            effective_job_id = row.get("effective_job_id")
-            if effective_job_id is None:
+            if row.get("effective_job_id") is None:
                 summary["not_submitted"] += 1
                 continue
             state = row.get("effective_state", JOB_STATE_UNKNOWN)
@@ -568,14 +504,12 @@ class Collection:
         return summary
 
     def get_submission_groups_summary(self) -> List[Dict[str, Any]]:
-        """Return aggregate stats for all submission groups in the collection."""
         grouped: Dict[str, Dict[str, Any]] = {}
         for job in self._jobs:
-            job_name = str(job.get("job_name", ""))
-            for resub in job.get("resubmissions", []) or []:
-                group = self._normalize_submission_group(resub.get("submission_group"))
+            for attempt in job["attempts"][1:]:
+                group = self._normalize_submission_group(attempt.get("submission_group"))
                 if group is None:
-                    group = LEGACY_SUBMISSION_GROUP
+                    continue
                 bucket = grouped.setdefault(
                     group,
                     {
@@ -588,8 +522,8 @@ class Collection:
                 )
                 bucket["slurm_job_count"] += 1
                 casted_names: Set[str] = bucket["parent_job_names"]
-                casted_names.add(job_name)
-                submitted_at = resub.get("submitted_at")
+                casted_names.add(job["job_name"])
+                submitted_at = attempt.get("submitted_at")
                 if submitted_at:
                     if bucket["first_submitted_at"] is None or submitted_at < bucket["first_submitted_at"]:
                         bucket["first_submitted_at"] = submitted_at
@@ -597,91 +531,35 @@ class Collection:
                         bucket["last_submitted_at"] = submitted_at
 
         rows = []
-        for _, values in grouped.items():
+        for values in grouped.values():
             parent_job_names = values.pop("parent_job_names")
             values["parent_job_count"] = len(parent_job_names)
             rows.append(values)
-
         rows.sort(key=lambda item: str(item["submission_group"]))
         return rows
 
-    def _normalize_state(self, state: Optional[str]) -> str:
-        """
-        Normalize a SLURM state to a simple category.
-
-        Args:
-            state: Raw SLURM state string.
-
-        Returns:
-            Normalized state: pending, running, completed, failed, or unknown.
-        """
-        if state is None:
-            return JOB_STATE_UNKNOWN
-
-        state_upper = state.upper()
-
-        if state_upper in ("PENDING", "REQUEUED", "SUSPENDED"):
-            return JOB_STATE_PENDING
-        elif state_upper in ("RUNNING", "COMPLETING"):
-            return JOB_STATE_RUNNING
-        elif state_upper == "COMPLETED":
-            return JOB_STATE_COMPLETED
-        elif state_upper in ("FAILED", "CANCELLED", "TIMEOUT", "NODE_FAIL",
-                             "PREEMPTED", "OUT_OF_MEMORY"):
-            return JOB_STATE_FAILED
-        else:
-            return JOB_STATE_UNKNOWN
-
     def get_summary(self) -> Dict[str, int]:
-        """
-        Get a summary of job states in the collection.
-
-        Returns:
-            Dictionary with counts for each state category.
-        """
-        summary = {
-            "total": len(self._jobs),
-            "pending": 0,
-            "running": 0,
-            "completed": 0,
-            "failed": 0,
-            "unknown": 0,
-            "not_submitted": 0,
-        }
-
-        for job in self._jobs:
-            if job.get("job_id") is None:
-                summary["not_submitted"] += 1
-                continue
-
-            state = self._normalize_state(job.get("state"))
-            summary[state] += 1
-
-        return summary
+        return self.get_effective_summary(attempt_mode="primary")
 
     def _get_analysis_rows(
         self,
         attempt_mode: str = "primary",
         submission_group: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
-        """Build canonical rows for status analysis."""
-        effective_jobs = self.get_effective_jobs(
+        rows = self.get_effective_jobs(
             attempt_mode=attempt_mode,
             submission_group=submission_group,
         )
-        rows = []
-        for row in effective_jobs:
-            rows.append(
-                {
-                    "job_name": row.get("job_name"),
-                    "state": row.get("effective_state", JOB_STATE_UNKNOWN),
-                    "parameters": row.get("parameters", {}) or {},
-                }
-            )
-        return rows
+        return [
+            {
+                "job_name": row["job_name"],
+                "state": row.get("effective_state", JOB_STATE_UNKNOWN),
+                "parameters": row.get("parameters", {}) or {},
+            }
+            for row in rows
+        ]
 
     def _format_param_value(self, value: Any) -> str:
-        """Serialize a parameter value to a stable, display-safe string key."""
         if isinstance(value, (dict, list, tuple)):
             return json.dumps(value, sort_keys=True)
         return str(value)
@@ -694,26 +572,12 @@ class Collection:
         selected_params: Optional[List[str]] = None,
         top_k: int = 10,
     ) -> Dict[str, Any]:
-        """
-        Analyze job state distributions by parameter value.
-
-        Args:
-            attempt_mode: Either "primary" or "latest".
-            min_support: Minimum group size for high-confidence highlights.
-            selected_params: Optional list of specific parameter keys to analyze.
-            top_k: Max number of entries in risky/stable summaries.
-
-        Returns:
-            Analysis payload suitable for table rendering or JSON output.
-        """
-        if attempt_mode not in ("primary", "latest"):
-            raise ValueError("attempt_mode must be 'primary' or 'latest'")
         if min_support < 1:
             raise ValueError("min_support must be >= 1")
         if top_k < 1:
             raise ValueError("top_k must be >= 1")
 
-        effective_mode = "latest" if self._normalize_submission_group(submission_group) else attempt_mode
+        effective_mode = "latest" if self._normalize_submission_group(submission_group) else self._normalize_attempt_mode(attempt_mode)
         rows = self._get_analysis_rows(
             attempt_mode=effective_mode,
             submission_group=submission_group,
@@ -727,38 +591,34 @@ class Collection:
             JOB_STATE_UNKNOWN: 0,
         }
         for row in rows:
-            state = row["state"]
-            summary_counts[state] = summary_counts.get(state, 0) + 1
+            summary_counts[row["state"]] = summary_counts.get(row["state"], 0) + 1
 
         total_jobs = len(rows)
-        summary_rates = {}
-        for state, count in summary_counts.items():
-            summary_rates[state] = (count / total_jobs) if total_jobs > 0 else 0.0
+        summary_rates = {
+            state: (count / total_jobs) if total_jobs > 0 else 0.0
+            for state, count in summary_counts.items()
+        }
 
         available_params = sorted({
             key
             for row in rows
             for key in row.get("parameters", {}).keys()
         })
-
         if selected_params:
             params_to_analyze = list(dict.fromkeys(selected_params))
-            skipped_params = [p for p in params_to_analyze if p not in available_params]
+            skipped_params = [name for name in params_to_analyze if name not in available_params]
         else:
             params_to_analyze = available_params
             skipped_params = []
 
         parameter_results = []
         all_value_entries = []
-
         for param in params_to_analyze:
             grouped: Dict[str, Dict[str, Any]] = {}
-
             for row in rows:
                 params = row.get("parameters", {})
                 if param not in params:
                     continue
-
                 value_key = self._format_param_value(params[param])
                 if value_key not in grouped:
                     grouped[value_key] = {
@@ -772,7 +632,6 @@ class Collection:
                             JOB_STATE_UNKNOWN: 0,
                         },
                     }
-
                 grouped[value_key]["n"] += 1
                 grouped[value_key]["counts"][row["state"]] += 1
 
@@ -781,56 +640,33 @@ class Collection:
 
             values = []
             for value_key, data in grouped.items():
-                n = data["n"]
-                failure_rate = data["counts"][JOB_STATE_FAILED] / n
-                completion_rate = data["counts"][JOB_STATE_COMPLETED] / n
-
+                count = data["n"]
+                failure_rate = data["counts"][JOB_STATE_FAILED] / count
+                completion_rate = data["counts"][JOB_STATE_COMPLETED] / count
                 entry = {
                     "value": value_key,
-                    "n": n,
+                    "n": count,
                     "counts": data["counts"],
                     "rates": {
                         "failure_rate": failure_rate,
                         "completion_rate": completion_rate,
                     },
-                    "low_sample": n < min_support,
+                    "low_sample": count < min_support,
                 }
                 values.append(entry)
-                all_value_entries.append({
-                    "param": param,
-                    **entry,
-                })
+                all_value_entries.append({"param": param, **entry})
 
-            values.sort(
-                key=lambda x: (
-                    -x["rates"]["failure_rate"],
-                    -x["n"],
-                    x["value"],
-                )
-            )
-            parameter_results.append({
-                "param": param,
-                "values": values,
-            })
+            values.sort(key=lambda item: (-item["rates"]["failure_rate"], -item["n"], item["value"]))
+            parameter_results.append({"param": param, "values": values})
 
-        eligible = [e for e in all_value_entries if e["n"] >= min_support]
+        eligible = [entry for entry in all_value_entries if entry["n"] >= min_support]
         top_risky = sorted(
             eligible,
-            key=lambda x: (
-                -x["rates"]["failure_rate"],
-                -x["n"],
-                x["param"],
-                x["value"],
-            ),
+            key=lambda item: (-item["rates"]["failure_rate"], -item["n"], item["param"], item["value"]),
         )[:top_k]
         top_stable = sorted(
             eligible,
-            key=lambda x: (
-                -x["rates"]["completion_rate"],
-                -x["n"],
-                x["param"],
-                x["value"],
-            ),
+            key=lambda item: (-item["rates"]["completion_rate"], -item["n"], item["param"], item["value"]),
         )[:top_k]
 
         return {
@@ -851,117 +687,70 @@ class Collection:
             },
         }
 
-    def refresh_states(self, update_resubmissions: bool = True) -> int:
-        """
-        Refresh job states from SLURM.
-
-        Queries sacct for current state of all submitted jobs and updates
-        the collection.
-
-        Args:
-            update_resubmissions: Also update states of resubmitted jobs.
-
-        Returns:
-            Number of jobs updated.
-        """
-        # Collect all job IDs to query
-        job_ids = []
-        for job in self._jobs:
-            if job.get("job_id"):
-                job_ids.append(job["job_id"])
-            if update_resubmissions:
-                for resub in job.get("resubmissions", []):
-                    if resub.get("job_id"):
-                        job_ids.append(resub["job_id"])
-
+    def refresh_states(self) -> int:
+        job_ids = [
+            str(attempt["job_id"])
+            for job in self._jobs
+            for attempt in job.get("attempts", [])
+            if attempt.get("job_id")
+        ]
         if not job_ids:
             return 0
 
-        # Query sacct
-        info_map = get_sacct_info(
-            job_ids,
-            fields=["JobID", "State", "Start", "End"],
-        )
-
-        # Update jobs
+        info_map = get_sacct_info(job_ids, fields=["JobID", "State", "Start", "End"])
         updated = 0
         for job in self._jobs:
-            job_id = job.get("job_id")
-            if job_id and job_id in info_map:
+            for attempt in job["attempts"]:
+                job_id = attempt.get("job_id")
+                if not job_id or job_id not in info_map:
+                    continue
                 info = info_map[job_id]
-                old_state = job.get("state")
                 new_state = info.get("State")
-
-                if old_state != new_state:
-                    job["state"] = new_state
+                if attempt.get("state") != new_state:
+                    attempt["state"] = new_state
                     updated += 1
-
-                # Update timestamps
                 if info.get("Start") and info["Start"] != "Unknown":
-                    job["started_at"] = info["Start"]
+                    attempt["started_at"] = info["Start"]
                 if info.get("End") and info["End"] != "Unknown":
-                    job["completed_at"] = info["End"]
-
-            # Update resubmissions
-            if update_resubmissions:
-                for resub in job.get("resubmissions", []):
-                    resub_id = resub.get("job_id")
-                    if resub_id and resub_id in info_map:
-                        info = info_map[resub_id]
-                        old_state = resub.get("state")
-                        new_state = info.get("State")
-
-                        if old_state != new_state:
-                            resub["state"] = new_state
-                            updated += 1
+                    attempt["completed_at"] = info["End"]
 
         if updated > 0:
             self._touch()
-
         return updated
 
-    def _touch(self) -> None:
-        """Update the updated_at timestamp."""
-        self.updated_at = datetime.now().isoformat(timespec="seconds")
-
     def to_dict(self) -> Dict[str, Any]:
-        """
-        Convert collection to a dictionary.
-
-        Returns:
-            Dictionary representation of the collection.
-        """
         return {
+            "version": COLLECTION_SCHEMA_VERSION,
             "name": self.name,
             "description": self.description,
             "created_at": self.created_at,
             "updated_at": self.updated_at,
             "cluster": self.cluster,
             "parameters": self.parameters,
+            "generation": self.generation,
+            "notifications": self.notifications,
             "jobs": self._jobs,
-            "meta": self.meta,
         }
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "Collection":
-        """
-        Create a collection from a dictionary.
-
-        Args:
-            data: Dictionary with collection data.
-
-        Returns:
-            New Collection instance.
-        """
+        version = int(data.get("version", 0) or 0)
+        if version != COLLECTION_SCHEMA_VERSION:
+            raise ValueError(
+                f"Collection schema version {version or 'unknown'} is unsupported. "
+                "Run `slurmkit migrate` to upgrade local collections."
+            )
         return cls(
-            name=data.get("name", "unnamed"),
-            description=data.get("description", ""),
+            name=str(data.get("name", "unnamed")),
+            description=str(data.get("description", "")),
             created_at=data.get("created_at"),
             updated_at=data.get("updated_at"),
             cluster=data.get("cluster"),
             parameters=data.get("parameters"),
             jobs=data.get("jobs"),
-            meta=data.get("meta"),
+            generation=data.get("generation"),
+            notifications=data.get("notifications"),
+            version=version,
         )
 
     def __len__(self) -> int:
@@ -974,42 +763,16 @@ class Collection:
         return f"Collection(name={self.name!r}, jobs={len(self._jobs)})"
 
 
-# =============================================================================
-# Collection Manager
-# =============================================================================
-
 class CollectionManager:
-    """
-    Manager for loading, saving, and organizing collections.
-
-    The manager handles persistence of collections to YAML files in a
-    configurable directory.
-
-    Attributes:
-        collections_dir: Directory where collection files are stored.
-
-    Example:
-        >>> manager = CollectionManager()
-        >>> collection = manager.get_or_create("my_experiment")
-        >>> collection.add_job(...)
-        >>> manager.save(collection)
-    """
+    """Load, save, and organize v2 collections."""
 
     def __init__(
         self,
         collections_dir: Optional[Union[str, Path]] = None,
         config: Optional[Config] = None,
     ):
-        """
-        Initialize the collection manager.
-
-        Args:
-            collections_dir: Directory for collection files. If None, uses config.
-            config: Configuration object. If None, uses global config.
-        """
         if config is None:
             config = get_config()
-
         if collections_dir is not None:
             self.collections_dir = Path(collections_dir)
         else:
@@ -1018,70 +781,33 @@ class CollectionManager:
                 self.collections_dir = Path(".job-collections")
 
     def _ensure_dir(self) -> None:
-        """Ensure the collections directory exists."""
         self.collections_dir.mkdir(parents=True, exist_ok=True)
 
     def _get_path(self, name: str) -> Path:
-        """Get the file path for a collection."""
         return self.collections_dir / f"{name}.yaml"
 
     def exists(self, name: str) -> bool:
-        """
-        Check if a collection exists.
-
-        Args:
-            name: Collection name.
-
-        Returns:
-            True if collection file exists.
-        """
         return self._get_path(name).exists()
 
     def load(self, name: str) -> Collection:
-        """
-        Load a collection from disk.
-
-        Args:
-            name: Collection name.
-
-        Returns:
-            Loaded Collection object.
-
-        Raises:
-            FileNotFoundError: If collection file doesn't exist.
-        """
         path = self._get_path(name)
-
         if not path.exists():
             raise FileNotFoundError(f"Collection not found: {name}")
-
-        with open(path, "r") as f:
-            data = yaml.safe_load(f) or {}
-
+        with open(path, "r", encoding="utf-8") as handle:
+            data = yaml.safe_load(handle) or {}
         return Collection.from_dict(data)
 
     def save(self, collection: Collection) -> Path:
-        """
-        Save a collection to disk.
-
-        Args:
-            collection: Collection to save.
-
-        Returns:
-            Path where collection was saved.
-        """
         self._ensure_dir()
         path = self._get_path(collection.name)
-
-        with open(path, "w") as f:
+        with open(path, "w", encoding="utf-8") as handle:
             yaml.dump(
                 collection.to_dict(),
-                f,
+                handle,
                 default_flow_style=False,
                 sort_keys=False,
                 allow_unicode=True,
             )
-
         return path
 
     def create(
@@ -1091,32 +817,15 @@ class CollectionManager:
         parameters: Optional[Dict[str, Any]] = None,
         overwrite: bool = False,
     ) -> Collection:
-        """
-        Create a new collection.
-
-        Args:
-            name: Collection name.
-            description: Human-readable description.
-            parameters: Generation parameters specification.
-            overwrite: If True, overwrite existing collection.
-
-        Returns:
-            New Collection object.
-
-        Raises:
-            FileExistsError: If collection exists and overwrite=False.
-        """
         if self.exists(name) and not overwrite:
             raise FileExistsError(
                 f"Collection already exists: {name}. Use overwrite=True to replace."
             )
-
         collection = Collection(
             name=name,
             description=description,
             parameters=parameters,
         )
-
         self.save(collection)
         return collection
 
@@ -1126,107 +835,49 @@ class CollectionManager:
         description: str = "",
         parameters: Optional[Dict[str, Any]] = None,
     ) -> Collection:
-        """
-        Get an existing collection or create a new one.
-
-        Args:
-            name: Collection name.
-            description: Description (used only if creating).
-            parameters: Parameters (used only if creating).
-
-        Returns:
-            Existing or newly created Collection.
-        """
         if self.exists(name):
             return self.load(name)
-        else:
-            return self.create(name, description, parameters)
+        return self.create(name, description, parameters)
 
     def delete(self, name: str) -> bool:
-        """
-        Delete a collection.
-
-        Args:
-            name: Collection name.
-
-        Returns:
-            True if collection was deleted, False if it didn't exist.
-        """
         path = self._get_path(name)
-
         if path.exists():
             path.unlink()
             return True
         return False
 
     def list_collections(self) -> List[str]:
-        """
-        List all collection names.
-
-        Returns:
-            List of collection names (without .yaml extension).
-        """
         if not self.collections_dir.exists():
             return []
-
-        names = []
-        for path in self.collections_dir.glob("*.yaml"):
-            names.append(path.stem)
-
-        return sorted(names)
+        return sorted(path.stem for path in self.collections_dir.glob("*.yaml"))
 
     def list_collections_with_summary(self, attempt_mode: str = "primary") -> List[Dict[str, Any]]:
-        """
-        List all collections with summary information.
-
-        Args:
-            attempt_mode: Either "primary" or "latest" effective attempt state.
-
-        Returns:
-            List of dicts with name, description, job counts, etc.
-        """
-        summaries = []
-
+        rows = []
         for name in self.list_collections():
             try:
                 collection = self.load(name)
-                summary = collection.get_effective_summary(attempt_mode=attempt_mode)
-                summaries.append({
+            except Exception:
+                continue
+            rows.append(
+                {
                     "name": name,
                     "description": collection.description,
                     "cluster": collection.cluster,
                     "created_at": collection.created_at,
                     "updated_at": collection.updated_at,
-                    **summary,
-                })
-            except Exception:
-                # Skip collections that fail to load
-                continue
-
-        return summaries
+                    **collection.get_effective_summary(attempt_mode=attempt_mode),
+                }
+            )
+        return rows
 
     def __repr__(self) -> str:
         return f"CollectionManager(collections_dir={self.collections_dir})"
 
 
-# =============================================================================
-# Convenience Functions
-# =============================================================================
-
 def get_collection_manager(
     collections_dir: Optional[Union[str, Path]] = None,
     config: Optional[Config] = None,
 ) -> CollectionManager:
-    """
-    Get a collection manager instance.
-
-    Args:
-        collections_dir: Override collections directory.
-        config: Configuration object.
-
-    Returns:
-        CollectionManager instance.
-    """
     return CollectionManager(collections_dir=collections_dir, config=config)
 
 
@@ -1234,33 +885,11 @@ def load_collection(
     name: str,
     collections_dir: Optional[Union[str, Path]] = None,
 ) -> Collection:
-    """
-    Load a collection by name.
-
-    Args:
-        name: Collection name.
-        collections_dir: Override collections directory.
-
-    Returns:
-        Loaded Collection object.
-    """
-    manager = get_collection_manager(collections_dir=collections_dir)
-    return manager.load(name)
+    return get_collection_manager(collections_dir=collections_dir).load(name)
 
 
 def save_collection(
     collection: Collection,
     collections_dir: Optional[Union[str, Path]] = None,
 ) -> Path:
-    """
-    Save a collection.
-
-    Args:
-        collection: Collection to save.
-        collections_dir: Override collections directory.
-
-    Returns:
-        Path where collection was saved.
-    """
-    manager = get_collection_manager(collections_dir=collections_dir)
-    return manager.save(collection)
+    return get_collection_manager(collections_dir=collections_dir).save(collection)

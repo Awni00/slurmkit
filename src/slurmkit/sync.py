@@ -115,22 +115,23 @@ class SyncManager:
 
         jobs_data = []
         for job in collection.jobs:
+            primary = collection.primary_attempt(job)
             job_data = {
                 "job_name": job["job_name"],
-                "job_id": job.get("job_id"),
-                "state": job.get("state"),
-                "hostname": job.get("hostname"),
+                "job_id": primary.get("job_id"),
+                "state": primary.get("state"),
+                "hostname": primary.get("hostname"),
             }
 
-            # Include resubmission info if any
-            if job.get("resubmissions"):
+            resubmissions = job.get("attempts", [])[1:]
+            if resubmissions:
                 job_data["resubmissions"] = [
                     {
                         "job_id": r.get("job_id"),
                         "state": r.get("state"),
                         "hostname": r.get("hostname"),
                     }
-                    for r in job["resubmissions"]
+                    for r in resubmissions
                 ]
 
             jobs_data.append(job_data)

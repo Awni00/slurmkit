@@ -130,9 +130,7 @@ def main() -> int:
         started_at=_now_iso(),
         completed_at=_now_iso(),
     )
-    if not isinstance(failed_collection.meta, dict):
-        failed_collection.meta = {}
-    failed_collection.meta["generation"] = {"spec_path": sweep_spec_rel}
+    failed_collection.generation = {"spec_path": sweep_spec_rel}
     manager.save(failed_collection)
 
     completed_collection = manager.create(
@@ -161,9 +159,7 @@ def main() -> int:
         started_at=_now_iso(),
         completed_at=_now_iso(),
     )
-    if not isinstance(completed_collection.meta, dict):
-        completed_collection.meta = {}
-    completed_collection.meta["generation"] = {"spec_path": model_spec_rel}
+    completed_collection.generation = {"spec_path": model_spec_rel}
     manager.save(completed_collection)
 
     created = [failed_collection_name, completed_collection_name]
@@ -190,9 +186,7 @@ def main() -> int:
             parameters={"algorithm": "algo_c", "dataset": "large"},
             submitted_at=_now_iso(),
         )
-        if not isinstance(in_progress_collection.meta, dict):
-            in_progress_collection.meta = {}
-        in_progress_collection.meta["generation"] = {"spec_path": model_spec_rel}
+        in_progress_collection.generation = {"spec_path": model_spec_rel}
         manager.save(in_progress_collection)
         created.append(in_progress_collection_name)
 
@@ -204,7 +198,7 @@ def main() -> int:
     print("  slurmkit collections list")
     print(f"  slurmkit status {failed_collection_name}")
     print(f"  slurmkit collections show {failed_collection_name}")
-    print(f"  slurmkit collections analyze {failed_collection_name} --attempt-mode latest")
+    print(f"  slurmkit collections analyze {failed_collection_name}")
     print(
         "  slurmkit notify collection-final "
         f"--collection {failed_collection_name} --job-id {base_id}002 --no-refresh --dry-run"

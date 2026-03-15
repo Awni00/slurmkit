@@ -204,9 +204,9 @@ def parse_python_file_function_spec(
     """
     Parse callback spec for python-file-backed functions.
 
-    Supports either a legacy mapping with ``file`` / ``function`` keys or a
-    compact string form ``path.py:function_name``. A bare ``path.py`` uses the
-    provided default function.
+    Accepts ``path.py:function_name`` or a bare ``path.py``. A bare path uses
+    the provided default function. A mapping with ``file`` and optional
+    ``function`` is also accepted as the normalized in-memory representation.
     """
     if spec is None:
         return None
@@ -228,7 +228,9 @@ def parse_python_file_function_spec(
         return {"file": normalized, "function": default_function}
 
     if not isinstance(spec, dict):
-        return None
+        raise ValueError(
+            f"{spec_label} must use 'path.py:function_name', 'path.py', or a mapping with 'file'."
+        )
 
     file_path = str(spec.get("file", "")).strip()
     if not file_path:
@@ -715,7 +717,7 @@ class JobGenerator:
         slurm_args, content = self._render_job(params, job_name)
         script_path = output_dir / f"{job_name}.job"
         if not dry_run:
-            script_path.write_text(content)
+            script_path.write_text(content, encoding="utf-8")
 
         return {
             "job_name": job_name,
@@ -723,6 +725,15 @@ class JobGenerator:
             "parameters": params,
             "slurm_args": slurm_args,
         }
+
+    def render_script(
+        self,
+        params: Dict[str, Any],
+        job_name: str,
+    ) -> str:
+        """Render one script without writing it to disk."""
+        _slurm_args, content = self._render_job(params, job_name)
+        return content
 
     @classmethod
     def from_spec(

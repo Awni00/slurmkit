@@ -2,11 +2,10 @@
 
 from __future__ import annotations
 
-from argparse import Namespace
 from dataclasses import dataclass
 from pathlib import Path
 import sys
-from typing import Any, Optional
+from typing import Optional
 
 import typer
 
@@ -52,7 +51,12 @@ def build_state(
     nointeractive: bool,
 ) -> CLIState:
     """Resolve global CLI state from root options."""
-    config = get_config(config_path=config_path, reload=True)
+    project_root = None
+    if config_path is not None:
+        expanded = Path(config_path).expanduser()
+        if expanded.name == "config.yaml" and expanded.parent.name == ".slurm-kit":
+            project_root = expanded.parent.parent
+    config = get_config(config_path=config_path, project_root=project_root, reload=True)
     return CLIState(
         config=config,
         config_path=config_path,
@@ -67,12 +71,6 @@ def get_state(ctx: typer.Context) -> CLIState:
     if not isinstance(state, CLIState):
         raise RuntimeError("CLI state has not been initialized.")
     return state
-
-
-def make_namespace(state: CLIState, **kwargs: Any) -> Namespace:
-    """Build an argparse-like namespace for legacy command handlers."""
-    config_value = str(state.config_path) if state.config_path is not None else None
-    return Namespace(config=config_value, ui=state.ui, **kwargs)
 
 
 def is_structured_format(value: Optional[str]) -> bool:

@@ -86,7 +86,7 @@ In another terminal:
 
 ```bash
 cd examples/demo_project
-source /Users/awni/Documents/project-code/slurmkit/.venv/bin/activate
+source .venv/bin/activate
 
 export TEST_EMAIL_TO="you@example.com"
 export TEST_EMAIL_FROM="slurmkit@example.com"
@@ -135,7 +135,7 @@ This demo now includes both override modes:
 - `experiments/model_comparison/job_spec.yaml` intentionally has no `notifications` block.
   Collections linked to this spec fall back to global `.slurm-kit/config.yaml`.
 
-Refresh dummy collections with embedded `meta.generation.spec_path` metadata:
+Refresh dummy collections with embedded `generation.spec_path` metadata:
 
 ```bash
 ./setup_dummy_jobs.py --include-non-terminal
@@ -186,23 +186,18 @@ slurmkit generate experiments/model_comparison/job_spec.yaml --into model_comp_d
 | Command | Demo status in this project | How to demo quickly |
 |---|---|---|
 | `slurmkit init` | Demoed | `slurmkit init` |
+| `slurmkit migrate` | Demoed | `slurmkit migrate` |
 | `slurmkit status` | Demoed | `slurmkit status demo_terminal_failed` |
-| `slurmkit jobs status` | Partially demoed | Best with real submitted jobs; run after `submit` on cluster |
-| `slurmkit jobs find` | Demoed (dummy + real) | `slurmkit jobs find 990002 --preview` |
 | `slurmkit clean outputs` | Partially demoed | Collection-first; works best when tracked outputs exist |
-| `slurmkit jobs clean outputs` | Partially demoed | Raw experiment cleanup after real failed jobs exist |
 | `slurmkit clean wandb` | Not self-contained | Requires W&B setup/projects |
 | `slurmkit generate` | Demoed | Use the two `generate` commands above |
 | `slurmkit submit` | Demoed (`--dry-run` locally) | `slurmkit submit hp_sweep_demo --dry-run` |
 | `slurmkit resubmit` | Demoed (`--dry-run`/fixture collections) | `slurmkit resubmit demo_terminal_failed --filter failed --dry-run` |
-| `slurmkit collections create` | Demoed | `slurmkit collections create tmp_demo --description "tmp"` |
 | `slurmkit collections list` | Demoed | `slurmkit collections list` |
 | `slurmkit collections show` | Demoed | `slurmkit collections show demo_terminal_failed` |
-| `slurmkit collections analyze` | Demoed | `slurmkit collections analyze demo_terminal_failed --attempt-mode latest` |
+| `slurmkit collections analyze` | Demoed | `slurmkit collections analyze demo_terminal_failed` |
 | `slurmkit collections refresh` | Partially demoed | Works best with real SLURM job IDs |
-| `slurmkit collections delete` | Demoed | `slurmkit collections delete tmp_demo -y` |
-| `slurmkit collections add` | Partially demoed | Best with discoverable job output files + IDs |
-| `slurmkit collections remove` | Demoed | `slurmkit collections remove demo_terminal_failed 990001` |
+| `slurmkit collections delete` | Demoed | `slurmkit collections delete hp_sweep_demo -y` |
 | `slurmkit notify test` | Demoed | `slurmkit notify test --dry-run` |
 | `slurmkit notify job` | Demoed (dummy context + dry-run) | `slurmkit notify job --job-id 990002 --exit-code 1 --dry-run` |
 | `slurmkit notify collection-final` | Demoed | examples below |
@@ -295,10 +290,10 @@ Run from the demo directory so callback modules resolve cleanly:
 cd examples/demo_project
 ```
 
-If you run notify from another working directory, set:
+If you run notify from another working directory, set `PYTHONPATH` to this demo directory:
 
 ```bash
-export PYTHONPATH="/Users/awni/Documents/project-code/slurmkit/examples/demo_project:$PYTHONPATH"
+export PYTHONPATH="$PWD/examples/demo_project:$PYTHONPATH"
 ```
 
 Dry-run still validates callback loading/shape:
@@ -334,9 +329,9 @@ notifications:
 slurmkit generate experiments/hyperparameter_sweep/job_spec.yaml --into hp_sweep
 slurmkit submit hp_sweep --delay 2
 slurmkit status hp_sweep
-slurmkit jobs status hyperparameter_sweep
 slurmkit collections refresh hp_sweep
 slurmkit collections show hp_sweep
+slurmkit collections analyze hp_sweep
 slurmkit resubmit hp_sweep --filter failed
 ```
 
@@ -349,5 +344,5 @@ trap 'rc=$?; slurmkit notify job --job-id "${SLURM_JOB_ID}" --exit-code "${rc}";
 ## Notes
 
 - `setup_dummy_jobs.py` is for local testing only. It creates synthetic job IDs/states/logs.
-- `clean wandb`, full `status/update` behavior, and realistic `sync --push` are best validated in real environments.
+- `clean wandb`, live `collections refresh`, and realistic `sync --push` are best validated in real environments.
 - Notifications support webhook, Slack, Discord, and SMTP email routes; use `--dry-run` first before live sends.

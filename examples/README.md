@@ -49,13 +49,13 @@ cd demo_project
 slurmkit init
 
 # Generate test jobs
-slurmkit generate experiments/hyperparameter_sweep/job_spec.yaml --collection test
+slurmkit generate experiments/hyperparameter_sweep/job_spec.yaml --into test
 
 # View generated scripts
 ls jobs/hyperparameter_sweep/job_scripts/
 
-# Test without submitting
-slurmkit status
+# Test status without submitting
+slurmkit status test
 ```
 
 ### 3. As a Template
@@ -132,8 +132,8 @@ Before running examples:
 1. **Test with one job first**
    ```bash
    # Modify job spec to have just one parameter combination
-   slurmkit generate spec.yaml --collection test
-   slurmkit submit --collection test
+   slurmkit generate spec.yaml --into test
+   slurmkit submit test
    ```
 
 2. **Verify output patterns match**

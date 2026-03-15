@@ -293,14 +293,14 @@ def _match_collection_job(
     collection: Collection,
     job_id: str,
 ) -> Optional[Tuple[Dict[str, Any], Optional[Dict[str, Any]]]]:
-    """Find a primary or resubmission job record by job ID."""
+    """Find a primary or resubmission attempt by job ID."""
     for job in collection.jobs:
-        if job.get("job_id") == job_id:
+        attempts = job.get("attempts", [])
+        if attempts and attempts[0].get("job_id") == job_id:
             return job, None
-
-        for resubmission in job.get("resubmissions", []):
-            if resubmission.get("job_id") == job_id:
-                return job, resubmission
+        for attempt in attempts[1:]:
+            if attempt.get("job_id") == job_id:
+                return job, attempt
 
     return None
 
@@ -333,18 +333,12 @@ def _normalize_slurm_state(state: Optional[str]) -> str:
 
 def _collection_final_meta(collection: Collection) -> Dict[str, Any]:
     """Get mutable metadata namespace for collection-final notifications."""
-    if not isinstance(collection.meta, dict):
-        collection.meta = {}
-
-    notifications_meta = collection.meta.get("notifications")
-    if not isinstance(notifications_meta, dict):
-        notifications_meta = {}
-        collection.meta["notifications"] = notifications_meta
-
-    final_meta = notifications_meta.get("collection_final")
+    if not isinstance(collection.notifications, dict):
+        collection.notifications = {}
+    final_meta = collection.notifications.get("collection_final")
     if not isinstance(final_meta, dict):
         final_meta = {}
-        notifications_meta["collection_final"] = final_meta
+        collection.notifications["collection_final"] = final_meta
 
     return final_meta
 
@@ -400,7 +394,7 @@ class NotificationService:
         collection: Collection,
     ) -> Optional[Path]:
         """Resolve configured spec path for collection generation metadata."""
-        generation_meta = collection.meta.get("generation") if isinstance(collection.meta, dict) else None
+        generation_meta = collection.generation if isinstance(collection.generation, dict) else None
         if not isinstance(generation_meta, dict):
             return None
 
@@ -986,11 +980,12 @@ class NotificationService:
         }
 
         if selected_job is not None:
-            state = selected_job.get("state")
+            primary_attempt = selected_job.get("attempts", [])[0] if selected_job.get("attempts") else {}
+            state = primary_attempt.get("state")
             if selected_resub is not None:
                 state = selected_resub.get("state", state)
 
-            output_path = selected_job.get("output_path")
+            output_path = selected_resub.get("output_path") if selected_resub is not None else primary_attempt.get("output_path")
             output_path_obj: Optional[Path] = None
 
             if output_path:
@@ -1009,9 +1004,9 @@ class NotificationService:
                 {
                     "job_name": selected_job.get("job_name") or job_name_env,
                     "state": state or derived_state,
-                    "submitted_at": selected_resub.get("submitted_at") if selected_resub else selected_job.get("submitted_at"),
-                    "started_at": selected_job.get("started_at"),
-                    "completed_at": selected_job.get("completed_at"),
+                    "submitted_at": selected_resub.get("submitted_at") if selected_resub else primary_attempt.get("submitted_at"),
+                    "started_at": (selected_resub or primary_attempt).get("started_at"),
+                    "completed_at": (selected_resub or primary_attempt).get("completed_at"),
                     "output_path": str(output_path_obj) if output_path_obj else None,
                 }
             )
@@ -1031,17 +1026,14 @@ class NotificationService:
         attempt_mode: str,
     ) -> Dict[str, Any]:
         """Compute effective job row for primary/latest attempt semantics."""
-        raw_state = job.get("state")
-        effective_job_id = job.get("job_id")
+        attempts = job.get("attempts", [])
+        primary = attempts[0] if attempts else {}
+        effective = primary
+        if attempt_mode == "latest" and attempts:
+            effective = attempts[-1]
 
-        if attempt_mode == "latest":
-            resubmissions = job.get("resubmissions", [])
-            if resubmissions:
-                latest = resubmissions[-1]
-                effective_job_id = latest.get("job_id") or effective_job_id
-                latest_state = latest.get("state")
-                if latest_state is not None:
-                    raw_state = latest_state
+        raw_state = effective.get("state")
+        effective_job_id = effective.get("job_id")
 
         return {
             "job_name": job.get("job_name"),
@@ -1049,9 +1041,9 @@ class NotificationService:
             "state": _normalize_slurm_state(raw_state),
             "raw_state": raw_state,
             "parameters": job.get("parameters", {}) or {},
-            "output_path": job.get("output_path"),
-            "primary_job_id": job.get("job_id"),
-            "resubmission_count": len(job.get("resubmissions", [])),
+            "output_path": effective.get("output_path"),
+            "primary_job_id": primary.get("job_id"),
+            "resubmission_count": max(len(attempts) - 1, 0),
         }
 
     def evaluate_collection_finality(
@@ -1138,11 +1130,11 @@ class NotificationService:
         fail_like = finality.counts[JOB_STATE_FAILED] + finality.counts[JOB_STATE_UNKNOWN]
         if fail_like > 0:
             recommendations.append(
-                f"Review failed/unknown jobs and consider: slurmkit resubmit --collection {collection_name} --filter failed"
+                f"Review failed/unknown jobs and consider: slurmkit resubmit {collection_name} --filter failed"
             )
             recommendations.append(
-                "Run detailed parameter analysis locally: slurmkit collection analyze "
-                f"{collection_name} --attempt-mode latest"
+                "Run detailed parameter analysis locally: slurmkit collections analyze "
+                f"{collection_name}"
             )
         else:
             recommendations.append("All jobs completed successfully.")
