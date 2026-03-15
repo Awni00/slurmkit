@@ -9,7 +9,13 @@ import typer
 from slurmkit.collections import CollectionManager
 
 from .helpers import resolve_collection_name
-from .prompts import canceled, prompt_confirm
+from .prompts import (
+    CommandPaletteEntry,
+    CommandPaletteSection,
+    canceled,
+    choose_command,
+    prompt_confirm,
+)
 from .rendering import print_json, print_review, render_collection_analyze, render_collection_show
 from .runtime import can_prompt, get_state
 from slurmkit.workflows.collections import (
@@ -26,8 +32,48 @@ from slurmkit.workflows.collections import (
 collections_app = typer.Typer(help="Manage tracked job collections.")
 
 
+def _collections_sections() -> list[CommandPaletteSection]:
+    return [
+        CommandPaletteSection(
+            title="Collections",
+            commands=[
+                CommandPaletteEntry("list", "list", "List tracked collections"),
+                CommandPaletteEntry("show", "show", "Show detailed collection status"),
+                CommandPaletteEntry("analyze", "analyze", "Analyze outcomes by parameter"),
+                CommandPaletteEntry("refresh", "refresh", "Refresh collection states"),
+                CommandPaletteEntry("cancel", "cancel", "Cancel active jobs in a collection"),
+                CommandPaletteEntry("delete", "delete", "Delete a collection"),
+            ],
+        )
+    ]
+
+
+def _collections_home_impl(ctx: typer.Context) -> int:
+    selected = choose_command(_collections_sections())
+    if selected is None:
+        return canceled()
+
+    result = collections_app(
+        args=[selected],
+        prog_name="slurmkit collections",
+        standalone_mode=False,
+        obj=ctx.obj,
+    )
+    return int(result or 0)
+
+
 def register(app: typer.Typer) -> None:
     app.add_typer(collections_app, name="collections")
+
+
+@collections_app.callback(invoke_without_command=True)
+def collections_callback(ctx: typer.Context) -> None:
+    if ctx.invoked_subcommand is None:
+        state = get_state(ctx)
+        if can_prompt(state):
+            raise typer.Exit(_collections_home_impl(ctx))
+        typer.echo(ctx.get_help())
+        raise typer.Exit(0)
 
 
 @collections_app.command("list")

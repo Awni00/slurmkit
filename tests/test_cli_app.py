@@ -33,6 +33,20 @@ def test_root_no_args_opens_picker_when_prompting_enabled(monkeypatch):
     assert "Canceled." in result.stdout
 
 
+def test_collections_no_args_opens_picker_when_prompting_enabled(monkeypatch):
+    from importlib import import_module
+
+    collections_module = import_module("slurmkit.cli.commands_collections")
+
+    monkeypatch.setattr(collections_module, "can_prompt", lambda _state: True)
+    monkeypatch.setattr(collections_module, "choose_command", lambda _sections: None)
+
+    result = runner.invoke(cli_app, ["collections"])
+
+    assert result.exit_code == 0
+    assert "Canceled." in result.stdout
+
+
 def test_structured_output_disables_prompt_fallback(tmp_path):
     config_path = tmp_path / ".slurmkit" / "config.yaml"
     config_path.parent.mkdir(parents=True)
