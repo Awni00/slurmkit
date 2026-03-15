@@ -80,7 +80,7 @@ cd your-project
 slurmkit init
 ```
 
-This creates `.slurm-kit/config.yaml` with your settings.
+This creates `.slurmkit/config.yaml` with your settings.
 
 ### 2. Check Job Status
 
@@ -107,8 +107,7 @@ Create a job spec `experiments/exp1/job_spec.yaml`:
 ```yaml
 name: exp1
 template: ../../templates/train.job.j2
-output_dir: job_scripts
-logs_dir: logs
+job_subdir: exp1
 
 parameters:
   mode: grid
@@ -128,6 +127,8 @@ slurm_args:
 
 job_name_pattern: "lr{{ learning_rate }}_bs{{ batch_size }}"
 ```
+
+With this layout, slurmkit writes scripts to `.jobs/exp1/job_scripts/` and expects logs in `.jobs/exp1/logs/`.
 
 Generate jobs:
 
@@ -210,7 +211,7 @@ slurmkit resubmit exp1 --filter failed --dry-run
 
 | Goal | Command | Success signal |
 |------|---------|----------------|
-| Initialize config | `slurmkit init` | `.slurm-kit/config.yaml` created |
+| Initialize config | `slurmkit init` | `.slurmkit/config.yaml` created |
 | Generate scripts | `slurmkit generate ... --into exp1` | Job scripts written and collection updated |
 | Preview submission | `slurmkit submit exp1 --dry-run` | Candidate jobs listed with no submit |
 | Inspect collection | `slurmkit collections show exp1` | Summary + jobs table rendered |
@@ -237,12 +238,10 @@ Run `slurmkit <command> --help` for detailed usage.
 
 ## Configuration
 
-Configuration is stored in `.slurm-kit/config.yaml`:
+Configuration is stored in `.slurmkit/config.yaml`:
 
 ```yaml
-jobs_dir: jobs/
-collections_dir: .job-collections/
-sync_dir: .slurm-kit/sync/
+jobs_dir: .jobs/
 
 output_patterns:
   - "{job_name}.{job_id}.out"
@@ -253,10 +252,6 @@ slurm_defaults:
   partition: gpu
   time: "24:00:00"
   mem: "32G"
-
-job_structure:
-  scripts_subdir: job_scripts/
-  logs_subdir: logs/
 
 ui:
   mode: plain  # plain | rich | auto
@@ -304,7 +299,6 @@ notifications:
 |----------|-------------|
 | `SLURMKIT_CONFIG` | Path to config file |
 | `SLURMKIT_JOBS_DIR` | Jobs directory |
-| `SLURMKIT_COLLECTIONS_DIR` | Collections directory |
 | `SLURMKIT_WANDB_ENTITY` | W&B entity |
 | `SLURMKIT_DRY_RUN` | Enable dry-run mode |
 
@@ -324,11 +318,12 @@ Full documentation is available at [https://awni00.github.io/slurmkit/](https://
 
 ```
 your-project/
-├── .slurm-kit/
+├── .slurmkit/
 │   ├── config.yaml          # Project configuration
-│   └── sync/                 # Cross-cluster sync files
-├── .job-collections/         # Collection YAML files
-├── jobs/
+│   ├── collections/         # Collection YAML files
+│   ├── sync/                # Cross-cluster sync files
+│   └── backups/             # Migration backups (created on demand)
+├── .jobs/
 │   └── experiment1/
 │       ├── job_scripts/      # Generated job scripts
 │       └── logs/             # Job output files
@@ -394,7 +389,7 @@ slurmkit notify collection-final --job-id "$SLURM_JOB_ID" --trigger-exit-code "$
 ```
 
 Collection-specific overrides are supported via a top-level `notifications` block in `job_spec.yaml`:
-- If a collection is linked to a spec with `notifications`, those values override global `.slurm-kit/config.yaml` notifications.
+- If a collection is linked to a spec with `notifications`, those values override global `.slurmkit/config.yaml` notifications.
 - If no spec-level block exists (or spec loading fails), slurmkit falls back to global config.
 - Dicts deep-merge; lists replace (including `notifications.routes`).
 

@@ -23,8 +23,13 @@ demo_project/
 │   │   └── slurm_logic.py
 │   └── model_comparison/
 │       └── job_spec.yaml
-└── .slurm-kit/
-    └── config.yaml
+├── .slurmkit/
+│   ├── config.yaml
+│   ├── collections/
+│   └── sync/
+└── .jobs/
+    ├── hyperparameter_sweep/
+    └── model_comparison/
 ```
 
 ## Quick Setup
@@ -55,7 +60,7 @@ To test real notification delivery (without `--dry-run`):
 
 1. Create an incoming webhook URL in your target system (Slack, Discord, or custom endpoint).
 2. Export the URL in your shell.
-3. Reference it from `.slurm-kit/config.yaml` notifications routes.
+3. Reference it from `.slurmkit/config.yaml` notifications routes.
 4. Validate with `slurmkit notify test` (first with `--dry-run`, then without).
 
 Example:
@@ -94,7 +99,7 @@ export TEST_SMTP_HOST="127.0.0.1"
 export TEST_SMTP_PORT="1025"
 ```
 
-Add/enable an email route in `.slurm-kit/config.yaml`:
+Add/enable an email route in `.slurmkit/config.yaml`:
 
 ```yaml
 notifications:
@@ -133,7 +138,7 @@ This demo now includes both override modes:
 - `experiments/hyperparameter_sweep/job_spec.yaml` defines a top-level `notifications` block.
   Collections linked to this spec use collection-specific notification config.
 - `experiments/model_comparison/job_spec.yaml` intentionally has no `notifications` block.
-  Collections linked to this spec fall back to global `.slurm-kit/config.yaml`.
+  Collections linked to this spec fall back to global `.slurmkit/config.yaml`.
 
 Refresh dummy collections with embedded `generation.spec_path` metadata:
 
@@ -169,7 +174,7 @@ Optional: force global AI callback behavior (for collections without spec overri
 
 ```bash
 export PYTHONPATH="$PWD:$PYTHONPATH"
-# then in .slurm-kit/config.yaml:
+# then in .slurmkit/config.yaml:
 # notifications.job.ai.enabled: true
 # notifications.collection_final.ai.enabled: true
 ```
@@ -278,7 +283,7 @@ Look for `ai_status` and `ai_summary` in payload preview.
 ### 6) Formatter callback demo
 
 This demo project includes a callback module at `notification_formatter_callback.py`.
-Add callback settings to `.slurm-kit/config.yaml` like this:
+Add callback settings to `.slurmkit/config.yaml` like this:
 
 - global callback: `notification_formatter_callback:format_notification`
 - route override for `local_email`: `notification_formatter_callback:format_local_email`

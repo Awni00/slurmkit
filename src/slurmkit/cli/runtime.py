@@ -9,7 +9,7 @@ from typing import Optional
 
 import typer
 
-from slurmkit.config import Config, get_config
+from slurmkit.config import CONFIG_FILENAME, METADATA_DIRNAME, Config, get_config
 
 
 @dataclass
@@ -54,7 +54,7 @@ def build_state(
     project_root = None
     if config_path is not None:
         expanded = Path(config_path).expanduser()
-        if expanded.name == "config.yaml" and expanded.parent.name == ".slurm-kit":
+        if expanded.name == CONFIG_FILENAME and expanded.parent.name in {METADATA_DIRNAME, ".slurm-kit"}:
             project_root = expanded.parent.parent
     config = get_config(config_path=config_path, project_root=project_root, reload=True)
     return CLIState(

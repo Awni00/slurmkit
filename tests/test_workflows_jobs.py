@@ -25,6 +25,7 @@ def _write_spec(tmp_path: Path) -> Path:
             [
                 "name: train_exp",
                 f"template: {template.name}",
+                "job_subdir: experiments/train_exp",
                 "parameters:",
                 "  mode: grid",
                 "  values:",
@@ -38,7 +39,7 @@ def _write_spec(tmp_path: Path) -> Path:
 
 def test_generate_workflow_persists_generation_metadata(tmp_path):
     config = get_config(project_root=tmp_path, reload=True)
-    manager = CollectionManager(collections_dir=tmp_path / ".job-collections", config=config)
+    manager = CollectionManager(config=config)
     spec = _write_spec(tmp_path)
 
     plan = plan_generate(
@@ -46,18 +47,21 @@ def test_generate_workflow_persists_generation_metadata(tmp_path):
         manager=manager,
         spec_path=spec,
         collection_name="train_exp_20260315",
-        output_dir=tmp_path / "jobs",
     )
     result = execute_generate(config=config, manager=manager, plan=plan, dry_run=False)
 
     collection = manager.load("train_exp_20260315")
     assert result["generated_count"] == 2
     assert collection.generation["spec_path"] == "job_spec.yaml"
+    assert collection.generation["job_subdir"] == "experiments/train_exp"
+    assert collection.generation["scripts_dir"] == str(tmp_path / ".jobs" / "experiments" / "train_exp" / "job_scripts")
+    assert collection.generation["logs_dir"] == str(tmp_path / ".jobs" / "experiments" / "train_exp" / "logs")
     assert len(collection.jobs) == 2
 
 
 def test_submit_workflow_updates_primary_attempt(monkeypatch, tmp_path):
-    manager = CollectionManager(collections_dir=tmp_path / ".job-collections")
+    config = get_config(project_root=tmp_path, reload=True)
+    manager = CollectionManager(config=config)
     collection = Collection("exp1")
     script = tmp_path / "job1.job"
     script.write_text("#!/bin/bash\n", encoding="utf-8")
@@ -76,24 +80,27 @@ def test_submit_workflow_updates_primary_attempt(monkeypatch, tmp_path):
 
 def test_resubmit_workflow_adds_attempt(monkeypatch, tmp_path):
     config = get_config(project_root=tmp_path, reload=True)
-    manager = CollectionManager(collections_dir=tmp_path / ".job-collections", config=config)
+    manager = CollectionManager(config=config)
     template = tmp_path / "template.job.j2"
     template.write_text("#!/bin/bash\n#SBATCH --job-name={{ job_name }}\n", encoding="utf-8")
-    output_dir = tmp_path / "jobs"
-    output_dir.mkdir()
+    scripts_dir = tmp_path / "jobs" / "exp1" / "job_scripts"
+    logs_dir = tmp_path / "jobs" / "exp1" / "logs"
+    scripts_dir.mkdir(parents=True)
+    logs_dir.mkdir(parents=True)
     collection = Collection(
         "exp1",
         generation={
             "template_path": str(template),
-            "output_dir": str(output_dir),
+            "job_subdir": "exp1",
+            "scripts_dir": str(scripts_dir),
+            "logs_dir": str(logs_dir),
             "slurm_defaults": {},
             "slurm_logic_file": None,
             "slurm_logic_function": "get_slurm_args",
             "job_name_pattern": None,
-            "logs_dir": None,
         },
     )
-    script = output_dir / "job1.job"
+    script = scripts_dir / "job1.job"
     script.write_text("#!/bin/bash\n", encoding="utf-8")
     collection.add_job("job1", script_path=script, job_id="100", state="FAILED", parameters={"lr": 0.1})
     manager.save(collection)
@@ -120,4 +127,3 @@ def test_resubmit_workflow_adds_attempt(monkeypatch, tmp_path):
     assert len(updated.jobs[0]["attempts"]) == 2
     assert updated.jobs[0]["attempts"][1]["job_id"] == "101"
     assert updated.jobs[0]["attempts"][1]["submission_group"] == "group_a"
-

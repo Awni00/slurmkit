@@ -11,7 +11,7 @@ from slurmkit.workflows.notifications import run_collection_final_notification, 
 
 
 def _write_config(tmp_path):
-    config_path = tmp_path / ".slurm-kit" / "config.yaml"
+    config_path = tmp_path / ".slurmkit" / "config.yaml"
     config_path.parent.mkdir(parents=True)
     config_path.write_text(
         yaml.dump(
@@ -35,7 +35,7 @@ def _write_config(tmp_path):
 
 def test_job_notification_skips_success_when_failed_only(tmp_path):
     config_path = _write_config(tmp_path)
-    config = get_config(config_path=config_path, reload=True)
+    config = get_config(config_path=config_path, project_root=tmp_path, reload=True)
     service = NotificationService(config=config)
 
     result = run_job_notification(
@@ -56,8 +56,8 @@ def test_job_notification_skips_success_when_failed_only(tmp_path):
 
 def test_collection_final_notification_uses_attempts_schema(tmp_path):
     config_path = _write_config(tmp_path)
-    config = get_config(config_path=config_path, reload=True)
-    manager = CollectionManager(collections_dir=tmp_path / ".job-collections", config=config)
+    config = get_config(config_path=config_path, project_root=tmp_path, reload=True)
+    manager = CollectionManager(config=config)
     collection = Collection("exp1")
     collection.add_job("job1", job_id="100", state="FAILED", parameters={"lr": 0.1})
     collection.add_resubmission("job1", job_id="101", submission_group="g1")

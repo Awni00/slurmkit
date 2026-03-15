@@ -65,7 +65,7 @@ def main() -> int:
     sweep_spec_rel = "experiments/hyperparameter_sweep/job_spec.yaml"
     model_spec_rel = "experiments/model_comparison/job_spec.yaml"
 
-    demo_logs_dir = project_root / "jobs" / "dummy_demo" / "logs"
+    demo_logs_dir = project_root / ".jobs" / "dummy_demo" / "logs"
     failed_log = demo_logs_dir / f"{args.prefix}_failed.{base_id}002.out"
     complete_log = demo_logs_dir / f"{args.prefix}_complete.{base_id}001.out"
     complete2_log = demo_logs_dir / f"{args.prefix}_complete2.{base_id}011.out"

@@ -59,10 +59,10 @@ fi
 
 step "1" "Initialize slurmkit configuration"
 
-if [ -f ".slurm-kit/config.yaml" ]; then
+if [ -f ".slurmkit/config.yaml" ]; then
     warn "Configuration already exists. Skipping init."
 else
-    echo "This will create .slurm-kit/config.yaml"
+    echo "This will create .slurmkit/config.yaml"
     echo "Press Enter to continue with default values, or Ctrl+C to cancel and run 'slurmkit init' manually"
     read -p ""
 
@@ -134,7 +134,7 @@ success "Jobs generated"
 # Show generated files
 echo ""
 echo "Generated files:"
-ls -lh "jobs/$EXPERIMENT/job_scripts/" | head -10
+ls -lh ".jobs/$EXPERIMENT/job_scripts/" | head -10
 
 # =============================================================================
 # Step 5: Review Collection
@@ -243,7 +243,7 @@ if [[ "$notify_choice" =~ ^[Yy]$ ]]; then
     echo "  # uses spec override from experiments/hyperparameter_sweep/job_spec.yaml"
     echo "  slurmkit notify job --collection demo_terminal_failed --job-id 990002 --exit-code 1 --dry-run"
     echo "  slurmkit notify collection-final --collection demo_terminal_failed --job-id 990002 --no-refresh --dry-run"
-    echo "  # fallback collection (no spec notifications block) uses .slurm-kit/config.yaml"
+    echo "  # fallback collection (no spec notifications block) uses .slurmkit/config.yaml"
     echo "  slurmkit notify job --collection demo_terminal_completed --job-id 990011 --exit-code 0 --on always --dry-run"
     echo "  # formatter callback demo (global + route override)"
     echo "  # set notifications.formatter.callback: notification_formatter_callback:format_notification"
@@ -264,13 +264,13 @@ echo "=========================================="
 echo ""
 echo "What was created:"
 echo "  - Collection: $COLLECTION"
-echo "  - Job scripts: jobs/$EXPERIMENT/job_scripts/"
-echo "  - Collection file: .job-collections/${COLLECTION}.yaml"
+echo "  - Job scripts: .jobs/$EXPERIMENT/job_scripts/"
+echo "  - Collection file: .slurmkit/collections/${COLLECTION}.yaml"
 echo ""
 echo "Next steps:"
 echo "  1. Review generated scripts:"
-echo "     ls jobs/$EXPERIMENT/job_scripts/"
-echo "     cat jobs/$EXPERIMENT/job_scripts/<job_name>.job"
+echo "     ls .jobs/$EXPERIMENT/job_scripts/"
+echo "     cat .jobs/$EXPERIMENT/job_scripts/<job_name>.job"
 echo ""
 echo "  2. Submit jobs (if not done already):"
 echo "     slurmkit submit $COLLECTION"

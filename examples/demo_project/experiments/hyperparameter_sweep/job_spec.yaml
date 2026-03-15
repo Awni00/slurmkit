@@ -1,10 +1,9 @@
 name: hyperparameter_sweep
 description: "Demo: Parameter sweep to test slurmkit grid mode"
 
-# Template and output configuration
+# Template and jobs layout
 template: ../../templates/training.job.j2
-output_dir: ../../jobs/hyperparameter_sweep/job_scripts
-logs_dir: ../../jobs/hyperparameter_sweep/logs
+job_subdir: hyperparameter_sweep
 
 # Parameter grid - generates all combinations
 # This creates: 2 algorithms × 2 datasets × 2 configs = 8 source combos
@@ -54,7 +53,7 @@ job_name_pattern: "demo_{{ profile }}_seed{{ seed }}"
 
 # Optional collection-specific notification overrides.
 # These settings apply when notify resolves this collection and take precedence
-# over .slurm-kit/config.yaml notifications keys.
+# over .slurmkit/config.yaml notifications keys.
 notifications:
   defaults:
     # Use a shorter output tail for this sweep's failed job notifications.

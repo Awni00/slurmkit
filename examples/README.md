@@ -52,7 +52,7 @@ slurmkit init
 slurmkit generate experiments/hyperparameter_sweep/job_spec.yaml --into test
 
 # View generated scripts
-ls jobs/hyperparameter_sweep/job_scripts/
+ls .jobs/hyperparameter_sweep/job_scripts/
 
 # Test status without submitting
 slurmkit status test
@@ -139,8 +139,8 @@ Before running examples:
 2. **Verify output patterns match**
    ```bash
    # Check your actual output file format
-   ls jobs/experiment/logs/
-   # Update .slurm-kit/config.yaml if needed
+   ls .jobs/experiment/logs/
+   # Update .slurmkit/config.yaml if needed
    ```
 
 3. **Scale up gradually**

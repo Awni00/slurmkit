@@ -776,9 +776,7 @@ class CollectionManager:
         if collections_dir is not None:
             self.collections_dir = Path(collections_dir)
         else:
-            self.collections_dir = config.get_path("collections_dir")
-            if self.collections_dir is None:
-                self.collections_dir = Path(".job-collections")
+            self.collections_dir = config.collections_dir
 
     def _ensure_dir(self) -> None:
         self.collections_dir.mkdir(parents=True, exist_ok=True)

@@ -31,7 +31,11 @@ def load_config_data(path: Path) -> Dict[str, Any]:
 
 
 def normalize_config_data(raw: Dict[str, Any]) -> Dict[str, Any]:
-    return deep_merge(DEFAULT_CONFIG, raw)
+    cleaned = deepcopy(raw)
+    cleaned.pop("collections_dir", None)
+    cleaned.pop("sync_dir", None)
+    cleaned.pop("job_structure", None)
+    return deep_merge(DEFAULT_CONFIG, cleaned)
 
 
 def write_config_data(path: Path, data: Dict[str, Any]) -> None:

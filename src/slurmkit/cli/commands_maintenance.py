@@ -53,13 +53,13 @@ def register(app: typer.Typer) -> None:
         state = get_state(ctx)
         result = run_migration(
             project_root=state.config.project_root,
-            config_path=state.config.config_path,
-            collections_dir=state.config.get_path("collections_dir") or (state.config.project_root / ".job-collections"),
         )
         typer.echo(f"Backup dir: {result.backup_dir}")
         typer.echo(f"Config migrated: {'yes' if result.migrated_config else 'no'}")
         typer.echo(f"Collections migrated: {result.migrated_collections}")
         typer.echo(f"Collections already current: {result.skipped_collections}")
+        typer.echo(f"Specs migrated: {result.migrated_specs}")
+        typer.echo(f"Specs already current: {result.skipped_specs}")
         raise typer.Exit(0)
 
 

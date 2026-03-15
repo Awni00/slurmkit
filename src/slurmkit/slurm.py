@@ -23,7 +23,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
 
-from slurmkit.config import Config, get_config
+from slurmkit.config import JOB_LOGS_SUBDIR, JOB_SCRIPTS_SUBDIR, Config, get_config
 
 
 # =============================================================================
@@ -570,16 +570,12 @@ def _infer_script_from_output(
     if not job_name:
         return None
 
-    # Get configured subdirectory names
-    logs_subdir = config.get("job_structure.logs_subdir", "logs/").rstrip("/")
-    scripts_subdir = config.get("job_structure.scripts_subdir", "job_scripts/").rstrip("/")
-
     # Check if output is in a logs directory
     logs_dir = output_path.parent
-    if logs_dir.name == logs_subdir.split("/")[-1]:
+    if logs_dir.name == JOB_LOGS_SUBDIR:
         # Look for script in sibling job_scripts directory
         experiment_dir = logs_dir.parent
-        candidate = experiment_dir / scripts_subdir / f"{job_name}.job"
+        candidate = experiment_dir / JOB_SCRIPTS_SUBDIR / f"{job_name}.job"
         if candidate.exists():
             return candidate
 

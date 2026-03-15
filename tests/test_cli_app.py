@@ -34,7 +34,7 @@ def test_root_no_args_opens_picker_when_prompting_enabled(monkeypatch):
 
 
 def test_structured_output_disables_prompt_fallback(tmp_path):
-    config_path = tmp_path / ".slurm-kit" / "config.yaml"
+    config_path = tmp_path / ".slurmkit" / "config.yaml"
     config_path.parent.mkdir(parents=True)
     config_path.write_text(yaml.dump({"jobs_dir": "jobs/"}), encoding="utf-8")
 
@@ -79,3 +79,6 @@ def test_migrate_command_runs(tmp_path):
 
     assert result.exit_code == 0
     assert "Collections migrated: 1" in result.stdout
+    assert "Specs migrated:" in result.stdout
+    assert (root / ".slurmkit" / "config.yaml").exists()
+    assert (root / ".slurmkit" / "collections" / "old.yaml").exists()

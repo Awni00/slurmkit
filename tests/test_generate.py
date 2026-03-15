@@ -439,6 +439,7 @@ echo "Batch size: {{ batch_size }}"
 
             spec_data = {
                 "template": str(Path(template_dir) / "test.job.j2"),
+                "job_subdir": "spec_jobs/filter_case",
                 "parameters": {
                     "mode": "grid",
                     "values": {"learning_rate": [0.01, 0.1]},
@@ -479,6 +480,7 @@ echo "Batch size: {{ batch_size }}"
 
             spec_data = {
                 "template": str(Path(template_dir) / "test.job.j2"),
+                "job_subdir": "spec_jobs/parse_case",
                 "parameters": {
                     "mode": "grid",
                     "values": {"learning_rate": [0.01, 0.1], "batch_size": [32]},
@@ -521,6 +523,7 @@ echo "Batch size: {{ batch_size }}"
             )
             spec_data = {
                 "template": str(Path(template_dir) / "test.job.j2"),
+                "job_subdir": "spec_jobs/parse_expand_case",
                 "parameters": {
                     "mode": "list",
                     "values": [{"learning_rate": 0.1, "batch_size": 32}],
@@ -558,6 +561,7 @@ echo "Batch size: {{ batch_size }}"
 
             spec_data = {
                 "template": str(Path(template_dir) / "test.job.j2"),
+                "job_subdir": "spec_jobs/compact_case",
                 "parameters": {
                     "mode": "grid",
                     "values": {"learning_rate": [0.01, 0.1], "batch_size": [32]},

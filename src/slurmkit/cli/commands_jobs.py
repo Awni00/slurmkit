@@ -31,7 +31,6 @@ def register(app: typer.Typer) -> None:
         ctx: typer.Context,
         spec: Optional[Path] = typer.Argument(None, help="Path to a job spec YAML file."),
         into: Optional[str] = typer.Option(None, "--into", help="Target collection name."),
-        output_dir: Optional[Path] = typer.Option(None, "--output-dir", help="Override output directory."),
         dry_run: bool = typer.Option(False, "--dry-run", help="Preview without writing scripts."),
     ) -> None:
         state = get_state(ctx)
@@ -50,7 +49,6 @@ def register(app: typer.Typer) -> None:
             manager=manager,
             spec_path=spec_path,
             collection_name=collection_name,
-            output_dir=output_dir,
         )
         print_review(plan.review)
         if not dry_run and can_prompt(state):

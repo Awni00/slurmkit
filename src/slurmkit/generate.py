@@ -20,7 +20,7 @@ from typing import Any, Callable, Dict, Iterable, Iterator, List, Optional, Tupl
 import yaml
 from jinja2 import Environment, FileSystemLoader, Template
 
-from slurmkit.config import Config, get_config
+from slurmkit.config import JOB_LOGS_SUBDIR, JOB_SCRIPTS_SUBDIR, Config, get_config
 from slurmkit.collections import Collection, CollectionManager
 
 
@@ -238,6 +238,36 @@ def parse_python_file_function_spec(
 
     function_name = str(spec.get("function", default_function)).strip() or default_function
     return {"file": file_path, "function": function_name}
+
+
+def resolve_job_subdir(spec: Dict[str, Any]) -> str:
+    """Return the validated relative jobs subdirectory for a spec."""
+    job_subdir_raw = spec.get("job_subdir")
+    if not job_subdir_raw:
+        raise ValueError("Job spec is missing required field 'job_subdir'.")
+
+    job_subdir = Path(str(job_subdir_raw))
+    if job_subdir.is_absolute():
+        raise ValueError("Job spec field 'job_subdir' must be relative.")
+    if ".." in job_subdir.parts:
+        raise ValueError("Job spec field 'job_subdir' cannot contain '..'.")
+    return job_subdir.as_posix()
+
+
+def resolve_spec_job_paths(spec: Dict[str, Any], config: Config) -> Dict[str, Path | str]:
+    """Resolve canonical scripts/logs paths for a spec from config `jobs_dir`."""
+    jobs_dir = config.get_path("jobs_dir")
+    if jobs_dir is None:
+        raise ValueError("Config is missing 'jobs_dir'.")
+
+    job_subdir = resolve_job_subdir(spec)
+    job_dir = jobs_dir / Path(job_subdir)
+    return {
+        "job_subdir": job_subdir,
+        "job_dir": job_dir,
+        "scripts_dir": job_dir / JOB_SCRIPTS_SUBDIR,
+        "logs_dir": job_dir / JOB_LOGS_SUBDIR,
+    }
 
 
 def resolve_python_file_function_spec(
@@ -571,7 +601,7 @@ class JobGenerator:
         ...     parameters={"mode": "grid", "values": {"lr": [0.01, 0.1]}},
         ...     slurm_defaults={"partition": "gpu", "time": "24:00:00"},
         ... )
-        >>> scripts = generator.generate(output_dir="jobs/exp1/scripts")
+        >>> scripts = generator.generate(output_dir="jobs/exp1/job_scripts")
     """
 
     def __init__(
@@ -754,7 +784,7 @@ class JobGenerator:
         spec_path = Path(spec_path)
         spec = load_job_spec(spec_path)
 
-        # Resolve paths relative to spec file
+        # Resolve template/callback paths relative to spec file.
         spec_dir = spec_path.parent
 
         template_path = spec.get("template", "")
@@ -780,9 +810,8 @@ class JobGenerator:
             slurm_logic_file = Path(logic_spec["file"])
             slurm_logic_function = logic_spec["function"]
 
-        logs_dir = spec.get("logs_dir")
-        if logs_dir and not Path(logs_dir).is_absolute():
-            logs_dir = spec_dir / logs_dir
+        config = config or get_config()
+        job_paths = resolve_spec_job_paths(spec, config)
 
         return cls(
             template_path=template_path,
@@ -791,7 +820,7 @@ class JobGenerator:
             slurm_logic_file=slurm_logic_file,
             slurm_logic_function=slurm_logic_function,
             job_name_pattern=spec.get("job_name_pattern"),
-            logs_dir=logs_dir,
+            logs_dir=job_paths["logs_dir"],
             config=config,
         )
 
@@ -1012,7 +1041,6 @@ def generate_jobs(
 
 def generate_jobs_from_spec(
     spec_path: Union[str, Path],
-    output_dir: Optional[Union[str, Path]] = None,
     collection_name: Optional[str] = None,
     dry_run: bool = False,
 ) -> List[Dict[str, Any]]:
@@ -1021,7 +1049,6 @@ def generate_jobs_from_spec(
 
     Args:
         spec_path: Path to the job spec YAML file.
-        output_dir: Override output directory from spec.
         collection_name: Name of collection to add jobs to.
         dry_run: If True, don't write files.
 
@@ -1030,14 +1057,9 @@ def generate_jobs_from_spec(
     """
     spec_path = Path(spec_path)
     spec = load_job_spec(spec_path)
-
-    # Determine output directory
-    if output_dir is None:
-        output_dir = spec.get("output_dir", ".")
-        if not Path(output_dir).is_absolute():
-            output_dir = spec_path.parent / output_dir
-
-    generator = JobGenerator.from_spec(spec_path)
+    config = get_config()
+    generator = JobGenerator.from_spec(spec_path, config=config)
+    job_paths = resolve_spec_job_paths(spec, config)
 
     collection = None
     manager = None
@@ -1049,7 +1071,7 @@ def generate_jobs_from_spec(
         )
 
     result = generator.generate(
-        output_dir=output_dir,
+        output_dir=job_paths["scripts_dir"],
         collection=collection,
         dry_run=dry_run,
     )

@@ -1,10 +1,9 @@
 name: model_comparison
 description: "Demo: Explicit list of parameter combinations (list mode)"
 
-# Template and output configuration
+# Template and jobs layout
 template: ../../templates/training.job.j2
-output_dir: ../../jobs/model_comparison/job_scripts
-logs_dir: ../../jobs/model_comparison/logs
+job_subdir: model_comparison
 
 # Explicit list of parameter combinations
 # Use this when you want specific combinations rather than a full grid
@@ -47,4 +46,4 @@ job_name_pattern: "compare_{{ algorithm }}_{{ dataset }}"
 
 # Note: no top-level `notifications` block here.
 # This collection intentionally uses global notifications from
-# .slurm-kit/config.yaml to demonstrate fallback behavior.
+# .slurmkit/config.yaml to demonstrate fallback behavior.

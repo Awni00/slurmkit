@@ -3,15 +3,13 @@ Configuration management for slurmkit.
 
 This module handles loading and merging configuration from multiple sources:
 1. Built-in defaults (lowest priority)
-2. Project-level config file (.slurm-kit/config.yaml)
+2. Project-level config file (.slurmkit/config.yaml)
 3. Environment variables
 4. CLI arguments (highest priority, handled at CLI level)
 
 Environment Variables:
-    SLURMKIT_CONFIG: Path to config file (default: .slurm-kit/config.yaml)
+    SLURMKIT_CONFIG: Path to config file (default: .slurmkit/config.yaml)
     SLURMKIT_JOBS_DIR: Default jobs directory
-    SLURMKIT_COLLECTIONS_DIR: Collections directory
-    SLURMKIT_SYNC_DIR: Sync files directory
     SLURMKIT_WANDB_ENTITY: W&B entity
     SLURMKIT_WANDB_PROJECT: Default W&B project
     SLURMKIT_DRY_RUN: Global dry-run mode (1 or true)
@@ -29,11 +27,18 @@ import yaml
 # Default Configuration
 # =============================================================================
 
+METADATA_DIRNAME = ".slurmkit"
+CONFIG_FILENAME = "config.yaml"
+COLLECTIONS_SUBDIR = "collections"
+SYNC_SUBDIR = "sync"
+BACKUPS_SUBDIR = "backups"
+JOB_SCRIPTS_SUBDIR = "job_scripts"
+JOB_LOGS_SUBDIR = "logs"
+
+
 DEFAULT_CONFIG = {
     # Directory structure
-    "jobs_dir": "jobs/",
-    "collections_dir": ".job-collections/",
-    "sync_dir": ".slurm-kit/sync/",
+    "jobs_dir": ".jobs/",
 
     # Output file patterns (tried in order to match job outputs)
     # Supported placeholders: {job_name}, {job_id}
@@ -56,12 +61,6 @@ DEFAULT_CONFIG = {
     "wandb": {
         "entity": None,
         "default_projects": [],
-    },
-
-    # Job directory structure within each experiment
-    "job_structure": {
-        "scripts_subdir": "job_scripts/",
-        "logs_subdir": "logs/",
     },
 
     # Cleanup defaults
@@ -113,8 +112,6 @@ ENV_PREFIX = "SLURMKIT_"
 ENV_VAR_MAP = {
     "SLURMKIT_CONFIG": None,  # Special: path to config file itself
     "SLURMKIT_JOBS_DIR": "jobs_dir",
-    "SLURMKIT_COLLECTIONS_DIR": "collections_dir",
-    "SLURMKIT_SYNC_DIR": "sync_dir",
     "SLURMKIT_WANDB_ENTITY": "wandb.entity",
     "SLURMKIT_WANDB_PROJECT": "wandb.default_project",
     "SLURMKIT_DRY_RUN": "dry_run",
@@ -138,13 +135,13 @@ class Config:
 
     Attributes:
         config_path: Path to the loaded config file (if any)
-        project_root: Root directory of the project (where .slurm-kit/ lives)
+        project_root: Root directory of the project (where .slurmkit/ lives)
         hostname: Current machine's hostname (for cluster identification)
 
     Example:
         >>> config = Config()
         >>> config.get("jobs_dir")
-        'jobs/'
+        '.jobs/'
         >>> config.get("slurm_defaults.partition")
         'compute'
     """
@@ -159,7 +156,7 @@ class Config:
 
         Args:
             config_path: Explicit path to config file. If None, searches for
-                .slurm-kit/config.yaml in project_root or current directory.
+                .slurmkit/config.yaml in project_root or current directory.
             project_root: Project root directory. If None, uses current directory.
         """
         self.hostname = socket.gethostname()
@@ -174,7 +171,7 @@ class Config:
             if env_config:
                 self.config_path = Path(env_config)
             else:
-                self.config_path = self.project_root / ".slurm-kit" / "config.yaml"
+                self.config_path = self.project_root / METADATA_DIRNAME / CONFIG_FILENAME
 
         # Load configuration
         self._config = self._load_config()
@@ -238,7 +235,7 @@ class Config:
 
         Example:
             >>> config.get("jobs_dir")
-            'jobs/'
+            '.jobs/'
             >>> config.get("slurm_defaults.partition")
             'compute'
             >>> config.get("nonexistent", "fallback")
@@ -264,6 +261,22 @@ class Config:
         if not path.is_absolute():
             path = self.project_root / path
         return path
+
+    @property
+    def metadata_dir(self) -> Path:
+        return self.project_root / METADATA_DIRNAME
+
+    @property
+    def collections_dir(self) -> Path:
+        return self.metadata_dir / COLLECTIONS_SUBDIR
+
+    @property
+    def sync_dir(self) -> Path:
+        return self.metadata_dir / SYNC_SUBDIR
+
+    @property
+    def backups_dir(self) -> Path:
+        return self.metadata_dir / BACKUPS_SUBDIR
 
     def get_output_patterns(self) -> List[str]:
         """
@@ -347,7 +360,7 @@ def get_config(
     Example:
         >>> config = get_config()
         >>> config.get("jobs_dir")
-        'jobs/'
+        '.jobs/'
     """
     global _global_config
 
@@ -365,7 +378,7 @@ def init_config(
     """
     Initialize a new project configuration file.
 
-    Creates .slurm-kit/config.yaml with default values, optionally
+    Creates .slurmkit/config.yaml with default values, optionally
     customized with provided kwargs.
 
     Args:
@@ -381,10 +394,10 @@ def init_config(
 
     Example:
         >>> init_config(jobs_dir="experiments/", slurm_defaults={"partition": "gpu"})
-        PosixPath('.slurm-kit/config.yaml')
+        PosixPath('.slurmkit/config.yaml')
     """
     root = Path(project_root) if project_root else Path.cwd()
-    config_path = root / ".slurm-kit" / "config.yaml"
+    config_path = root / METADATA_DIRNAME / CONFIG_FILENAME
 
     if config_path.exists() and not overwrite:
         raise FileExistsError(
@@ -402,6 +415,8 @@ def init_config(
 
     # Create directory and write config
     config_path.parent.mkdir(parents=True, exist_ok=True)
+    (root / METADATA_DIRNAME / COLLECTIONS_SUBDIR).mkdir(parents=True, exist_ok=True)
+    (root / METADATA_DIRNAME / SYNC_SUBDIR).mkdir(parents=True, exist_ok=True)
     with open(config_path, "w") as f:
         yaml.dump(config_data, f, default_flow_style=False, sort_keys=False)
 

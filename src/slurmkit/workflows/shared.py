@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any, Callable, Dict, Optional, Sequence
 
 from slurmkit.collections import Collection
+from slurmkit.config import JOB_LOGS_SUBDIR, JOB_SCRIPTS_SUBDIR, Config
 from slurmkit.generate import JobGenerator
 
 
@@ -68,15 +69,18 @@ def load_python_callback(
 def build_generation_metadata(
     *,
     generator: JobGenerator,
-    output_dir: Path,
+    scripts_dir: Path,
+    logs_dir: Path,
+    job_subdir: str,
     spec_path: Optional[Path],
     project_root: Optional[Path],
 ) -> Dict[str, Any]:
     metadata = {
         "template_path": str(generator.template_path),
-        "output_dir": str(output_dir),
+        "job_subdir": job_subdir,
+        "scripts_dir": str(scripts_dir),
+        "logs_dir": str(logs_dir),
         "job_name_pattern": generator.job_name_pattern,
-        "logs_dir": str(generator.logs_dir) if generator.logs_dir else None,
         "slurm_defaults": generator.slurm_defaults,
         "slurm_logic_file": str(generator.slurm_logic_file) if generator.slurm_logic_file else None,
         "slurm_logic_function": generator.slurm_logic_function,
@@ -111,11 +115,14 @@ def resolve_generation_context(
         )
 
     template_raw = template_override or generation_meta.get("template_path")
-    output_dir_raw = generation_meta.get("output_dir")
+    scripts_dir_raw = generation_meta.get("scripts_dir")
+    logs_dir_raw = generation_meta.get("logs_dir")
     if not template_raw:
         raise ValueError("Generation metadata is missing 'template_path'.")
-    if not output_dir_raw:
-        raise ValueError("Generation metadata is missing 'output_dir'.")
+    if not scripts_dir_raw:
+        raise ValueError("Generation metadata is missing 'scripts_dir'.")
+    if not logs_dir_raw:
+        raise ValueError("Generation metadata is missing 'logs_dir'.")
 
     template_path = Path(str(template_raw))
     if not template_path.exists():
@@ -133,29 +140,44 @@ def resolve_generation_context(
                 f"SLURM logic file not found for regeneration: {slurm_logic_file}"
             )
 
-    logs_dir = generation_meta.get("logs_dir")
     return {
         "template_path": template_path,
-        "output_dir": Path(str(output_dir_raw)),
+        "job_subdir": str(generation_meta.get("job_subdir", "")),
+        "scripts_dir": Path(str(scripts_dir_raw)),
         "job_name_pattern": generation_meta.get("job_name_pattern"),
-        "logs_dir": Path(str(logs_dir)) if logs_dir else None,
+        "logs_dir": Path(str(logs_dir_raw)),
         "slurm_defaults": slurm_defaults,
         "slurm_logic_file": slurm_logic_file,
         "slurm_logic_function": generation_meta.get("slurm_logic_function", "get_slurm_args"),
     }
 
 
-def resolve_output_dir_from_spec(
-    spec_path: Path,
+def resolve_job_paths_from_spec(
+    *,
+    config: Config,
     spec_data: Dict[str, Any],
-    output_dir: Optional[Path],
-) -> Path:
-    if output_dir is not None:
-        return output_dir
-    resolved = Path(str(spec_data.get("output_dir", ".")))
-    if not resolved.is_absolute():
-        resolved = spec_path.parent / resolved
-    return resolved
+) -> Dict[str, Path | str]:
+    jobs_dir = config.get_path("jobs_dir")
+    if jobs_dir is None:
+        raise ValueError("Config is missing 'jobs_dir'.")
+
+    job_subdir_raw = spec_data.get("job_subdir")
+    if not job_subdir_raw:
+        raise ValueError("Spec is missing required field 'job_subdir'.")
+
+    job_subdir = Path(str(job_subdir_raw))
+    if job_subdir.is_absolute():
+        raise ValueError("Spec field 'job_subdir' must be relative.")
+    if ".." in job_subdir.parts:
+        raise ValueError("Spec field 'job_subdir' cannot contain '..'.")
+
+    scripts_dir = jobs_dir / job_subdir / JOB_SCRIPTS_SUBDIR
+    logs_dir = jobs_dir / job_subdir / JOB_LOGS_SUBDIR
+    return {
+        "job_subdir": job_subdir.as_posix(),
+        "scripts_dir": scripts_dir,
+        "logs_dir": logs_dir,
+    }
 
 
 def format_review(title: str, lines: Sequence[str], items: Optional[Sequence[str]] = None) -> ReviewPlan:

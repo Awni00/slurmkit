@@ -85,11 +85,13 @@ class TestConfig:
             assert config.get("ui.mode") == "auto"
             assert config.get("ui.interactive") is True
             assert config.get("ui.show_banner") is True
+            assert config.collections_dir == Path(tmpdir) / ".slurmkit" / "collections"
+            assert config.sync_dir == Path(tmpdir) / ".slurmkit" / "sync"
 
     def test_load_from_file(self):
         """Test loading config from a YAML file."""
         with tempfile.TemporaryDirectory() as tmpdir:
-            config_dir = Path(tmpdir) / ".slurm-kit"
+            config_dir = Path(tmpdir) / ".slurmkit"
             config_dir.mkdir()
             config_file = config_dir / "config.yaml"
 
@@ -117,7 +119,7 @@ class TestConfig:
         with tempfile.TemporaryDirectory() as tmpdir:
             config = Config(project_root=tmpdir)
             jobs_path = config.get_path("jobs_dir")
-            assert jobs_path == Path(tmpdir) / "jobs"
+            assert jobs_path == Path(tmpdir) / ".jobs"
 
     def test_get_output_patterns(self):
         """Test getting output patterns."""
@@ -146,7 +148,9 @@ class TestInitConfig:
         with tempfile.TemporaryDirectory() as tmpdir:
             config_path = init_config(project_root=tmpdir)
             assert config_path.exists()
-            assert config_path == Path(tmpdir) / ".slurm-kit" / "config.yaml"
+            assert config_path == Path(tmpdir) / ".slurmkit" / "config.yaml"
+            assert (Path(tmpdir) / ".slurmkit" / "collections").exists()
+            assert (Path(tmpdir) / ".slurmkit" / "sync").exists()
 
     def test_raises_if_exists(self):
         """Test that init_config raises if file exists and overwrite=False."""

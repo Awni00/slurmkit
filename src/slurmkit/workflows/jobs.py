@@ -20,7 +20,7 @@ from .shared import (
     load_python_callback,
     parse_key_value_pairs,
     resolve_generation_context,
-    resolve_output_dir_from_spec,
+    resolve_job_paths_from_spec,
 )
 
 
@@ -31,7 +31,9 @@ class GeneratePlan:
     generator: JobGenerator
     collection_name: str
     existing_collection: Optional[Collection]
-    output_dir: Path
+    job_subdir: str
+    scripts_dir: Path
+    logs_dir: Path
     items: List[Dict[str, Any]]
     review: ReviewPlan
 
@@ -62,13 +64,15 @@ def plan_generate(
     manager: CollectionManager,
     spec_path: Path,
     collection_name: str,
-    output_dir: Optional[Path],
 ) -> GeneratePlan:
     spec_data = load_job_spec(spec_path)
     existing_collection = manager.load(collection_name) if manager.exists(collection_name) else None
     generator = JobGenerator.from_spec(spec_path, config=config)
-    resolved_output_dir = resolve_output_dir_from_spec(spec_path, spec_data, output_dir)
-    items = generator.plan(output_dir=resolved_output_dir, collection=existing_collection)
+    job_paths = resolve_job_paths_from_spec(config=config, spec_data=spec_data)
+    scripts_dir = job_paths["scripts_dir"]
+    logs_dir = job_paths["logs_dir"]
+    job_subdir = str(job_paths["job_subdir"])
+    items = generator.plan(output_dir=scripts_dir, collection=existing_collection)
     renamed = [
         f"{item['base_job_name']} -> {item['job_name']}"
         for item in items
@@ -84,7 +88,9 @@ def plan_generate(
         [
             f"Spec: {spec_path}",
             f"Collection: {collection_name} ({'existing' if existing_collection else 'new'})",
-            f"Output dir: {resolved_output_dir}",
+            f"Job subdir: {job_subdir}",
+            f"Scripts dir: {scripts_dir}",
+            f"Logs dir: {logs_dir}",
             f"Jobs to generate: {len(items)}",
             "Mode: append-only",
         ] + ([f"Renamed for collisions: {len(renamed)}"] if renamed else []),
@@ -96,7 +102,9 @@ def plan_generate(
         generator=generator,
         collection_name=collection_name,
         existing_collection=existing_collection,
-        output_dir=resolved_output_dir,
+        job_subdir=job_subdir,
+        scripts_dir=scripts_dir,
+        logs_dir=logs_dir,
         items=items,
         review=review,
     )
@@ -126,7 +134,7 @@ def execute_generate(
         description=plan.spec_data.get("description", ""),
     )
     generated = plan.generator.generate(
-        output_dir=plan.output_dir,
+        output_dir=plan.scripts_dir,
         collection=collection,
         dry_run=False,
     )
@@ -135,7 +143,9 @@ def execute_generate(
         collection.description = plan.spec_data.get("description", "")
     collection.generation = build_generation_metadata(
         generator=plan.generator,
-        output_dir=plan.output_dir,
+        scripts_dir=plan.scripts_dir,
+        logs_dir=plan.logs_dir,
+        job_subdir=plan.job_subdir,
         spec_path=plan.spec_path,
         project_root=getattr(config, "project_root", None),
     )
@@ -340,7 +350,7 @@ def plan_resubmit_collection(
         if resolved_regenerate:
             resubmit_count = max(len(job["attempts"]) - 1, 0) + 1
             attempt_job_name = f"{job['job_name']}.resubmit-{resubmit_count}"
-            attempt_script_path = generation_context["output_dir"] / f"{attempt_job_name}.job"
+            attempt_script_path = generation_context["scripts_dir"] / f"{attempt_job_name}.job"
 
         items.append(
             {
@@ -403,7 +413,7 @@ def execute_resubmit_collection(
         if item["regenerated"]:
             assert plan.resubmit_generator is not None
             plan.resubmit_generator.generate_one(
-                output_dir=plan.generation_context["output_dir"],
+                output_dir=plan.generation_context["scripts_dir"],
                 params=item["effective_params"],
                 job_name=item["attempt_job_name"],
                 dry_run=dry_run,

@@ -67,9 +67,7 @@ class SyncManager:
         if sync_dir is not None:
             self.sync_dir = Path(sync_dir)
         else:
-            self.sync_dir = config.get_path("sync_dir")
-            if self.sync_dir is None:
-                self.sync_dir = Path(".slurm-kit/sync")
+            self.sync_dir = config.sync_dir
 
         self._collection_manager = CollectionManager(config=config)
 
