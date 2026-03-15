@@ -29,7 +29,8 @@ demo_project/
 │   └── sync/
 └── .jobs/
     ├── hyperparameter_sweep/
-    └── model_comparison/
+    └── comparisons/
+        └── model_comparison/
 ```
 
 ## Quick Setup
@@ -139,6 +140,7 @@ This demo now includes both override modes:
   Collections linked to this spec use collection-specific notification config.
 - `experiments/model_comparison/job_spec.yaml` intentionally has no `notifications` block.
   Collections linked to this spec fall back to global `.slurmkit/config.yaml`.
+  It also demonstrates a nested jobs path via `job_subdir: comparisons/model_comparison`.
 
 Refresh dummy collections with embedded `generation.spec_path` metadata:
 

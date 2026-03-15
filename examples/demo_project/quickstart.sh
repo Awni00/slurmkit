@@ -80,10 +80,12 @@ step "2" "Review job specifications"
 echo "Available demo experiments:"
 echo "  1. Parameter Sweep - Grid Mode (6 jobs, ~15 sec each)"
 echo "     experiments/hyperparameter_sweep/job_spec.yaml"
+echo "     job_subdir: hyperparameter_sweep"
 echo "     8 combos minus 2 filtered (algo_b + small) = 6 jobs"
 echo ""
 echo "  2. Parameter List - List Mode (4 jobs, 10-30 sec each)"
 echo "     experiments/model_comparison/job_spec.yaml"
+echo "     job_subdir: comparisons/model_comparison  # nested path demo"
 echo "     4 explicit parameter combinations"
 echo ""
 
@@ -92,17 +94,20 @@ read -p "Which experiment to run? [1/2]: " choice
 case $choice in
     1)
         EXPERIMENT="hyperparameter_sweep"
+        JOB_SUBDIR="hyperparameter_sweep"
         JOB_SPEC="experiments/hyperparameter_sweep/job_spec.yaml"
         COLLECTION="hp_sweep"
         ;;
     2)
         EXPERIMENT="model_comparison"
+        JOB_SUBDIR="comparisons/model_comparison"
         JOB_SPEC="experiments/model_comparison/job_spec.yaml"
         COLLECTION="model_comp"
         ;;
     *)
         echo "Invalid choice. Using hyperparameter_sweep."
         EXPERIMENT="hyperparameter_sweep"
+        JOB_SUBDIR="hyperparameter_sweep"
         JOB_SPEC="experiments/hyperparameter_sweep/job_spec.yaml"
         COLLECTION="hp_sweep"
         ;;
@@ -134,7 +139,7 @@ success "Jobs generated"
 # Show generated files
 echo ""
 echo "Generated files:"
-ls -lh ".jobs/$EXPERIMENT/job_scripts/" | head -10
+ls -lh ".jobs/$JOB_SUBDIR/job_scripts/" | head -10
 
 # =============================================================================
 # Step 5: Review Collection
@@ -264,13 +269,13 @@ echo "=========================================="
 echo ""
 echo "What was created:"
 echo "  - Collection: $COLLECTION"
-echo "  - Job scripts: .jobs/$EXPERIMENT/job_scripts/"
+echo "  - Job scripts: .jobs/$JOB_SUBDIR/job_scripts/"
 echo "  - Collection file: .slurmkit/collections/${COLLECTION}.yaml"
 echo ""
 echo "Next steps:"
 echo "  1. Review generated scripts:"
-echo "     ls .jobs/$EXPERIMENT/job_scripts/"
-echo "     cat .jobs/$EXPERIMENT/job_scripts/<job_name>.job"
+echo "     ls .jobs/$JOB_SUBDIR/job_scripts/"
+echo "     cat .jobs/$JOB_SUBDIR/job_scripts/<job_name>.job"
 echo ""
 echo "  2. Submit jobs (if not done already):"
 echo "     slurmkit submit $COLLECTION"

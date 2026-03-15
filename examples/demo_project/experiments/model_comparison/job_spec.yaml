@@ -3,7 +3,7 @@ description: "Demo: Explicit list of parameter combinations (list mode)"
 
 # Template and jobs layout
 template: ../../templates/training.job.j2
-job_subdir: model_comparison
+job_subdir: comparisons/model_comparison
 
 # Explicit list of parameter combinations
 # Use this when you want specific combinations rather than a full grid
