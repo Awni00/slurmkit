@@ -61,10 +61,10 @@ notifications:
   job:
     ai:
       enabled: true
-      callback: "collection_ai_callback:summarize_job_payload"
+      callback: "utilities.slurmkit.ai_callbacks:summarize_job_payload"
   collection_final:
     attempt_mode: latest
     top_k: 5
     ai:
       enabled: true
-      callback: "collection_ai_callback:summarize_collection_report"
+      callback: "utilities.slurmkit.ai_callbacks:summarize_collection_report"

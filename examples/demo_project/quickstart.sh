@@ -198,7 +198,7 @@ step "7" "Notification demos (optional)"
 
 echo "This can demo: notify test, notify job, and notify collection-final."
 echo "For live delivery (non-dry-run), ensure route credentials are configured."
-echo "Formatter callback demo module is available at notification_formatter_callback.py."
+echo "Shared formatter callback demo module is available at utilities/slurmkit/formatters.py."
 echo "Example:"
 echo "  export DEMO_WEBHOOK_URL='https://example.com/your-webhook'"
 echo "  # or for local email testing:"
@@ -251,7 +251,7 @@ if [[ "$notify_choice" =~ ^[Yy]$ ]]; then
     echo "  # fallback collection (no spec notifications block) uses .slurmkit/config.yaml"
     echo "  slurmkit notify job --collection demo_terminal_completed --job-id 990011 --exit-code 0 --on always --dry-run"
     echo "  # formatter callback demo (global + route override)"
-    echo "  # set notifications.formatter.callback: notification_formatter_callback:format_notification"
+    echo "  # set notifications.formatter.callback: utilities.slurmkit.formatters:format_notification"
     echo "  # set routes[].formatter_callback as needed (or null to opt out)"
     echo "  slurmkit notify test --route local_email --dry-run"
 else

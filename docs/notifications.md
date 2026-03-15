@@ -123,11 +123,11 @@ notifications:
   job:
     ai:
       enabled: true
-      callback: "collection_ai_callback:summarize_job_payload"
+      callback: "utilities.slurmkit.ai_callbacks:summarize_job_payload"
   collection_final:
     ai:
       enabled: true
-      callback: "collection_ai_callback:summarize_collection_report"
+      callback: "utilities.slurmkit.ai_callbacks:summarize_collection_report"
 ```
 
 See the runnable demo in `/Users/awni/Documents/project-code/slurmkit/examples/demo_project/README.md`.

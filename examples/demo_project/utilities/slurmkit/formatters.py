@@ -1,4 +1,4 @@
-"""Demo formatter callbacks for slurmkit notify routes."""
+"""Demo formatter callbacks for slurmkit notification routes."""
 
 from __future__ import annotations
 
@@ -21,14 +21,7 @@ def _job_bits(payload: Dict[str, Any]) -> tuple[str, str, str]:
 
 
 def format_notification(payload: Dict[str, Any]) -> Dict[str, str]:
-    """
-    Global formatter callback demo.
-
-    Returns keys supported by slurmkit:
-    - chat
-    - email_subject
-    - email_body
-    """
+    """Return a global demo formatter payload."""
     route_name, route_type = _route_meta(payload)
     event, job_id, job_name = _job_bits(payload)
     collection = payload.get("collection", {}) or {}
@@ -55,7 +48,7 @@ def format_notification(payload: Dict[str, Any]) -> Dict[str, str]:
 
 
 def format_local_email(payload: Dict[str, Any]) -> Dict[str, str]:
-    """Route-specific override demo for local_email route."""
+    """Return a route-specific email formatter override."""
     event, job_id, job_name = _job_bits(payload)
     return {
         "email_subject": f"[local-email-demo] {event} :: {job_id}",

@@ -1,4 +1,4 @@
-"""Demo AI callback for collection-final notifications."""
+"""Demo AI callbacks for slurmkit collection and job notifications."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ from typing import Any, Dict, List
 
 
 def _top_items(rows: List[Dict[str, Any]], key: str, n: int = 2) -> List[str]:
-    """Format top risky/stable rows for compact markdown output."""
+    """Format top risky or stable rows for compact markdown output."""
     items: List[str] = []
     for row in rows[:n]:
         param = row.get("param", "unknown")
@@ -21,15 +21,7 @@ def _top_items(rows: List[Dict[str, Any]], key: str, n: int = 2) -> List[str]:
 
 
 def summarize_collection_report(report: Dict[str, Any]) -> str:
-    """
-    Return concise markdown summary for collection-final payloads.
-
-    Args:
-        report: Deterministic report dictionary produced by slurmkit.
-
-    Returns:
-        Markdown string included as `ai_summary` in outgoing payload.
-    """
+    """Return a concise markdown summary for collection-final payloads."""
     summary = report.get("summary", {}) or {}
     counts = summary.get("counts", {}) or {}
     failed_jobs = report.get("failed_jobs", []) or []
@@ -72,15 +64,7 @@ def summarize_collection_report(report: Dict[str, Any]) -> str:
 
 
 def summarize_job_payload(payload: Dict[str, Any]) -> str:
-    """
-    Return concise markdown summary for job-level notification payloads.
-
-    Args:
-        payload: Canonical job payload dictionary produced by slurmkit notify job.
-
-    Returns:
-        Markdown string included as `ai_summary` in outgoing payload.
-    """
+    """Return a concise markdown summary for job-level notification payloads."""
     job = payload.get("job", {}) or {}
     collection = payload.get("collection", {}) or {}
 

@@ -10,9 +10,13 @@ This demo project is designed for two use cases:
 demo_project/
 ├── README.md
 ├── quickstart.sh
-├── collection_ai_callback.py
-├── notification_formatter_callback.py
 ├── setup_dummy_jobs.py
+├── utilities/
+│   ├── paths.py
+│   ├── experiments.py
+│   └── slurmkit/
+│       ├── ai_callbacks.py
+│       └── formatters.py
 ├── experiments/
 │   ├── hyperparameter_sweep/
 │   │   ├── train.py
@@ -146,6 +150,11 @@ This demo now includes both override modes:
   It also demonstrates a nested jobs path via `job_subdir: comparisons/model_comparison`.
 
 Each experiment directory is self-contained: the main entry script lives at the experiment root, and slurmkit-owned files live under `experiments/<name>/slurmkit/`.
+
+The demo is organized into three layers:
+- experiment entry scripts under `experiments/<name>/`
+- per-experiment slurmkit assets under `experiments/<name>/slurmkit/`
+- shared slurmkit integration hooks under `utilities/slurmkit/`
 
 Refresh dummy collections with embedded `generation.spec_path` metadata:
 
@@ -289,11 +298,11 @@ Look for `ai_status` and `ai_summary` in payload preview.
 
 ### 6) Formatter callback demo
 
-This demo project includes a callback module at `notification_formatter_callback.py`.
+This demo project includes shared formatter callbacks at `utilities/slurmkit/formatters.py`.
 Add callback settings to `.slurmkit/config.yaml` like this:
 
-- global callback: `notification_formatter_callback:format_notification`
-- route override for `local_email`: `notification_formatter_callback:format_local_email`
+- global callback: `utilities.slurmkit.formatters:format_notification`
+- route override for `local_email`: `utilities.slurmkit.formatters:format_local_email`
 - explicit global opt-out on `team_email` via `formatter_callback: null`
 
 Run from the demo directory so callback modules resolve cleanly:
@@ -327,10 +336,10 @@ Use these edits to experiment with precedence behavior:
 ```yaml
 notifications:
   formatter:
-    callback: "notification_formatter_callback:format_notification"
+    callback: "utilities.slurmkit.formatters:format_notification"
   routes:
     - name: local_email
-      formatter_callback: "notification_formatter_callback:format_local_email"
+      formatter_callback: "utilities.slurmkit.formatters:format_local_email"
     - name: team_email
       formatter_callback: null
 ```
