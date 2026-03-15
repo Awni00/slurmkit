@@ -14,7 +14,7 @@ Default behavior remains failure-first:
 
 ## Configuration
 
-Add notification settings to `.slurm-kit/config.yaml`:
+Add notification settings to `.slurmkit/config.yaml`:
 
 ```yaml
 notifications:
@@ -102,11 +102,11 @@ Formatter callback contract (`module:function`):
 
 ### Collection-Specific Overrides from `spec.yaml`
 
-When a collection was created via `slurmkit generate --spec-file ...`, slurmkit stores `meta.generation.spec_path` in the collection metadata.
+When a collection was created via `slurmkit generate ...`, slurmkit stores `generation.spec_path` in the collection metadata.
 `notify job` and `notify collection-final` use this precedence:
 
 1. Top-level `notifications` in the collection's `spec.yaml`
-2. Global `.slurm-kit/config.yaml` `notifications`
+2. Global `.slurmkit/config.yaml` `notifications`
 
 Merge semantics:
 - Dictionary fields deep-merge (spec values override global values).
@@ -130,7 +130,7 @@ notifications:
       callback: "utilities.slurmkit.ai_callbacks:summarize_collection_report"
 ```
 
-See the runnable demo in `/Users/awni/Documents/project-code/slurmkit/examples/demo_project/README.md`.
+See the runnable demo in [examples/demo_project/README.md](/Users/awni/.codex/worktrees/0586/slurmkit/examples/demo_project/README.md).
 
 ## Commands
 

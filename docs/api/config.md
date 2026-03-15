@@ -8,7 +8,7 @@ The `Config` class manages configuration from multiple sources with the followin
 
 1. CLI arguments
 2. Environment variables (`SLURMKIT_*`)
-3. Config file (`.slurm-kit/config.yaml`)
+3. Config file (`.slurmkit/config.yaml`)
 4. Default values
 
 ## Classes

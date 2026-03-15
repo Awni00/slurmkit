@@ -57,5 +57,5 @@ slurmkit sync --collection my_experiment
 
 # On another cluster, pull and view
 git pull
-slurmkit collection show my_experiment
+slurmkit collections show my_experiment
 ```

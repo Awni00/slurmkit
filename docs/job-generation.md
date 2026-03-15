@@ -1,164 +1,80 @@
 # Job Generation
 
-slurmkit provides powerful tools for generating SLURM job scripts from templates and parameter specifications.
+`slurmkit generate` turns a YAML spec plus a Jinja template into job scripts and records the generated jobs in a collection.
 
-## Overview
+## Core model
 
-Job generation combines:
-- **Jinja2 templates** - Define the structure of your job scripts
-- **Parameter specifications** - Define variations (grid or list)
-- **SLURM argument logic** - Optionally customize resources per job
-- **Collections** - Track generated jobs
+A spec controls:
 
-## Quick Start
+- the template file
+- the relative `job_subdir`
+- parameter expansion (`grid` or `list`)
+- optional parse/filter hooks
+- default and dynamic SLURM args
+- job naming
+- optional collection-specific notification overrides
 
-### 1. Create a Template
+Generation is collection-bound:
 
-Create a Jinja2 template file `templates/train.job.j2`:
+```bash
+slurmkit generate experiments/exp1/slurmkit/job_spec.yaml --into exp1
+```
+
+If the target collection already exists, generation is append-only. Name collisions are renamed with suffixes like `-2`, `-3`, and so on.
+
+## Minimal spec
+
+```yaml
+name: exp1
+description: "Example sweep"
+
+template: train.job.j2
+job_subdir: sweeps/exp1
+
+parameters:
+  mode: grid
+  values:
+    learning_rate: [0.001, 0.01]
+    batch_size: [32, 64]
+
+slurm_args:
+  defaults:
+    partition: gpu
+    time: "04:00:00"
+    mem: "16G"
+
+job_name_pattern: "lr{{ learning_rate }}_bs{{ batch_size }}"
+```
+
+With default config, this writes:
+
+- scripts to `.jobs/sweeps/exp1/job_scripts/`
+- logs to `.jobs/sweeps/exp1/logs/`
+
+## Template variables
+
+Templates receive:
+
+- `job_name`
+- `slurm`
+- `logs_dir`
+- each parameter key from the effective parameter mapping
+
+Example:
 
 ```jinja2
 #!/bin/bash
 #SBATCH --job-name={{ job_name }}
 #SBATCH --partition={{ slurm.partition }}
 #SBATCH --time={{ slurm.time }}
-#SBATCH --mem={{ slurm.mem }}
-#SBATCH --gres=gpu:{{ slurm.gpus }}
 #SBATCH --output={{ logs_dir }}/{{ job_name }}.%j.out
 
-# Load environment
-source ~/.bashrc
-conda activate myenv
-
-# Run training
-python train.py \
-    --learning-rate {{ learning_rate }} \
-    --batch-size {{ batch_size }} \
-    --model {{ model }}
+python train.py --lr {{ learning_rate }} --bs {{ batch_size }}
 ```
 
-### 2. Create a Job Spec
+## Parameter modes
 
-Create `experiments/exp1/job_spec.yaml`:
-
-```yaml
-name: exp1_sweep
-description: "Learning rate and batch size sweep"
-
-template: ../../templates/train.job.j2
-output_dir: job_scripts
-logs_dir: logs
-
-parameters:
-  mode: grid
-  values:
-    learning_rate: [0.001, 0.01, 0.1]
-    batch_size: [32, 64]
-    model: [resnet18]
-
-slurm_args:
-  defaults:
-    partition: gpu
-    time: "24:00:00"
-    mem: "32G"
-    gpus: 1
-
-job_name_pattern: "{{ model }}_lr{{ learning_rate }}_bs{{ batch_size }}"
-```
-
-### 3. Generate Jobs
-
-```bash
-cd experiments/exp1
-slurmkit generate job_spec.yaml --collection exp1
-
-# Preview without writing
-slurmkit generate job_spec.yaml --dry-run
-```
-
-## Job Spec Reference
-
-### Full Job Spec Format
-
-```yaml
-# Descriptive name for this job spec
-name: my_experiment
-
-# Human-readable description
-description: "Hyperparameter sweep for ResNet training"
-
-# Path to Jinja2 template (relative to spec file or absolute)
-template: templates/train.job.j2
-
-# Output directory for generated scripts
-output_dir: job_scripts
-
-# Directory for job outputs (used in templates)
-logs_dir: logs
-
-# Parameter specification
-parameters:
-  # Mode: "grid" for all combinations, "list" for explicit list
-  mode: grid
-  values:
-    learning_rate: [0.001, 0.01, 0.1]
-    batch_size: [32, 64]
-    model: [resnet18, resnet50]
-    n_trials: [3]
-  # Optional parser for derived/effective params
-  parse: params_logic.py:parse_params
-  # Optional filter for grid mode
-  filter: params_logic.py:include_params
-
-# SLURM arguments
-slurm_args:
-  # Default values
-  defaults:
-    partition: gpu
-    time: "24:00:00"
-    mem: "32G"
-    gpus: 1
-
-  # Optional: Python function for dynamic logic
-  logic: slurm_logic.py:get_slurm_args
-
-# Jinja2 pattern for job names
-job_name_pattern: "{{ model }}_lr{{ learning_rate }}_bs{{ batch_size }}"
-
-# Optional collection-specific notification overrides
-# (same shape as .slurm-kit/config.yaml notifications)
-notifications:
-  defaults:
-    events: [job_failed]
-  job:
-    ai:
-      enabled: false
-      callback: null
-  collection_final:
-    attempt_mode: latest
-    min_support: 3
-    top_k: 10
-    include_failed_output_tail_lines: 20
-    ai:
-      enabled: false
-      callback: null
-  routes:
-    - name: exp_slack
-      type: slack
-      url: "${SLACK_WEBHOOK_URL}"
-      events: [job_failed, collection_failed]
-```
-
-Notification precedence for `slurmkit notify`:
-- If collection generation metadata includes `spec_path`, slurmkit loads the collection's `spec.yaml` at notify-time.
-- If top-level `notifications` exists in the spec, it overrides global notifications via deep merge.
-- Dict keys deep-merge; list values (including `notifications.routes`) replace the global list.
-- If spec is missing/unreadable/malformed, slurmkit warns and falls back to `.slurm-kit/config.yaml`.
-
-## Parameter Modes
-
-### Grid Mode
-
-All combinations of parameter values:
+### Grid mode
 
 ```yaml
 parameters:
@@ -168,263 +84,102 @@ parameters:
     bs: [32, 64]
 ```
 
-Generates 4 jobs: `(0.001, 32), (0.001, 64), (0.01, 32), (0.01, 64)`
+This generates all combinations.
 
-### Parameter Parsing
-
-Use a Python callback to derive effective parameters before filtering,
-job naming, SLURM logic, and template rendering:
-
-```yaml
-parameters:
-  mode: grid
-  values:
-    algorithm: [algo_a, algo_b]
-    dataset: [small, large]
-    n_trials: [3]
-  parse: params_logic.py:parse_params
-```
-
-```python
-# params_logic.py
-def parse_params(params: dict) -> list[dict]:
-    return [
-        {
-            **params,
-            "seed": seed,
-            "profile": f"{params['algorithm']}_{seed}",
-        }
-        for seed in range(params["n_trials"])
-    ]
-```
-
-The callback may return either one effective parameter mapping or a list of them.
-Returning `[]` drops the source entry entirely.
-Use `path.py:function_name` to override the function, or a bare `path.py` to use the default `parse_params`.
-Parse file paths are resolved relative to the job spec file.
-Parsed params are the ones exposed to templates, job naming, and `get_slurm_args(...)`.
-
-### Grid Filtering
-
-For incompatible parameter combinations, add a filter function to trim the grid:
-
-```yaml
-parameters:
-  mode: grid
-  values:
-    algorithm: [algo_a, algo_b]
-    dataset: [small, large]
-    n_trials: [3]
-  parse: params_logic.py:parse_params
-  filter: params_logic.py:include_params
-```
-
-```python
-# params_logic.py
-def include_params(params: dict) -> bool:
-    # Exclude algo_b with small dataset and drop one parsed trial
-    return not (
-        (params.get("algorithm") == "algo_b" and params.get("dataset") == "small")
-        or (params.get("dataset") == "small" and params.get("seed", 0) > 0)
-    )
-```
-
-Filters only apply to grid mode; list mode ignores them.
-Use `path.py:function_name` to override the function, or a bare `path.py` to use the default `include_params`.
-For grid mode, filtering happens after parsing, so filters can use derived fields and apply per parsed child entry.
-Filter file paths are resolved relative to the job spec file.
-
-### List Mode
-
-Explicit list of parameter combinations:
+### List mode
 
 ```yaml
 parameters:
   mode: list
   values:
-    - {lr: 0.001, bs: 32, model: small}
-    - {lr: 0.01, bs: 64, model: large}
-    - {lr: 0.1, bs: 128, model: xlarge}
+    - {lr: 0.001, bs: 32}
+    - {lr: 0.01, bs: 64}
 ```
 
-## Template Variables
+This generates only the listed parameter sets.
 
-Templates have access to these variables:
+## Parse and filter hooks
 
-| Variable | Description |
-|----------|-------------|
-| `job_name` | Generated job name |
-| `slurm` | Dictionary of SLURM arguments |
-| `logs_dir` | Logs directory path |
-| `<param>` | Each parameter from your specification |
+`parse` can derive effective parameter sets before naming, filtering, and rendering:
 
-### Example Template
-
-```jinja2
-#!/bin/bash
-#SBATCH --job-name={{ job_name }}
-#SBATCH --partition={{ slurm.partition }}
-#SBATCH --time={{ slurm.time }}
-#SBATCH --mem={{ slurm.mem }}
-{% if slurm.gpus is defined %}
-#SBATCH --gres=gpu:{{ slurm.gpus }}
-{% endif %}
-#SBATCH --output={{ logs_dir }}/{{ job_name }}.%j.out
-#SBATCH --error={{ logs_dir }}/{{ job_name }}.%j.err
-
-echo "Job: {{ job_name }}"
-echo "Learning rate: {{ learning_rate }}"
-echo "Batch size: {{ batch_size }}"
-
-python train.py \
-    --lr {{ learning_rate }} \
-    --bs {{ batch_size }} \
-    {% if epochs is defined %}--epochs {{ epochs }}{% endif %}
+```yaml
+parameters:
+  mode: grid
+  values:
+    algorithm: [algo_a, algo_b]
+    n_trials: [2]
+  parse: params_logic.py:parse_params
 ```
-
-## Dynamic SLURM Arguments
-
-For complex resource requirements, use a Python function:
-
-### slurm_logic.py
 
 ```python
-def get_slurm_args(params: dict, defaults: dict) -> dict:
-    """
-    Customize SLURM arguments based on job parameters.
-
-    Args:
-        params: Job parameters (learning_rate, batch_size, etc.)
-        defaults: Default SLURM args from job spec
-
-    Returns:
-        Final SLURM arguments dictionary
-    """
-    args = defaults.copy()
-
-    # Larger models need more memory
-    model = params.get('model', 'resnet18')
-    if model == 'resnet50':
-        args['mem'] = '64G'
-        args['gpus'] = 2
-    elif model == 'resnet101':
-        args['mem'] = '128G'
-        args['gpus'] = 4
-
-    # Larger batch sizes need more memory
-    batch_size = params.get('batch_size', 32)
-    if batch_size >= 128:
-        args['mem'] = '64G'
-
-    # Long training needs more time
-    epochs = params.get('epochs', 100)
-    if epochs > 500:
-        args['time'] = '72:00:00'
-
-    return args
+def parse_params(params: dict) -> list[dict]:
+    return [
+        {**params, "seed": seed, "profile": f"{params['algorithm']}_s{seed}"}
+        for seed in range(params["n_trials"])
+    ]
 ```
 
-### Reference in Job Spec
+`filter` removes incompatible or unwanted effective parameter sets:
+
+```yaml
+parameters:
+  mode: grid
+  values:
+    algorithm: [algo_a, algo_b]
+    dataset: [small, large]
+  filter: params_logic.py:include_params
+```
+
+```python
+def include_params(params: dict) -> bool:
+    return not (params["algorithm"] == "algo_b" and params["dataset"] == "small")
+```
+
+Hook file paths are resolved relative to the spec file.
+
+## Dynamic SLURM args
+
+Use a Python function to compute resources from parameters:
 
 ```yaml
 slurm_args:
   defaults:
     partition: gpu
-    time: "24:00:00"
-    mem: "32G"
-    gpus: 1
-
+    time: "04:00:00"
+    mem: "16G"
   logic: slurm_logic.py:get_slurm_args
 ```
 
-## Job Naming
-
-### Default Naming
-
-Without a pattern, job names are parameter key-value pairs:
-
-```
-learning_rate0.001_batch_size32_modelresnet18
+```python
+def get_slurm_args(params: dict, defaults: dict) -> dict:
+    args = defaults.copy()
+    if params.get("model") == "large":
+        args["mem"] = "64G"
+    return args
 ```
 
-### Custom Pattern
+## Notification overrides in specs
 
-Use Jinja2 for readable names:
+Specs may define a top-level `notifications` block. These settings override global `.slurmkit/config.yaml` notifications for collections generated from that spec.
 
 ```yaml
-job_name_pattern: "{{ model }}_lr{{ learning_rate }}_bs{{ batch_size }}"
+notifications:
+  defaults:
+    output_tail_lines: 20
+  job:
+    ai:
+      enabled: true
+      callback: "utilities.slurmkit.ai_callbacks:summarize_job_payload"
+  collection_final:
+    ai:
+      enabled: true
+      callback: "utilities.slurmkit.ai_callbacks:summarize_collection_report"
 ```
 
-Produces:
+## Dry run
 
-```
-resnet18_lr0.001_bs32
-```
-
-### Tips
-
-- Keep names short (SLURM limits job name length)
-- Include key distinguishing parameters
-- Avoid spaces and special characters
-
-## CLI Commands
-
-### Generate from Spec File
+Preview the generation plan without writing files:
 
 ```bash
-slurmkit generate job_spec.yaml
-slurmkit generate job_spec.yaml --collection my_exp
-slurmkit generate job_spec.yaml --dry-run
-```
-
-### Generate with CLI Arguments
-
-```bash
-slurmkit generate \
-    --template templates/train.job.j2 \
-    --params params.yaml \
-    --output-dir jobs/exp1/scripts \
-    --collection exp1
-```
-
-## Programmatic Usage
-
-```python
-from slurmkit.generate import JobGenerator, generate_jobs_from_spec
-from slurmkit.collections import CollectionManager
-
-# From spec file
-results = generate_jobs_from_spec(
-    "job_spec.yaml",
-    collection_name="my_experiment",
-)
-
-# Programmatically
-generator = JobGenerator(
-    template_path="templates/train.job.j2",
-    parameters={
-        "mode": "grid",
-        "values": {
-            "learning_rate": [0.001, 0.01],
-            "batch_size": [32, 64],
-        }
-    },
-    slurm_defaults={"partition": "gpu", "time": "24:00:00"},
-    job_name_pattern="{{ learning_rate }}_{{ batch_size }}",
-)
-
-# Preview
-print(generator.preview(0))
-print(f"Will generate {generator.count_jobs()} jobs")
-
-# Generate
-manager = CollectionManager()
-collection = manager.get_or_create("my_experiment")
-
-results = generator.generate(
-    output_dir="jobs/exp1/scripts",
-    collection=collection,
-)
-
-manager.save(collection)
+slurmkit generate experiments/exp1/slurmkit/job_spec.yaml --into exp1 --dry-run
 ```

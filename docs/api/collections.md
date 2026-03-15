@@ -56,9 +56,9 @@ collection = manager.create("my_experiment", description="Training sweep")
 
 # Add a job to the collection
 collection.add_job(
-    name="lr0.01_bs32",
-    params={"learning_rate": 0.01, "batch_size": 32},
-    script_path="jobs/exp1/job_scripts/lr0.01_bs32.sh"
+    job_name="lr0.01_bs32",
+    parameters={"learning_rate": 0.01, "batch_size": 32},
+    script_path=".jobs/exp1/job_scripts/lr0.01_bs32.job",
 )
 
 # Submit and record job ID
@@ -68,5 +68,5 @@ collection.update_job("lr0.01_bs32", job_id="12345", state="PENDING")
 failed_jobs = collection.filter_jobs(state="FAILED")
 
 # Save collection
-collection.save()
+manager.save(collection)
 ```
