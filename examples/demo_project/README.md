@@ -13,16 +13,19 @@ demo_project/
 ├── collection_ai_callback.py
 ├── notification_formatter_callback.py
 ├── setup_dummy_jobs.py
-├── templates/
-│   ├── training.job.j2
-│   └── evaluation.job.j2
 ├── experiments/
 │   ├── hyperparameter_sweep/
-│   │   ├── job_spec.yaml
-│   │   ├── params_logic.py
-│   │   └── slurm_logic.py
+│   │   ├── train.py
+│   │   └── slurmkit/
+│   │       ├── job_spec.yaml
+│   │       ├── training.job.j2
+│   │       ├── params_logic.py
+│   │       └── slurm_logic.py
 │   └── model_comparison/
-│       └── job_spec.yaml
+│       ├── evaluate.py
+│       └── slurmkit/
+│           ├── job_spec.yaml
+│           └── training.job.j2
 ├── .slurmkit/
 │   ├── config.yaml
 │   ├── collections/
@@ -136,11 +139,13 @@ Create deterministic dummy collections/logs:
 
 This demo now includes both override modes:
 
-- `experiments/hyperparameter_sweep/job_spec.yaml` defines a top-level `notifications` block.
+- `experiments/hyperparameter_sweep/slurmkit/job_spec.yaml` defines a top-level `notifications` block.
   Collections linked to this spec use collection-specific notification config.
-- `experiments/model_comparison/job_spec.yaml` intentionally has no `notifications` block.
+- `experiments/model_comparison/slurmkit/job_spec.yaml` intentionally has no `notifications` block.
   Collections linked to this spec fall back to global `.slurmkit/config.yaml`.
   It also demonstrates a nested jobs path via `job_subdir: comparisons/model_comparison`.
+
+Each experiment directory is self-contained: the main entry script lives at the experiment root, and slurmkit-owned files live under `experiments/<name>/slurmkit/`.
 
 Refresh dummy collections with embedded `generation.spec_path` metadata:
 
@@ -184,8 +189,8 @@ export PYTHONPATH="$PWD:$PYTHONPATH"
 Create generated job-script projects (still no real submission):
 
 ```bash
-slurmkit generate experiments/hyperparameter_sweep/job_spec.yaml --into hp_sweep_demo
-slurmkit generate experiments/model_comparison/job_spec.yaml --into model_comp_demo
+slurmkit generate experiments/hyperparameter_sweep/slurmkit/job_spec.yaml --into hp_sweep_demo
+slurmkit generate experiments/model_comparison/slurmkit/job_spec.yaml --into model_comp_demo
 ```
 
 ## Command Coverage Matrix
@@ -333,7 +338,7 @@ notifications:
 ## End-to-End Cluster Workflow (Real SLURM)
 
 ```bash
-slurmkit generate experiments/hyperparameter_sweep/job_spec.yaml --into hp_sweep
+slurmkit generate experiments/hyperparameter_sweep/slurmkit/job_spec.yaml --into hp_sweep
 slurmkit submit hp_sweep --delay 2
 slurmkit status hp_sweep
 slurmkit collections refresh hp_sweep

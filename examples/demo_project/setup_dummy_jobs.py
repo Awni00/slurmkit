@@ -62,8 +62,8 @@ def main() -> int:
     failed_collection_name = f"{args.prefix}_terminal_failed"
     completed_collection_name = f"{args.prefix}_terminal_completed"
     in_progress_collection_name = f"{args.prefix}_in_progress"
-    sweep_spec_rel = "experiments/hyperparameter_sweep/job_spec.yaml"
-    model_spec_rel = "experiments/model_comparison/job_spec.yaml"
+    sweep_spec_rel = "experiments/hyperparameter_sweep/slurmkit/job_spec.yaml"
+    model_spec_rel = "experiments/model_comparison/slurmkit/job_spec.yaml"
 
     demo_logs_dir = project_root / ".jobs" / "dummy_demo" / "logs"
     failed_log = demo_logs_dir / f"{args.prefix}_failed.{base_id}002.out"

@@ -79,12 +79,12 @@ step "2" "Review job specifications"
 
 echo "Available demo experiments:"
 echo "  1. Parameter Sweep - Grid Mode (6 jobs, ~15 sec each)"
-echo "     experiments/hyperparameter_sweep/job_spec.yaml"
+echo "     experiments/hyperparameter_sweep/slurmkit/job_spec.yaml"
 echo "     job_subdir: hyperparameter_sweep"
 echo "     8 combos minus 2 filtered (algo_b + small) = 6 jobs"
 echo ""
 echo "  2. Parameter List - List Mode (4 jobs, 10-30 sec each)"
-echo "     experiments/model_comparison/job_spec.yaml"
+echo "     experiments/model_comparison/slurmkit/job_spec.yaml"
 echo "     job_subdir: comparisons/model_comparison  # nested path demo"
 echo "     4 explicit parameter combinations"
 echo ""
@@ -95,20 +95,20 @@ case $choice in
     1)
         EXPERIMENT="hyperparameter_sweep"
         JOB_SUBDIR="hyperparameter_sweep"
-        JOB_SPEC="experiments/hyperparameter_sweep/job_spec.yaml"
+        JOB_SPEC="experiments/hyperparameter_sweep/slurmkit/job_spec.yaml"
         COLLECTION="hp_sweep"
         ;;
     2)
         EXPERIMENT="model_comparison"
         JOB_SUBDIR="comparisons/model_comparison"
-        JOB_SPEC="experiments/model_comparison/job_spec.yaml"
+        JOB_SPEC="experiments/model_comparison/slurmkit/job_spec.yaml"
         COLLECTION="model_comp"
         ;;
     *)
         echo "Invalid choice. Using hyperparameter_sweep."
         EXPERIMENT="hyperparameter_sweep"
         JOB_SUBDIR="hyperparameter_sweep"
-        JOB_SPEC="experiments/hyperparameter_sweep/job_spec.yaml"
+        JOB_SPEC="experiments/hyperparameter_sweep/slurmkit/job_spec.yaml"
         COLLECTION="hp_sweep"
         ;;
 esac
@@ -245,7 +245,7 @@ if [[ "$notify_choice" =~ ^[Yy]$ ]]; then
     echo ""
     echo "Optional collection-specific notifications demo:"
     echo "  export PYTHONPATH=\"\$PWD:\$PYTHONPATH\""
-    echo "  # uses spec override from experiments/hyperparameter_sweep/job_spec.yaml"
+    echo "  # uses spec override from experiments/hyperparameter_sweep/slurmkit/job_spec.yaml"
     echo "  slurmkit notify job --collection demo_terminal_failed --job-id 990002 --exit-code 1 --dry-run"
     echo "  slurmkit notify collection-final --collection demo_terminal_failed --job-id 990002 --no-refresh --dry-run"
     echo "  # fallback collection (no spec notifications block) uses .slurmkit/config.yaml"

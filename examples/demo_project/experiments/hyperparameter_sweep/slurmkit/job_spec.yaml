@@ -2,7 +2,7 @@ name: hyperparameter_sweep
 description: "Demo: Parameter sweep to test slurmkit grid mode"
 
 # Template and jobs layout
-template: ../../templates/training.job.j2
+template: training.job.j2
 job_subdir: hyperparameter_sweep
 
 # Parameter grid - generates all combinations
