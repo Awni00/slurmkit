@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from types import SimpleNamespace
 
 import yaml
 from typer.testing import CliRunner
@@ -96,3 +97,97 @@ def test_migrate_command_runs(tmp_path):
     assert "Specs migrated:" in result.stdout
     assert (root / ".slurmkit" / "config.yaml").exists()
     assert (root / ".slurmkit" / "collections" / "old.yaml").exists()
+
+
+def test_install_skill_command_success(monkeypatch):
+    from importlib import import_module
+
+    maintenance_module = import_module("slurmkit.cli.commands_maintenance")
+
+    monkeypatch.setattr(
+        maintenance_module.subprocess,
+        "run",
+        lambda *_args, **_kwargs: SimpleNamespace(returncode=0),
+    )
+
+    result = runner.invoke(cli_app, ["install-skill", "--yes"])
+
+    assert result.exit_code == 0
+    assert "Installed slurmkit skill from Awni00/slurmkit." in result.stdout
+
+
+def test_install_skill_command_missing_npx(monkeypatch):
+    from importlib import import_module
+
+    maintenance_module = import_module("slurmkit.cli.commands_maintenance")
+
+    def _raise_not_found(*_args, **_kwargs):
+        raise FileNotFoundError()
+
+    monkeypatch.setattr(maintenance_module.subprocess, "run", _raise_not_found)
+
+    result = runner.invoke(cli_app, ["install-skill", "--yes"])
+
+    assert result.exit_code == 1
+    assert "`npx` not found." in (result.stderr or result.stdout)
+
+
+def test_install_skill_command_nonzero_exit(monkeypatch):
+    from importlib import import_module
+
+    maintenance_module = import_module("slurmkit.cli.commands_maintenance")
+
+    monkeypatch.setattr(
+        maintenance_module.subprocess,
+        "run",
+        lambda *_args, **_kwargs: SimpleNamespace(returncode=7),
+    )
+
+    result = runner.invoke(cli_app, ["install-skill", "--yes"])
+
+    assert result.exit_code == 1
+    assert "exited with code 7" in (result.stderr or result.stdout)
+
+
+def test_install_skill_command_canceled_by_prompt(monkeypatch):
+    from importlib import import_module
+
+    maintenance_module = import_module("slurmkit.cli.commands_maintenance")
+
+    monkeypatch.setattr(maintenance_module, "can_prompt", lambda _state: True)
+    monkeypatch.setattr(maintenance_module, "prompt_confirm", lambda _message, default=True: False)
+    monkeypatch.setattr(
+        maintenance_module,
+        "_install_slurmkit_skill_via_npx",
+        lambda: (_ for _ in ()).throw(RuntimeError("should not run install")),
+    )
+
+    result = runner.invoke(cli_app, ["install-skill"])
+
+    assert result.exit_code == 0
+    assert "Canceled." in result.stdout
+
+
+def test_setup_palette_includes_install_skill():
+    from importlib import import_module
+
+    cli_module = import_module("slurmkit.cli.app")
+    sections = cli_module._command_sections()
+    setup_section = next(section for section in sections if section.title == "Setup")
+    command_ids = [entry.command_id for entry in setup_section.commands]
+    assert "install_skill" in command_ids
+
+
+def test_home_dispatches_install_skill_from_palette(monkeypatch):
+    from importlib import import_module
+
+    cli_module = import_module("slurmkit.cli.app")
+    maintenance_module = import_module("slurmkit.cli.commands_maintenance")
+
+    monkeypatch.setattr(cli_module, "choose_command", lambda _sections: "install_skill")
+    monkeypatch.setattr(maintenance_module, "_install_slurmkit_skill_via_npx", lambda: (True, "installed"))
+
+    result = runner.invoke(cli_app, ["home"])
+
+    assert result.exit_code == 0
+    assert "installed" in result.stdout

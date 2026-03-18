@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import subprocess
 from typing import Optional
 
 import typer
@@ -23,6 +24,30 @@ from .runtime import can_prompt, get_state
 
 
 clean_app = typer.Typer(help="Cleanup helpers for collection outputs and W&B runs.")
+
+
+def _install_slurmkit_skill_via_npx() -> tuple[bool, str]:
+    cmd = ["npx", "skills", "add", "Awni00/slurmkit", "--skill", "slurmkit"]
+    cmd_text = " ".join(cmd)
+    try:
+        result = subprocess.run(cmd, check=False)
+    except FileNotFoundError:
+        return (
+            False,
+            f"`npx` not found. Install Node.js/npm first, then run: {cmd_text}",
+        )
+    except OSError as exc:
+        return (
+            False,
+            f"Unable to run `{cmd_text}` ({exc}). You can retry manually.",
+        )
+
+    if result.returncode == 0:
+        return True, "Installed slurmkit skill from Awni00/slurmkit."
+    return (
+        False,
+        f"`{cmd_text}` exited with code {result.returncode}. You can retry manually.",
+    )
 
 
 def register(app: typer.Typer) -> None:
@@ -60,6 +85,25 @@ def register(app: typer.Typer) -> None:
         typer.echo(f"Collections already current: {result.skipped_collections}")
         typer.echo(f"Specs migrated: {result.migrated_specs}")
         typer.echo(f"Specs already current: {result.skipped_specs}")
+        raise typer.Exit(0)
+
+    @app.command("install-skill")
+    def install_skill_command(
+        ctx: typer.Context,
+        nointeractive: bool = typer.Option(False, "--nointeractive", help="Disable interactive prompts for this command."),
+        yes: bool = typer.Option(False, "--yes", help="Skip confirmation prompt."),
+    ) -> None:
+        state = get_state(ctx)
+        if can_prompt(state) and not nointeractive and not yes:
+            confirmed = prompt_confirm("Install slurmkit skill via npx skills now?", default=True)
+            if confirmed is None or not confirmed:
+                raise typer.Exit(canceled())
+
+        installed, message = _install_slurmkit_skill_via_npx()
+        if not installed:
+            typer.echo(f"Error: {message}", err=True)
+            raise typer.Exit(1)
+        typer.echo(message)
         raise typer.Exit(0)
 
 

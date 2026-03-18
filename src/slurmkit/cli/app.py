@@ -43,6 +43,7 @@ def _command_sections() -> list[CommandPaletteSection]:
             title="Setup",
             commands=[
                 CommandPaletteEntry("init", "init", "Initialize project config"),
+                CommandPaletteEntry("install_skill", "install-skill", "Install the slurmkit skill"),
                 CommandPaletteEntry("config_show", "config show", "Show resolved config"),
                 CommandPaletteEntry("config_wizard", "config wizard", "Edit config in a guided wizard"),
                 CommandPaletteEntry("migrate", "migrate", "Migrate local config and collections"),
@@ -94,6 +95,7 @@ def _home_impl(ctx: typer.Context) -> int:
 
     command_args = {
         "init": ["init"],
+        "install_skill": ["install-skill"],
         "config_show": ["config", "show"],
         "config_wizard": ["config", "wizard"],
         "migrate": ["migrate"],

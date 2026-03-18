@@ -1,10 +1,10 @@
 ---
 task_id: t-20260315-001
 task_name: slurmkit-skill-install-cmd
-status: todo
+status: completed
 date_created: '2026-03-15'
-date_started: null
-date_completed: null
+date_started: '2026-03-18'
+date_completed: '2026-03-18'
 priority: p2
 effort: m
 spec_readiness: rough

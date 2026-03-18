@@ -25,6 +25,20 @@ Create `.slurmkit/config.yaml`.
 slurmkit init [--force]
 ```
 
+### `slurmkit install-skill`
+
+Install the slurmkit Codex skill via `npx skills`.
+
+```bash
+slurmkit install-skill [--nointeractive] [--yes]
+```
+
+Example:
+
+```bash
+slurmkit install-skill --yes
+```
+
 ### `slurmkit migrate`
 
 Rewrite old local state into the current layout.

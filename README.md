@@ -223,6 +223,7 @@ slurmkit resubmit exp1 --filter failed --dry-run
 | Command | Description |
 |---------|-------------|
 | `slurmkit init` | Initialize project configuration |
+| `slurmkit install-skill` | Install the slurmkit Codex skill via `npx skills` |
 | `slurmkit migrate` | Upgrade local config and collections to the current schema |
 | `slurmkit status <collection>` | Show live status for a collection |
 | `slurmkit generate <spec>` | Generate job scripts from a spec into a collection |
@@ -235,6 +236,12 @@ slurmkit resubmit exp1 --filter failed --dry-run
 | `slurmkit sync` | Sync job states for cross-cluster |
 
 Run `slurmkit <command> --help` for detailed usage.
+
+Install the skill quickly:
+
+```bash
+slurmkit install-skill --yes
+```
 
 ## Configuration
 
