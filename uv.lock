@@ -1165,12 +1165,15 @@ wheels = [
 name = "slurmkit"
 source = { editable = "." }
 dependencies = [
+    { name = "inquirerpy" },
     { name = "jinja2" },
     { name = "pandas", version = "2.3.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
     { name = "pandas", version = "3.0.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
     { name = "pyyaml" },
     { name = "requests" },
+    { name = "rich" },
     { name = "tabulate" },
+    { name = "typer" },
 ]
 
 [package.optional-dependencies]
@@ -1201,6 +1204,7 @@ ui = [
 requires-dist = [
     { name = "dot-tasks", marker = "extra == 'all'" },
     { name = "dot-tasks", marker = "extra == 'dev'" },
+    { name = "inquirerpy", specifier = ">=0.3" },
     { name = "jinja2", specifier = ">=3.0" },
     { name = "mkdocs", marker = "extra == 'all'", specifier = ">=1.5" },
     { name = "mkdocs", marker = "extra == 'docs'", specifier = ">=1.5" },
@@ -1215,9 +1219,11 @@ requires-dist = [
     { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=4.0" },
     { name = "pyyaml", specifier = ">=6.0" },
     { name = "requests", specifier = ">=2.31" },
+    { name = "rich", specifier = ">=13.7" },
     { name = "rich", marker = "extra == 'all'", specifier = ">=13.7" },
     { name = "rich", marker = "extra == 'ui'", specifier = ">=13.7" },
     { name = "tabulate", specifier = ">=0.9" },
+    { name = "typer", specifier = ">=0.12" },
 ]
 provides-extras = ["ui", "dev", "docs", "all"]
 
