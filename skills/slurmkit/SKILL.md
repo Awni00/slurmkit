@@ -85,6 +85,7 @@ Start from these references when bootstrapping a new experiment; adapt paths and
 - Always run a dry run before mutating steps (`generate`, `submit`, `resubmit`, cleanup).
 - Keep spec parameters explicit; do not hide major defaults in templates/scripts.
 - In `grid` sweeps, ensure `job_name_pattern` includes every parameter with multiple values.
+- Ensure every parameter in the spec is implemented by the template (or handled by callbacks).
 - Use `collections show` or `status` before `resubmit` to verify true failure state.
 - Prefer targeted retries (`--select-file`, `--extra-params`) over broad resubmits.
 - Treat deletions as irreversible; verify thresholds and collection target first.
