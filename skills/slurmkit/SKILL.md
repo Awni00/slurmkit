@@ -1,6 +1,6 @@
 ---
 name: slurmkit
-description: Guide for AI agents working with slurmkit projects: project structure, command workflows, spec authoring, collection analysis, failure triage, resubmission strategy, notifications, migration, sync, and cleanup.
+description: "Guide for AI agents working with slurmkit projects, including project structure, command workflows, spec authoring, collection analysis, failure triage, resubmission strategy, notifications, migration, sync, and cleanup."
 ---
 
 # slurmkit Skill
