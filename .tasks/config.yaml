@@ -1,0 +1,20 @@
+settings:
+  interactive_enabled: true
+  show_banner: true
+  list_table:
+    columns:
+    - name: task_name
+      width: 50
+    - name: priority
+      width: 8
+    - name: effort
+      width: 6
+    - name: deps
+      width: 12
+    - name: created
+      width: 10
+  task_body_sections:
+  - name: Summary
+    default: '- TODO'
+  - name: Acceptance Criteria
+    default: '- TODO'
