@@ -84,6 +84,7 @@ Start from these references when bootstrapping a new experiment; adapt paths and
 
 - Always run a dry run before mutating steps (`generate`, `submit`, `resubmit`, cleanup).
 - Keep spec parameters explicit; do not hide major defaults in templates/scripts.
+- In `grid` sweeps, ensure `job_name_pattern` includes every parameter with multiple values.
 - Use `collections show` or `status` before `resubmit` to verify true failure state.
 - Prefer targeted retries (`--select-file`, `--extra-params`) over broad resubmits.
 - Treat deletions as irreversible; verify thresholds and collection target first.
@@ -107,6 +108,7 @@ Start from these references when bootstrapping a new experiment; adapt paths and
    - `list` for curated combinations.
 5. If needed, add `parse` hook for derived fields and `filter` hook for invalid combinations.
 6. Keep parameters grouped by logical concern (model, data, optimization, runtime).
+7. Ensure `job_name_pattern` includes at least all sweep dimensions (parameters with multiple grid values).
 
 ### 3) Sweep Design (`grid` / `list`, parse/filter)
 
