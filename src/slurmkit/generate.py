@@ -581,6 +581,97 @@ def load_job_spec(spec_path: Union[str, Path]) -> Dict[str, Any]:
     return spec
 
 
+def render_job_spec_template(
+    *,
+    config: Optional[Config] = None,
+    job_subdir_example: str = "experiments/my_experiment",
+) -> str:
+    """
+    Render a starter job spec template with practical defaults and hints.
+
+    Args:
+        config: Optional config used to display jobs_dir-derived path hints.
+        job_subdir_example: Example relative job_subdir shown in the template.
+
+    Returns:
+        YAML template content with explanatory comments.
+    """
+    if config is None:
+        config = get_config()
+
+    jobs_dir_value = str(config.get("jobs_dir", ".jobs/"))
+    jobs_root = Path(jobs_dir_value)
+    scripts_hint = (jobs_root / job_subdir_example / JOB_SCRIPTS_SUBDIR).as_posix()
+    logs_hint = (jobs_root / job_subdir_example / JOB_LOGS_SUBDIR).as_posix()
+
+    template = f"""# slurmkit job spec template
+# Fill in values, then run:
+#   slurmkit generate job_spec.yaml --into my_experiment
+#
+# Using jobs_dir from config ({jobs_dir_value!r}), this spec would write:
+#   scripts: {scripts_hint}
+#   logs:    {logs_hint}
+
+name: my_experiment
+description: "Short description of this run"
+
+# Path to Jinja2 template for rendering job scripts.
+# Can be absolute or relative to this spec file.
+template: template.job.j2
+job_subdir: {job_subdir_example}
+
+parameters:
+  mode: grid
+  values:
+    learning_rate: [0.001, 0.01]
+    batch_size: [32, 64]
+
+  # Optional advanced hooks:
+  # parse: params_logic.py:parse_params
+  # A callback to parse/update parameters for each generated job. Takes params dict and returns updated dict or list of dicts.
+
+  # filter: params_logic.py:include_params
+  # A callback to filter parameter combinations in grid mode. Should return True to include a combination, False to exclude.
+
+  # Optional alternative: explicit list mode
+  # mode: list
+  # values:
+  #   - learning_rate: 0.001
+  #     batch_size: 32
+  #   - learning_rate: 0.01
+  #     batch_size: 64
+
+slurm_args:
+  defaults:
+    # partition: compute
+    time: "24:00:00"
+    mem: "16G"
+    nodes: 1
+    ntasks: 1
+    cpus_per_task: 1
+
+  # Optional advanced hook to programmatically customize SLURM arguments based on parameters or other logic
+  # logic: slurm_logic.py:get_slurm_args
+
+# Optional Jinja2 pattern for job names. Can use any parameter keys as variables.
+job_name_pattern: "exp_{{{{ learning_rate }}}}_bs{{{{ batch_size }}}}"
+
+# Optional collection-level notification overrides:
+# notifications:
+#   defaults:
+#     output_tail_lines: 20
+#   job:
+#     ai:
+#       enabled: true
+#       callback: "utilities.slurmkit.ai_callbacks:summarize_job_payload"
+#   collection_final:
+#     ai:
+#       enabled: true
+#       callback: "utilities.slurmkit.ai_callbacks:summarize_collection_report"
+"""
+    return template
+
+
 # =============================================================================
 # Job Generator Class
 # =============================================================================

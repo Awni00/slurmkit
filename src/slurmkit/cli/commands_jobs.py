@@ -8,6 +8,7 @@ from typing import Optional
 import typer
 
 from slurmkit.collections import CollectionManager
+from slurmkit.generate import render_job_spec_template
 
 from .helpers import resolve_collection_name, resolve_spec_path, resolve_target_collection_for_generate
 from .prompts import canceled, prompt_confirm
@@ -26,6 +27,31 @@ from slurmkit.workflows.jobs import (
 
 
 def register(app: typer.Typer) -> None:
+    @app.command("spec-template")
+    def spec_template_command(
+        ctx: typer.Context,
+        output: Path = typer.Option(
+            Path("job_spec.yaml"),
+            "--output",
+            "-o",
+            help="Path to write the spec template.",
+        ),
+        force: bool = typer.Option(False, "--force", help="Overwrite existing output file."),
+    ) -> None:
+        state = get_state(ctx)
+        destination = Path(output)
+        if destination.exists() and not force:
+            raise typer.BadParameter(
+                f"Output file already exists: {destination}. Use --force to overwrite."
+            )
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_text(
+            render_job_spec_template(config=state.config),
+            encoding="utf-8",
+        )
+        typer.echo(f"Spec template written to: {destination}")
+        raise typer.Exit(0)
+
     @app.command("generate")
     def generate_command(
         ctx: typer.Context,

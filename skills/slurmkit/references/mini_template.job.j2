@@ -1,0 +1,12 @@
+#!/bin/bash
+#SBATCH --job-name={{ job_name }}
+#SBATCH --partition={{ slurm.partition }}
+#SBATCH --time={{ slurm.time }}
+#SBATCH --mem={{ slurm.mem }}
+#SBATCH --output={{ logs_dir }}/{{ job_name }}.%j.out
+
+set -euo pipefail
+python train.py \
+  --learning-rate {{ learning_rate }} \
+  --batch-size {{ batch_size }} \
+  --seed {{ seed }}

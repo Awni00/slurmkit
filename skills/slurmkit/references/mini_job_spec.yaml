@@ -1,0 +1,25 @@
+name: my_experiment
+description: "Starter sweep"
+
+template: mini_template.job.j2
+job_subdir: experiments/my_experiment
+
+parameters:
+  mode: grid
+  values:
+    learning_rate: [0.001, 0.01]
+    batch_size: [32, 64]
+    seed: [1, 2]
+  # Optional callbacks (relative to this spec file):
+  # parse: mini_params_logic.py:parse_params
+  # filter: mini_params_logic.py:include_params
+
+slurm_args:
+  defaults:
+    partition: gpu
+    time: "04:00:00"
+    mem: "16G"
+  # Optional dynamic resources:
+  # logic: mini_slurm_logic.py:get_slurm_args
+
+job_name_pattern: "lr{{ learning_rate }}_bs{{ batch_size }}_s{{ seed }}"

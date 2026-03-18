@@ -191,3 +191,56 @@ def test_home_dispatches_install_skill_from_palette(monkeypatch):
 
     assert result.exit_code == 0
     assert "installed" in result.stdout
+
+
+def test_spec_template_writes_default_file(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+
+    result = runner.invoke(cli_app, ["spec-template"], catch_exceptions=False)
+
+    assert result.exit_code == 0
+    output = tmp_path / "job_spec.yaml"
+    assert output.exists()
+    content = output.read_text(encoding="utf-8")
+    assert "mode: grid" in content
+    assert "template: template.job.j2" in content
+
+
+def test_spec_template_writes_custom_output_path(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+
+    result = runner.invoke(
+        cli_app,
+        ["spec-template", "--output", "specs/custom_spec.yaml"],
+        catch_exceptions=False,
+    )
+
+    assert result.exit_code == 0
+    output = tmp_path / "specs" / "custom_spec.yaml"
+    assert output.exists()
+    assert "job_subdir:" in output.read_text(encoding="utf-8")
+
+
+def test_spec_template_errors_when_output_exists_without_force(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    output = tmp_path / "job_spec.yaml"
+    output.write_text("existing\n", encoding="utf-8")
+
+    result = runner.invoke(cli_app, ["spec-template"])
+
+    assert result.exit_code != 0
+    assert "already exists" in (result.stderr or result.stdout)
+    assert output.read_text(encoding="utf-8") == "existing\n"
+
+
+def test_spec_template_overwrites_when_force_enabled(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    output = tmp_path / "job_spec.yaml"
+    output.write_text("existing\n", encoding="utf-8")
+
+    result = runner.invoke(cli_app, ["spec-template", "--force"], catch_exceptions=False)
+
+    assert result.exit_code == 0
+    content = output.read_text(encoding="utf-8")
+    assert content != "existing\n"
+    assert "name: my_experiment" in content

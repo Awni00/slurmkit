@@ -68,6 +68,22 @@ slurmkit generate experiments/exp1/slurmkit/job_spec.yaml --into exp1
 slurmkit generate experiments/exp1/slurmkit/job_spec.yaml --into exp1 --dry-run
 ```
 
+### `slurmkit spec-template`
+
+Write a starter `job_spec.yaml` scaffold.
+
+```bash
+slurmkit spec-template [--output PATH] [--force]
+```
+
+Examples:
+
+```bash
+slurmkit spec-template
+slurmkit spec-template --output experiments/exp1/slurmkit/job_spec.yaml
+slurmkit spec-template --force
+```
+
 ### `slurmkit submit`
 
 Submit jobs from a collection.

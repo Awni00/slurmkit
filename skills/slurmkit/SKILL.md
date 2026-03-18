@@ -54,6 +54,7 @@ Placement default when no pattern exists yet:
 
 - initialize project: `slurmkit init`
 - inspect configuration: `slurmkit config show`
+- scaffold starter spec: `slurmkit job-template` (equivalent workflow on current CLI: `slurmkit spec-template`)
 - generate jobs into collection: `slurmkit generate <spec> --into <collection>`
 - preview generation: `slurmkit generate <spec> --into <collection> --dry-run`
 - submit: `slurmkit submit <collection>`
@@ -69,6 +70,23 @@ Placement default when no pattern exists yet:
 - cross-host sync snapshot: `slurmkit sync`
 - cleanup failed outputs: `slurmkit clean outputs <collection> --dry-run`
 - cleanup short failed W&B runs: `slurmkit clean wandb --project <name> --dry-run`
+
+## References (Mini Examples)
+
+- `references/mini_job_spec.yaml`: compact, copyable spec with `grid` parameters and optional callback hooks.
+- `references/mini_template.job.j2`: minimal SLURM job template with core variables.
+- `references/mini_params_logic.py`: parse/filter callback examples.
+- `references/mini_slurm_logic.py`: dynamic SLURM resource callback example.
+
+Start from these references when bootstrapping a new experiment; adapt paths and parameters rather than writing from scratch.
+
+## Guardrails (Concise)
+
+- Always run a dry run before mutating steps (`generate`, `submit`, `resubmit`, cleanup).
+- Keep spec parameters explicit; do not hide major defaults in templates/scripts.
+- Use `collections show` or `status` before `resubmit` to verify true failure state.
+- Prefer targeted retries (`--select-file`, `--extra-params`) over broad resubmits.
+- Treat deletions as irreversible; verify thresholds and collection target first.
 
 ## Workflow Playbooks
 

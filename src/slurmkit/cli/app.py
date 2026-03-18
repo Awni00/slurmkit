@@ -52,6 +52,7 @@ def _command_sections() -> list[CommandPaletteSection]:
         CommandPaletteSection(
             title="Main Workflow",
             commands=[
+                CommandPaletteEntry("spec_template", "spec-template", "Create a starter job spec template"),
                 CommandPaletteEntry("generate", "generate", "Generate jobs from a spec"),
                 CommandPaletteEntry("submit", "submit", "Submit a collection"),
                 CommandPaletteEntry("resubmit", "resubmit", "Resubmit failed jobs in a collection"),
@@ -99,6 +100,7 @@ def _home_impl(ctx: typer.Context) -> int:
         "config_show": ["config", "show"],
         "config_wizard": ["config", "wizard"],
         "migrate": ["migrate"],
+        "spec_template": ["spec-template"],
         "generate": ["generate"],
         "submit": ["submit"],
         "resubmit": ["resubmit"],
