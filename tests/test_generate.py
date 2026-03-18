@@ -13,8 +13,10 @@ from slurmkit.generate import (
     JobGenerator,
     load_job_spec,
     make_unique_job_name,
+    render_job_spec_template,
 )
 from slurmkit.collections import Collection
+from slurmkit.config import Config
 
 
 class TestExpandGrid:
@@ -276,6 +278,41 @@ def test_make_unique_job_name_appends_numeric_suffix():
     """Duplicate job names should be disambiguated with -N suffixes."""
     assert make_unique_job_name("train", {"train"}) == "train-2"
     assert make_unique_job_name("train", {"train", "train-2"}) == "train-3"
+
+
+def test_render_job_spec_template_has_core_fields_and_grid_mode():
+    content = render_job_spec_template()
+    assert "name: my_experiment" in content
+    assert "template: template.job.j2" in content
+    assert "job_subdir: experiments/my_experiment" in content
+    assert "mode: grid" in content
+    assert "values:" in content
+    assert "job_name_pattern: \"exp_{{ learning_rate }}_bs{{ batch_size }}\"" in content
+
+
+def test_render_job_spec_template_includes_commented_advanced_features():
+    content = render_job_spec_template()
+    assert "# parse: params_logic.py:parse_params" in content
+    assert "# filter: params_logic.py:include_params" in content
+    assert "# logic: slurm_logic.py:get_slurm_args" in content
+    assert "# notifications:" in content
+    assert "# Optional alternative: explicit list mode" in content
+
+
+def test_render_job_spec_template_includes_jobs_dir_hint(tmp_path):
+    config_dir = tmp_path / ".slurmkit"
+    config_dir.mkdir(parents=True)
+    (config_dir / "config.yaml").write_text("jobs_dir: custom_jobs/\n", encoding="utf-8")
+
+    config = Config(project_root=tmp_path)
+    content = render_job_spec_template(
+        config=config,
+        job_subdir_example="benchmarks/run_a",
+    )
+
+    assert "Using jobs_dir from config ('custom_jobs/')" in content
+    assert "scripts: custom_jobs/benchmarks/run_a/job_scripts" in content
+    assert "logs:    custom_jobs/benchmarks/run_a/logs" in content
 
 
 def test_job_generator_plan_and_dry_run_are_append_only(tmp_path):
