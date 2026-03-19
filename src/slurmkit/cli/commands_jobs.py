@@ -88,7 +88,13 @@ def register(app: typer.Typer) -> None:
             dry_run=dry_run,
         )
         if dry_run:
-            if result["preview"] is not None:
+            show_preview = False
+            if can_prompt(state):
+                confirmed = prompt_confirm("Show preview of first job?", default=False)
+                if confirmed is None:
+                    raise typer.Exit(canceled())
+                show_preview = confirmed
+            if show_preview and result["preview"] is not None:
                 typer.echo("")
                 typer.echo("[DRY RUN] Preview of first job:")
                 typer.echo("-" * 80)
