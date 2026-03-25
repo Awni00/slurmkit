@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
 import typer
+import yaml
 
 from slurmkit.collections import CollectionManager
 
@@ -216,8 +218,55 @@ def pick_spec_file(state: CLIState) -> Path | None:
     return Path(selected)
 
 
+def _parse_created_at(value: object) -> float | None:
+    if value is None:
+        return None
+    text = str(value).strip()
+    if not text:
+        return None
+    if text.endswith("Z"):
+        text = f"{text[:-1]}+00:00"
+    try:
+        parsed = datetime.fromisoformat(text)
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    else:
+        parsed = parsed.astimezone(timezone.utc)
+    try:
+        return parsed.timestamp()
+    except (OverflowError, OSError, ValueError):
+        return None
+
+
+def _read_created_at_timestamp(manager: CollectionManager, name: str) -> float | None:
+    path = manager.collections_dir / f"{name}.yaml"
+    try:
+        raw = path.read_text(encoding="utf-8")
+    except OSError:
+        return None
+    try:
+        payload = yaml.safe_load(raw) or {}
+    except yaml.YAMLError:
+        return None
+    if not isinstance(payload, dict):
+        return None
+    return _parse_created_at(payload.get("created_at"))
+
+
 def _collection_options(manager: CollectionManager) -> list[tuple[str, str]]:
-    return [(name, name) for name in manager.list_collections()]
+    rows: list[tuple[str, float | None]] = []
+    for name in manager.list_collections():
+        rows.append((name, _read_created_at_timestamp(manager, name)))
+    rows.sort(
+        key=lambda item: (
+            item[1] is None,
+            -item[1] if item[1] is not None else 0.0,
+            item[0],
+        )
+    )
+    return [(name, name) for name, _created_at in rows]
 
 
 def pick_collection(
