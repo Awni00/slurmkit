@@ -127,3 +127,112 @@ def test_resubmit_workflow_adds_attempt(monkeypatch, tmp_path):
     assert len(updated.jobs[0]["attempts"]) == 2
     assert updated.jobs[0]["attempts"][1]["job_id"] == "101"
     assert updated.jobs[0]["attempts"][1]["submission_group"] == "group_a"
+
+
+def test_resubmit_workflow_single_target_allows_nonfailed_and_warns(monkeypatch, tmp_path):
+    config = get_config(project_root=tmp_path, reload=True)
+    manager = CollectionManager(config=config)
+    collection = Collection("exp1")
+    script = tmp_path / "job1.job"
+    script.write_text("#!/bin/bash\n", encoding="utf-8")
+    collection.add_job("job1", script_path=script, job_id="100", state="COMPLETED", parameters={"lr": 0.1})
+    manager.save(collection)
+
+    monkeypatch.setattr("slurmkit.collections.get_sacct_info", lambda *_args, **_kwargs: {})
+    monkeypatch.setattr("slurmkit.workflows.jobs.submit_job", lambda _path, dry_run=False: (True, "101", "Submitted batch job 101"))
+
+    plan = plan_resubmit_collection(
+        config=config,
+        collection=collection,
+        filter_name="failed",
+        template=None,
+        extra_params=None,
+        extra_params_file=None,
+        extra_params_function="get_extra_params",
+        select_file=None,
+        select_function="should_resubmit",
+        submission_group="group_b",
+        regenerate=False,
+        target_job_names=["job1"],
+    )
+    assert len(plan.items) == 1
+    assert len(plan.warnings) == 1
+    assert "not failed" in plan.warnings[0]
+
+    result = execute_resubmit_collection(manager=manager, plan=plan, dry_run=False)
+    updated = manager.load("exp1")
+    assert result["resubmitted_count"] == 1
+    assert len(updated.jobs[0]["attempts"]) == 2
+    assert updated.jobs[0]["attempts"][1]["job_id"] == "101"
+
+
+def test_resubmit_workflow_single_target_dry_run_does_not_mutate_collection(monkeypatch, tmp_path):
+    config = get_config(project_root=tmp_path, reload=True)
+    manager = CollectionManager(config=config)
+    collection = Collection("exp1")
+    script = tmp_path / "job1.job"
+    script.write_text("#!/bin/bash\n", encoding="utf-8")
+    collection.add_job("job1", script_path=script, job_id="100", state="FAILED", parameters={"lr": 0.1})
+    manager.save(collection)
+
+    monkeypatch.setattr("slurmkit.collections.get_sacct_info", lambda *_args, **_kwargs: {})
+    monkeypatch.setattr("slurmkit.workflows.jobs.submit_job", lambda _path, dry_run=False: (True, "101", "Submitted batch job 101"))
+
+    plan = plan_resubmit_collection(
+        config=config,
+        collection=collection,
+        filter_name="failed",
+        template=None,
+        extra_params=None,
+        extra_params_file=None,
+        extra_params_function="get_extra_params",
+        select_file=None,
+        select_function="should_resubmit",
+        submission_group="group_c",
+        regenerate=False,
+        target_job_names=["job1"],
+    )
+    result = execute_resubmit_collection(manager=manager, plan=plan, dry_run=True)
+    updated = manager.load("exp1")
+    assert result["resubmitted_count"] == 1
+    assert len(updated.jobs[0]["attempts"]) == 1
+
+
+def test_resubmit_workflow_single_target_uses_latest_attempt_chain(monkeypatch, tmp_path):
+    config = get_config(project_root=tmp_path, reload=True)
+    manager = CollectionManager(config=config)
+    collection = Collection("exp1")
+    primary_script = tmp_path / "job1_primary.job"
+    retry_script = tmp_path / "job1_retry.job"
+    primary_script.write_text("#!/bin/bash\n", encoding="utf-8")
+    retry_script.write_text("#!/bin/bash\n", encoding="utf-8")
+    collection.add_job("job1", script_path=primary_script, job_id="100", state="FAILED", parameters={"lr": 0.1})
+    collection.add_resubmission("job1", job_id="101", attempt_script_path=retry_script)
+    collection.get_job("job1")["attempts"][-1]["state"] = "FAILED"
+    manager.save(collection)
+
+    monkeypatch.setattr("slurmkit.collections.get_sacct_info", lambda *_args, **_kwargs: {})
+    monkeypatch.setattr("slurmkit.workflows.jobs.submit_job", lambda _path, dry_run=False: (True, "102", "Submitted batch job 102"))
+
+    plan = plan_resubmit_collection(
+        config=config,
+        collection=collection,
+        filter_name="failed",
+        template=None,
+        extra_params=None,
+        extra_params_file=None,
+        extra_params_function="get_extra_params",
+        select_file=None,
+        select_function="should_resubmit",
+        submission_group="group_d",
+        regenerate=False,
+        target_job_names=["job1"],
+    )
+    assert len(plan.items) == 1
+    assert plan.items[0]["original_job_id"] == "101"
+
+    result = execute_resubmit_collection(manager=manager, plan=plan, dry_run=False)
+    updated = manager.load("exp1")
+    assert result["resubmitted_count"] == 1
+    assert len(updated.jobs[0]["attempts"]) == 3
+    assert updated.jobs[0]["attempts"][-1]["job_id"] == "102"

@@ -101,11 +101,19 @@ slurmkit submit exp1 --filter all --delay 1
 
 ### `slurmkit resubmit`
 
-Retry jobs from a collection.
+Retry jobs from a collection, or target one logical job by tracked SLURM job ID.
 
 ```bash
-slurmkit resubmit [COLLECTION] [--filter failed|all] [--dry-run] [-y]
+slurmkit resubmit [COLLECTION] [--job-id JOB_ID] [--filter failed|all] [--dry-run] [-y]
 ```
+
+Job-ID targeting rules:
+
+- With `--job-id`, collection is inferred automatically unless `[COLLECTION]` is provided to scope lookup.
+- If no collection matches the job ID, the command errors.
+- If multiple collections match the job ID, the command errors and asks for `[COLLECTION]`.
+- In `--job-id` mode, only the default `--filter failed` is allowed.
+- In `--job-id` mode, `--select-file`/`--select-function` are not supported.
 
 Advanced regeneration controls are also available:
 
@@ -123,6 +131,8 @@ Examples:
 ```bash
 slurmkit resubmit exp1 --filter failed --dry-run
 slurmkit resubmit exp1 --filter failed --submission-group retry_after_fix
+slurmkit resubmit --job-id 123456 --no-regenerate -y
+slurmkit resubmit exp1 --job-id 123456 --no-regenerate -y
 ```
 
 ### `slurmkit status`

@@ -141,6 +141,11 @@ def register(app: typer.Typer) -> None:
     def resubmit_command(
         ctx: typer.Context,
         collection: Optional[str] = typer.Argument(None, help="Collection name."),
+        job_id: Optional[str] = typer.Option(
+            None,
+            "--job-id",
+            help="Resubmit one logical job by a tracked SLURM job ID.",
+        ),
         filter_name: str = typer.Option("failed", "--filter", help="Resubmit failed jobs or all jobs."),
         template: Optional[Path] = typer.Option(None, "--template", help="Override template for regenerated scripts."),
         extra_params: Optional[str] = typer.Option(None, "--extra-params", help="Comma-separated KEY=VAL overrides."),
@@ -155,13 +160,59 @@ def register(app: typer.Typer) -> None:
     ) -> None:
         state = get_state(ctx)
         manager = CollectionManager(config=state.config)
-        collection_name = resolve_collection_name(
-            state,
-            manager,
-            collection,
-            prompt_title="Select a collection to resubmit",
-        )
-        target = manager.load(collection_name)
+        target_job_names = None
+        if job_id is None:
+            collection_name = resolve_collection_name(
+                state,
+                manager,
+                collection,
+                prompt_title="Select a collection to resubmit",
+            )
+            target = manager.load(collection_name)
+        else:
+            if filter_name != "failed":
+                raise typer.BadParameter(
+                    "`--filter` cannot be used with `--job-id` (only the default `failed` scope is supported).",
+                    param_hint="--filter",
+                )
+            if select_file is not None:
+                raise typer.BadParameter(
+                    "`--select-file` cannot be used with `--job-id`.",
+                    param_hint="--select-file",
+                )
+            if select_function != "should_resubmit":
+                raise typer.BadParameter(
+                    "`--select-function` cannot be used with `--job-id`.",
+                    param_hint="--select-function",
+                )
+            resolution = manager.resolve_job_id(job_id, collection_name=collection)
+            if collection and any(warning == f"Collection '{collection}' was not found." for warning in resolution.warnings):
+                raise typer.BadParameter(
+                    f"Collection '{collection}' was not found.",
+                    param_hint="collection",
+                )
+            for warning in resolution.warnings:
+                typer.echo(f"Warning: {warning}", err=True)
+            if not resolution.matches:
+                if collection:
+                    raise typer.BadParameter(
+                        f"Job ID '{job_id}' was not found in collection '{collection}'.",
+                        param_hint="--job-id",
+                    )
+                raise typer.BadParameter(
+                    f"No collection found for job ID '{job_id}'.",
+                    param_hint="--job-id",
+                )
+            if len(resolution.matches) > 1:
+                names = ", ".join(sorted(match.collection_name for match in resolution.matches))
+                raise typer.BadParameter(
+                    f"Job ID '{job_id}' matched multiple collections ({names}). "
+                    "Pass the collection positional argument to disambiguate.",
+                    param_hint="--job-id",
+                )
+            match = resolution.matches[0]
+            target = match.collection
+            target_job_names = [str(match.job["job_name"])]
         plan = plan_resubmit_collection(
             config=state.config,
             collection=target,
@@ -174,9 +225,12 @@ def register(app: typer.Typer) -> None:
             select_function=select_function,
             submission_group=submission_group,
             regenerate=regenerate,
+            target_job_names=target_job_names,
         )
         manager.save(target)
         print_review(plan.review)
+        for warning in plan.warnings:
+            typer.echo(f"Warning: {warning}", err=True)
         if not dry_run and not yes and can_prompt(state):
             confirmed = prompt_confirm("Resubmit jobs now?", default=True)
             if confirmed is None or not confirmed:

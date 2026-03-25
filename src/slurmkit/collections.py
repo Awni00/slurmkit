@@ -12,6 +12,7 @@ from __future__ import annotations
 import json
 import socket
 import subprocess
+from dataclasses import dataclass
 from datetime import datetime
 from functools import lru_cache
 from pathlib import Path
@@ -763,6 +764,24 @@ class Collection:
         return f"Collection(name={self.name!r}, jobs={len(self._jobs)})"
 
 
+@dataclass
+class JobIdMatch:
+    """Match payload for a tracked SLURM job ID lookup."""
+
+    collection_name: str
+    collection: Collection
+    job: Dict[str, Any]
+
+
+@dataclass
+class JobIdResolution:
+    """Resolution output for a tracked SLURM job ID lookup."""
+
+    job_id: str
+    matches: List[JobIdMatch]
+    warnings: List[str]
+
+
 class CollectionManager:
     """Load, save, and organize v2 collections."""
 
@@ -848,6 +867,47 @@ class CollectionManager:
         if not self.collections_dir.exists():
             return []
         return sorted(path.stem for path in self.collections_dir.glob("*.yaml"))
+
+    def resolve_job_id(
+        self,
+        job_id: str,
+        *,
+        collection_name: Optional[str] = None,
+    ) -> JobIdResolution:
+        """Resolve one tracked SLURM job ID to matching collection/job records."""
+        normalized_job_id = str(job_id).strip()
+        warnings: List[str] = []
+        matches: List[JobIdMatch] = []
+
+        if not normalized_job_id:
+            return JobIdResolution(job_id=normalized_job_id, matches=matches, warnings=warnings)
+
+        if collection_name is not None:
+            names = [collection_name]
+        else:
+            names = self.list_collections()
+
+        for name in names:
+            if collection_name is not None and not self.exists(name):
+                warnings.append(f"Collection '{name}' was not found.")
+                continue
+            try:
+                collection = self.load(name)
+            except Exception as exc:
+                warnings.append(f"Failed to load collection '{name}': {exc}")
+                continue
+            job = collection.get_job_by_id(normalized_job_id)
+            if job is None:
+                continue
+            matches.append(
+                JobIdMatch(
+                    collection_name=name,
+                    collection=collection,
+                    job=job,
+                )
+            )
+
+        return JobIdResolution(job_id=normalized_job_id, matches=matches, warnings=warnings)
 
     def list_collections_with_summary(self, attempt_mode: str = "primary") -> List[Dict[str, Any]]:
         rows = []

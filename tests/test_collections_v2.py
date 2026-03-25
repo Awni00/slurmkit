@@ -42,3 +42,34 @@ def test_collection_manager_saves_and_loads_v2_schema(tmp_path):
     assert restored.generation["spec_path"] == "specs/demo.yaml"
     assert restored.jobs[0]["attempts"][0]["script_path"] == "jobs/job1.job"
 
+
+def test_collection_manager_resolve_job_id_matches_old_attempts(tmp_path):
+    manager = CollectionManager(collections_dir=tmp_path)
+    collection = Collection("exp1")
+    collection.add_job("job1", script_path="jobs/job1.job", job_id="100", state="FAILED")
+    collection.add_resubmission("job1", job_id="101", submission_group="g1")
+    manager.save(collection)
+
+    primary_resolution = manager.resolve_job_id("100")
+    latest_resolution = manager.resolve_job_id("101")
+
+    assert len(primary_resolution.matches) == 1
+    assert primary_resolution.matches[0].collection_name == "exp1"
+    assert primary_resolution.matches[0].job["job_name"] == "job1"
+    assert len(latest_resolution.matches) == 1
+    assert latest_resolution.matches[0].job["job_name"] == "job1"
+
+
+def test_collection_manager_resolve_job_id_can_be_ambiguous(tmp_path):
+    manager = CollectionManager(collections_dir=tmp_path)
+    first = Collection("exp1")
+    first.add_job("job1", script_path="jobs/job1.job", job_id="100", state="FAILED")
+    second = Collection("exp2")
+    second.add_job("job2", script_path="jobs/job2.job", job_id="100", state="FAILED")
+    manager.save(first)
+    manager.save(second)
+
+    resolution = manager.resolve_job_id("100")
+
+    assert len(resolution.matches) == 2
+    assert sorted(match.collection_name for match in resolution.matches) == ["exp1", "exp2"]

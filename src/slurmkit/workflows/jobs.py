@@ -53,6 +53,7 @@ class ResubmitPlan:
     regenerate: bool
     items: List[Dict[str, Any]]
     skipped: List[Dict[str, Any]]
+    warnings: List[str]
     resubmit_generator: Optional[JobGenerator]
     generation_context: Optional[Dict[str, Any]]
     review: ReviewPlan
@@ -238,7 +239,20 @@ def execute_submit_collection(
     }
 
 
-def _resolve_resubmit_jobs(collection: Collection, filter_name: str) -> List[Dict[str, Any]]:
+def _resolve_resubmit_jobs(
+    collection: Collection,
+    filter_name: str,
+    target_job_names: Optional[List[str]] = None,
+) -> List[Dict[str, Any]]:
+    if target_job_names:
+        jobs_by_name = {job["job_name"]: job for job in collection.jobs}
+        missing = [job_name for job_name in target_job_names if job_name not in jobs_by_name]
+        if missing:
+            missing_text = ", ".join(sorted(set(missing)))
+            raise ValueError(
+                f"Target jobs not found in collection '{collection.name}': {missing_text}"
+            )
+        return [jobs_by_name[job_name] for job_name in target_job_names]
     if filter_name == "failed":
         return [
             row["job"]
@@ -260,6 +274,7 @@ def plan_resubmit_collection(
     select_function: str,
     submission_group: Optional[str],
     regenerate: Optional[bool],
+    target_job_names: Optional[List[str]] = None,
 ) -> ResubmitPlan:
     collection.refresh_states()
     static_extra_params = parse_key_value_pairs(extra_params)
@@ -277,7 +292,27 @@ def plan_resubmit_collection(
         callback_kind="selection",
     )
 
-    jobs_to_consider = _resolve_resubmit_jobs(collection, filter_name)
+    jobs_to_consider = _resolve_resubmit_jobs(
+        collection,
+        filter_name,
+        target_job_names=target_job_names,
+    )
+    warnings: List[str] = []
+    if target_job_names:
+        latest_rows = {
+            row["job_name"]: row
+            for row in collection.get_effective_jobs(attempt_mode="latest")
+        }
+        for job_name in target_job_names:
+            row = latest_rows.get(job_name)
+            if row is None:
+                continue
+            state = str(row.get("effective_state") or "unknown")
+            if state != JOB_STATE_FAILED:
+                warnings.append(
+                    f"Job '{job_name}' latest state is '{state}' (not failed); "
+                    "proceeding due to explicit target."
+                )
     generation_context: Optional[Dict[str, Any]] = None
     resubmit_generator: Optional[JobGenerator] = None
     if resolved_regenerate:
@@ -384,7 +419,7 @@ def plan_resubmit_collection(
             f"Regenerate scripts: {'yes' if resolved_regenerate else 'no'}",
             f"Submission group: {group_name}",
             f"Jobs to resubmit: {len(items)}",
-        ],
+        ] + ([f"Warnings: {len(warnings)}"] if warnings else []),
         review_items,
     )
     return ResubmitPlan(
@@ -393,6 +428,7 @@ def plan_resubmit_collection(
         regenerate=resolved_regenerate,
         items=items,
         skipped=skipped,
+        warnings=warnings,
         resubmit_generator=resubmit_generator,
         generation_context=generation_context,
         review=review,

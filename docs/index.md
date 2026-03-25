@@ -81,6 +81,7 @@ slurmkit collections analyze exp1
 ```bash
 slurmkit resubmit exp1 --filter failed --dry-run
 slurmkit resubmit exp1 --filter failed
+slurmkit resubmit --job-id 123456 --no-regenerate -y
 ```
 
 ## Main commands
@@ -92,7 +93,7 @@ slurmkit resubmit exp1 --filter failed
 | `slurmkit migrate` | Rewrite old `.slurm-kit/` and `.job-collections/` state |
 | `slurmkit generate <spec> --into <collection>` | Generate job scripts into a collection |
 | `slurmkit submit <collection>` | Submit jobs from a collection |
-| `slurmkit resubmit <collection>` | Retry failed or all jobs in a collection |
+| `slurmkit resubmit [collection] [--job-id <id>]` | Retry failed/all jobs in a collection, or one tracked job by ID |
 | `slurmkit status <collection>` | Compact live status view |
 | `slurmkit collections ...` | List, inspect, analyze, refresh, cancel, delete |
 | `slurmkit notify ...` | Send test, job, or collection-final notifications |
