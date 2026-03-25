@@ -9,7 +9,9 @@ import typer
 
 from slurmkit.cli.ui import (
     UIResolutionError,
+    build_collection_list_report,
     create_ui_backend,
+    render_collection_list_report,
     render_collection_analyze_report,
     render_collection_show_report,
     resolve_ui_context,
@@ -41,6 +43,16 @@ def render_collection_show(*, args: Any, config: Any, report: Any) -> None:
     except UIResolutionError as exc:
         raise RuntimeError(str(exc)) from exc
     render_collection_show_report(report, backend)
+
+
+def render_collection_list(*, args: Any, config: Any, rows: Sequence[dict[str, Any]]) -> None:
+    try:
+        ui_context = resolve_ui_context(args, config)
+        backend = create_ui_backend(ui_context)
+    except UIResolutionError as exc:
+        raise RuntimeError(str(exc)) from exc
+    report = build_collection_list_report(rows=rows)
+    render_collection_list_report(report, backend)
 
 
 def render_collection_analyze(*, args: Any, config: Any, report: Any) -> None:

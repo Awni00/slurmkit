@@ -9,6 +9,7 @@ import yaml
 from slurmkit.cli.ui.backend import UIBackend
 from slurmkit.cli.ui.models import (
     CollectionAnalyzeReport,
+    CollectionListReport,
     CollectionShowReport,
     MetricItem,
     TableSection,
@@ -179,6 +180,46 @@ def build_collection_show_report(
         ),
         summary_metrics=summary_metrics,
         jobs_table=jobs_table,
+    )
+
+
+def build_collection_list_report(
+    *,
+    rows: Sequence[Dict[str, Any]],
+) -> CollectionListReport:
+    """Build view-model for collection list output."""
+    table_rows = []
+    for row in rows:
+        table_rows.append(
+            [
+                str(row.get("name", "")),
+                str(row.get("total", 0)),
+                str(row.get("completed", 0)),
+                str(row.get("failed", 0)),
+                str(row.get("running", 0)),
+                str(row.get("pending", 0)),
+                str(row.get("not_submitted", 0)),
+                str(row.get("updated_at", "") or ""),
+            ]
+        )
+
+    return CollectionListReport(
+        title="Collections",
+        table=TableSection(
+            title=f"Collections ({len(rows)}):",
+            headers=[
+                "Name",
+                "Total",
+                "Completed",
+                "Failed",
+                "Running",
+                "Pending",
+                "Not Submitted",
+                "Updated",
+            ],
+            rows=table_rows,
+            empty_message="  (no collections)",
+        ),
     )
 
 
@@ -353,6 +394,18 @@ def render_collection_show_report(report: CollectionShowReport, backend: UIBacke
         rows=report.jobs_table.rows,
         status_columns=report.jobs_table.status_columns,
         empty_message=report.jobs_table.empty_message,
+    )
+
+
+def render_collection_list_report(report: CollectionListReport, backend: UIBackend) -> None:
+    """Render collection list report with selected backend."""
+    backend.heading(report.title)
+    backend.table(
+        title=report.table.title,
+        headers=report.table.headers,
+        rows=report.table.rows,
+        status_columns=report.table.status_columns,
+        empty_message=report.table.empty_message,
     )
 
 

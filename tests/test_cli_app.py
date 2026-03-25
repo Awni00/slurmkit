@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -12,6 +13,52 @@ from slurmkit.cli.app import app as cli_app
 
 
 runner = CliRunner()
+
+
+def _write_config(tmp_path: Path) -> Path:
+    config_path = tmp_path / ".slurmkit" / "config.yaml"
+    config_path.parent.mkdir(parents=True, exist_ok=True)
+    config_path.write_text(yaml.safe_dump({"jobs_dir": "jobs/"}), encoding="utf-8")
+    return config_path
+
+
+def _write_collection_file(
+    tmp_path: Path,
+    *,
+    name: str,
+    updated_at: str | None,
+    state: str = "COMPLETED",
+) -> None:
+    collections_dir = tmp_path / ".slurmkit" / "collections"
+    collections_dir.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "version": 2,
+        "name": name,
+        "description": "",
+        "created_at": "2026-03-20T10:00:00",
+        "updated_at": updated_at,
+        "cluster": "cluster-a",
+        "parameters": {},
+        "generation": {},
+        "notifications": {},
+        "jobs": [
+            {
+                "job_name": f"{name}_job",
+                "parameters": {},
+                "attempts": [
+                    {
+                        "kind": "primary",
+                        "job_id": "100",
+                        "state": state,
+                    }
+                ],
+            }
+        ],
+    }
+    (collections_dir / f"{name}.yaml").write_text(
+        yaml.safe_dump(payload, sort_keys=False),
+        encoding="utf-8",
+    )
 
 
 def test_root_no_args_prints_help_when_not_interactive():
@@ -63,6 +110,69 @@ def test_removed_jobs_namespace_is_not_registered():
     result = runner.invoke(cli_app, ["jobs"])
     assert result.exit_code != 0
     assert "No such command" in (result.stderr or result.stdout)
+
+
+def test_collections_list_table_renders_expected_columns_and_newest_first(tmp_path):
+    config_path = _write_config(tmp_path)
+    _write_collection_file(tmp_path, name="older", updated_at="2026-03-20T10:00:00", state="FAILED")
+    _write_collection_file(tmp_path, name="newer", updated_at="2026-03-24T10:00:00", state="COMPLETED")
+
+    result = runner.invoke(
+        cli_app,
+        ["--config", str(config_path), "--ui", "plain", "collections", "list"],
+    )
+
+    assert result.exit_code == 0
+    assert "Name" in result.stdout
+    assert "Total" in result.stdout
+    assert "Completed" in result.stdout
+    assert "Failed" in result.stdout
+    assert "Running" in result.stdout
+    assert "Pending" in result.stdout
+    assert "Not Submitted" in result.stdout
+    assert "Updated" in result.stdout
+    assert result.stdout.index("newer") < result.stdout.index("older")
+
+
+def test_collections_list_json_preserves_schema_and_uses_newest_first_order(tmp_path):
+    config_path = _write_config(tmp_path)
+    _write_collection_file(tmp_path, name="older", updated_at="2026-03-20T10:00:00")
+    _write_collection_file(tmp_path, name="newer", updated_at="2026-03-24T10:00:00")
+
+    result = runner.invoke(
+        cli_app,
+        ["--config", str(config_path), "collections", "list", "--json"],
+    )
+
+    assert result.exit_code == 0
+    rows = json.loads(result.stdout)
+    assert [row["name"] for row in rows] == ["newer", "older"]
+    assert set(rows[0].keys()) == {
+        "name",
+        "description",
+        "cluster",
+        "created_at",
+        "updated_at",
+        "total",
+        "completed",
+        "failed",
+        "running",
+        "pending",
+        "unknown",
+        "not_submitted",
+    }
+
+
+def test_collections_list_empty_state_shows_no_collections_message(tmp_path):
+    config_path = _write_config(tmp_path)
+
+    result = runner.invoke(
+        cli_app,
+        ["--config", str(config_path), "--ui", "plain", "collections", "list"],
+    )
+
+    assert result.exit_code == 0
+    assert "(no collections)" in result.stdout
 
 
 def test_migrate_command_runs(tmp_path):

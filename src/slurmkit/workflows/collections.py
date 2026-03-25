@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -23,12 +24,50 @@ class RenderableReport:
     payload: Optional[Dict[str, Any]]
 
 
+def _parse_sort_timestamp(value: Any) -> Optional[float]:
+    if value is None:
+        return None
+    text = str(value).strip()
+    if not text:
+        return None
+    if text.endswith("Z"):
+        text = f"{text[:-1]}+00:00"
+    try:
+        parsed = datetime.fromisoformat(text)
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    else:
+        parsed = parsed.astimezone(timezone.utc)
+    try:
+        return parsed.timestamp()
+    except (OverflowError, OSError, ValueError):
+        return None
+
+
+def _sort_collection_summaries(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    def _sort_key(row: Dict[str, Any]) -> tuple[bool, float, str]:
+        timestamp = _parse_sort_timestamp(row.get("updated_at"))
+        return (
+            timestamp is None,
+            -timestamp if timestamp is not None else 0.0,
+            str(row.get("name", "")),
+        )
+
+    return sorted(
+        rows,
+        key=_sort_key,
+    )
+
+
 def list_collection_summaries(
     *,
     manager: CollectionManager,
     attempt_mode: str = "latest",
 ) -> List[Dict[str, Any]]:
-    return manager.list_collections_with_summary(attempt_mode=attempt_mode)
+    rows = manager.list_collections_with_summary(attempt_mode=attempt_mode)
+    return _sort_collection_summaries(rows)
 
 
 def load_collection(

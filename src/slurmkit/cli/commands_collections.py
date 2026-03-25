@@ -16,7 +16,13 @@ from .prompts import (
     choose_command,
     prompt_confirm,
 )
-from .rendering import print_json, print_review, render_collection_analyze, render_collection_show
+from .rendering import (
+    print_json,
+    print_review,
+    render_collection_analyze,
+    render_collection_list,
+    render_collection_show,
+)
 from .runtime import can_prompt, get_state
 from slurmkit.workflows.collections import (
     analyze_collection,
@@ -87,11 +93,7 @@ def list_command(
     if json_mode:
         print_json(rows)
     else:
-        for row in rows:
-            typer.echo(
-                f"{row['name']}: total={row['total']} completed={row['completed']} "
-                f"failed={row['failed']} running={row['running']} pending={row['pending']}"
-            )
+        render_collection_list(args=type("Args", (), {"ui": state.ui})(), config=state.config, rows=rows)
     raise typer.Exit(0)
 
 

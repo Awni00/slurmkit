@@ -44,6 +44,14 @@ class CollectionShowReport:
 
 
 @dataclass(frozen=True)
+class CollectionListReport:
+    """View model for `collections list` table output."""
+
+    title: str
+    table: TableSection
+
+
+@dataclass(frozen=True)
 class CollectionAnalyzeReport:
     """View model for `collection analyze` table output."""
 
