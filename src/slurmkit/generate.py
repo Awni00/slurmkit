@@ -807,6 +807,8 @@ class JobGenerator:
         self._env = Environment(
             loader=FileSystemLoader(str(template_dir)),
             keep_trailing_newline=True,
+            trim_blocks=True,    # removes the first newline after a block tag
+            lstrip_blocks=True,  # strips leading whitespace from block-tag lines
         )
 
     def _render_job(self, params: Dict[str, Any], job_name: str) -> Tuple[Dict[str, Any], str]:
