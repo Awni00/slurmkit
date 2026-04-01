@@ -7,7 +7,7 @@
 A spec controls:
 
 - the template file
-- the relative `job_subdir`
+- the relative or templated `job_subdir`
 - parameter expansion (`grid` or `list`)
 - optional parse/filter hooks
 - default and dynamic SLURM args
@@ -50,6 +50,34 @@ With default config, this writes:
 
 - scripts to `.jobs/sweeps/exp1/job_scripts/`
 - logs to `.jobs/sweeps/exp1/logs/`
+
+## Templated `job_subdir`
+
+`job_subdir` supports Jinja-style interpolation with strict variable handling.
+
+```yaml
+name: exp1
+job_subdir: sweeps/{{ collection_slug }}/{{ vars.stage }}
+
+variables:
+  stage: baseline
+```
+
+When run with `--into "Train Exp 2026"`, this resolves to:
+
+- `.jobs/sweeps/train-exp-2026/baseline/job_scripts/`
+- `.jobs/sweeps/train-exp-2026/baseline/logs/`
+
+Available built-ins for `job_subdir`:
+
+- `collection_name` (from `--into`)
+- `collection_slug` (filesystem-safe slug derived from `collection_name`)
+- `spec_name` (top-level `name`, when present)
+- `spec_stem` (spec filename without extension)
+- `spec_dir` (spec directory relative to project root)
+- `vars.<key>` (from top-level `variables:` mapping)
+
+If a referenced variable is undefined, generation fails with a clear error.
 
 ## Template variables
 

@@ -11,6 +11,7 @@ from typing import Any, Dict, List, Optional
 from slurmkit.collections import Collection, CollectionManager, JOB_STATE_FAILED
 from slurmkit.config import Config
 from slurmkit.generate import JobGenerator, load_job_spec
+from slurmkit.spec_interpolation import has_template_syntax
 from slurmkit.slurm import submit_job
 
 from .shared import (
@@ -68,10 +69,20 @@ def plan_generate(
 ) -> GeneratePlan:
     spec_data = load_job_spec(spec_path)
     existing_collection = manager.load(collection_name) if manager.exists(collection_name) else None
-    generator = JobGenerator.from_spec(spec_path, config=config)
-    job_paths = resolve_job_paths_from_spec(config=config, spec_data=spec_data)
+    generator = JobGenerator.from_spec(
+        spec_path,
+        config=config,
+        collection_name=collection_name,
+    )
+    job_paths = resolve_job_paths_from_spec(
+        config=config,
+        spec_data=spec_data,
+        spec_path=spec_path,
+        collection_name=collection_name,
+    )
     scripts_dir = job_paths["scripts_dir"]
     logs_dir = job_paths["logs_dir"]
+    raw_job_subdir = str(spec_data.get("job_subdir", ""))
     job_subdir = str(job_paths["job_subdir"])
     items = generator.plan(output_dir=scripts_dir, collection=existing_collection)
     renamed = [
@@ -89,7 +100,14 @@ def plan_generate(
         [
             f"Spec: {spec_path}",
             f"Collection: {collection_name} ({'existing' if existing_collection else 'new'})",
-            f"Job subdir: {job_subdir}",
+            *(
+                [
+                    f"Job subdir (raw): {raw_job_subdir}",
+                    f"Job subdir (resolved): {job_subdir}",
+                ]
+                if has_template_syntax(raw_job_subdir)
+                else [f"Job subdir: {job_subdir}"]
+            ),
             f"Scripts dir: {scripts_dir}",
             f"Logs dir: {logs_dir}",
             f"Jobs to generate: {len(items)}",

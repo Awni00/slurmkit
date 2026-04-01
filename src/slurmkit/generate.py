@@ -15,13 +15,14 @@ import importlib.util
 import itertools
 import sys
 from pathlib import Path
-from typing import Any, Callable, Dict, Iterable, Iterator, List, Optional, Tuple, Union
+from typing import Any, Callable, Dict, Iterable, Iterator, List, Mapping, Optional, Tuple, Union
 
 import yaml
 from jinja2 import Environment, FileSystemLoader, Template
 
 from slurmkit.config import JOB_LOGS_SUBDIR, JOB_SCRIPTS_SUBDIR, Config, get_config
 from slurmkit.collections import Collection, CollectionManager
+from slurmkit.spec_interpolation import build_job_subdir_context, render_spec_string
 
 
 # =============================================================================
@@ -240,13 +241,22 @@ def parse_python_file_function_spec(
     return {"file": file_path, "function": function_name}
 
 
-def resolve_job_subdir(spec: Dict[str, Any]) -> str:
+def resolve_job_subdir(
+    spec: Dict[str, Any],
+    *,
+    interpolation_context: Optional[Mapping[str, Any]] = None,
+) -> str:
     """Return the validated relative jobs subdirectory for a spec."""
     job_subdir_raw = spec.get("job_subdir")
     if not job_subdir_raw:
         raise ValueError("Job spec is missing required field 'job_subdir'.")
 
-    job_subdir = Path(str(job_subdir_raw))
+    rendered_subdir = render_spec_string(
+        job_subdir_raw,
+        field_name="job_subdir",
+        context=interpolation_context or {},
+    )
+    job_subdir = Path(rendered_subdir)
     if job_subdir.is_absolute():
         raise ValueError("Job spec field 'job_subdir' must be relative.")
     if ".." in job_subdir.parts:
@@ -254,13 +264,18 @@ def resolve_job_subdir(spec: Dict[str, Any]) -> str:
     return job_subdir.as_posix()
 
 
-def resolve_spec_job_paths(spec: Dict[str, Any], config: Config) -> Dict[str, Path | str]:
+def resolve_spec_job_paths(
+    spec: Dict[str, Any],
+    config: Config,
+    *,
+    interpolation_context: Optional[Mapping[str, Any]] = None,
+) -> Dict[str, Path | str]:
     """Resolve canonical scripts/logs paths for a spec from config `jobs_dir`."""
     jobs_dir = config.get_path("jobs_dir")
     if jobs_dir is None:
         raise ValueError("Config is missing 'jobs_dir'.")
 
-    job_subdir = resolve_job_subdir(spec)
+    job_subdir = resolve_job_subdir(spec, interpolation_context=interpolation_context)
     job_dir = jobs_dir / Path(job_subdir)
     return {
         "job_subdir": job_subdir,
@@ -620,6 +635,15 @@ description: "Short description of this run"
 template: template.job.j2
 job_subdir: {job_subdir_example}
 
+# Optional: template `job_subdir` with built-ins and variables.
+# Built-ins: collection_name, collection_slug, spec_name, spec_stem, spec_dir.
+# Example:
+# job_subdir: experiments/{{{{ collection_slug }}}}/{{{{ vars.stage }}}}
+#
+# Optional variables available as vars.<key> in templated fields:
+# variables:
+#   stage: baseline
+
 parameters:
   mode: grid
   values:
@@ -861,6 +885,8 @@ class JobGenerator:
         cls,
         spec_path: Union[str, Path],
         config: Optional[Config] = None,
+        collection_name: Optional[str] = None,
+        interpolation_context: Optional[Mapping[str, Any]] = None,
     ) -> "JobGenerator":
         """
         Create a generator from a job spec file.
@@ -868,6 +894,8 @@ class JobGenerator:
         Args:
             spec_path: Path to the job spec YAML file.
             config: Configuration object.
+            collection_name: Optional collection name used in path interpolation.
+            interpolation_context: Optional explicit interpolation context.
 
         Returns:
             Configured JobGenerator instance.
@@ -902,7 +930,15 @@ class JobGenerator:
             slurm_logic_function = logic_spec["function"]
 
         config = config or get_config()
-        job_paths = resolve_spec_job_paths(spec, config)
+        context = dict(interpolation_context or {})
+        if not context:
+            context = build_job_subdir_context(
+                spec_data=spec,
+                spec_path=spec_path,
+                collection_name=collection_name,
+                project_root=getattr(config, "project_root", None),
+            )
+        job_paths = resolve_spec_job_paths(spec, config, interpolation_context=context)
 
         return cls(
             template_path=template_path,
@@ -1149,8 +1185,19 @@ def generate_jobs_from_spec(
     spec_path = Path(spec_path)
     spec = load_job_spec(spec_path)
     config = get_config()
-    generator = JobGenerator.from_spec(spec_path, config=config)
-    job_paths = resolve_spec_job_paths(spec, config)
+    context = build_job_subdir_context(
+        spec_data=spec,
+        spec_path=spec_path,
+        collection_name=collection_name,
+        project_root=getattr(config, "project_root", None),
+    )
+    generator = JobGenerator.from_spec(
+        spec_path,
+        config=config,
+        collection_name=collection_name,
+        interpolation_context=context,
+    )
+    job_paths = resolve_spec_job_paths(spec, config, interpolation_context=context)
 
     collection = None
     manager = None

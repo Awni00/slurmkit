@@ -10,8 +10,9 @@ from pathlib import Path
 from typing import Any, Callable, Dict, Optional, Sequence
 
 from slurmkit.collections import Collection
-from slurmkit.config import JOB_LOGS_SUBDIR, JOB_SCRIPTS_SUBDIR, Config
-from slurmkit.generate import JobGenerator
+from slurmkit.config import Config
+from slurmkit.generate import JobGenerator, resolve_spec_job_paths
+from slurmkit.spec_interpolation import build_job_subdir_context
 
 
 @dataclass(frozen=True)
@@ -156,25 +157,20 @@ def resolve_job_paths_from_spec(
     *,
     config: Config,
     spec_data: Dict[str, Any],
+    spec_path: Path,
+    collection_name: Optional[str] = None,
 ) -> Dict[str, Path | str]:
-    jobs_dir = config.get_path("jobs_dir")
-    if jobs_dir is None:
-        raise ValueError("Config is missing 'jobs_dir'.")
-
-    job_subdir_raw = spec_data.get("job_subdir")
-    if not job_subdir_raw:
-        raise ValueError("Spec is missing required field 'job_subdir'.")
-
-    job_subdir = Path(str(job_subdir_raw))
-    if job_subdir.is_absolute():
-        raise ValueError("Spec field 'job_subdir' must be relative.")
-    if ".." in job_subdir.parts:
-        raise ValueError("Spec field 'job_subdir' cannot contain '..'.")
-
-    scripts_dir = jobs_dir / job_subdir / JOB_SCRIPTS_SUBDIR
-    logs_dir = jobs_dir / job_subdir / JOB_LOGS_SUBDIR
+    context = build_job_subdir_context(
+        spec_data=spec_data,
+        spec_path=spec_path,
+        collection_name=collection_name,
+        project_root=getattr(config, "project_root", None),
+    )
+    resolved = resolve_spec_job_paths(spec_data, config, interpolation_context=context)
+    scripts_dir = Path(str(resolved["scripts_dir"]))
+    logs_dir = Path(str(resolved["logs_dir"]))
     return {
-        "job_subdir": job_subdir.as_posix(),
+        "job_subdir": str(resolved["job_subdir"]),
         "scripts_dir": scripts_dir,
         "logs_dir": logs_dir,
     }

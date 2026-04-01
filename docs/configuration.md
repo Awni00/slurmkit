@@ -86,7 +86,7 @@ These paths are fixed and derived from the project root. They are not public con
 
 ## Jobs layout
 
-Specs define a relative `job_subdir`. `slurmkit` then derives:
+Specs define a relative `job_subdir` (including templated values that resolve to a relative path). `slurmkit` then derives:
 
 - `{jobs_dir}/{job_subdir}/job_scripts/`
 - `{jobs_dir}/{job_subdir}/logs/`
@@ -99,6 +99,14 @@ jobs_dir: .jobs/
 
 ```yaml
 job_subdir: comparisons/model_a
+```
+
+or
+
+```yaml
+job_subdir: comparisons/{{ collection_slug }}/{{ vars.variant }}
+variables:
+  variant: model_a
 ```
 
 This yields:

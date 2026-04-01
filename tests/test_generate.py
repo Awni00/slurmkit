@@ -292,6 +292,10 @@ def test_render_job_spec_template_has_core_fields_and_grid_mode():
 
 def test_render_job_spec_template_includes_commented_advanced_features():
     content = render_job_spec_template()
+    assert "# Built-ins: collection_name, collection_slug, spec_name, spec_stem, spec_dir." in content
+    assert "# job_subdir: experiments/{{ collection_slug }}/{{ vars.stage }}" in content
+    assert "# variables:" in content
+    assert "#   stage: baseline" in content
     assert "# parse: params_logic.py:parse_params" in content
     assert "# filter: params_logic.py:include_params" in content
     assert "# logic: slurm_logic.py:get_slurm_args" in content
@@ -489,6 +493,141 @@ echo "Batch size: {{ batch_size }}"
 
             generator = JobGenerator.from_spec(spec_path)
             assert generator.count_jobs() == 1
+
+    def test_generator_from_spec_renders_job_subdir_with_collection_context(self, template_dir):
+        """Templated job_subdir should resolve with collection and vars context."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp_path = Path(tmpdir)
+            spec_path = tmp_path / "spec.yaml"
+            spec_data = {
+                "template": str(Path(template_dir) / "test.job.j2"),
+                "job_subdir": "runs/{{ collection_slug }}/{{ vars.stage }}",
+                "variables": {"stage": "baseline"},
+                "parameters": {
+                    "mode": "list",
+                    "values": [{"learning_rate": 0.1, "batch_size": 32}],
+                },
+                "slurm_args": {"defaults": {"partition": "gpu", "time": "1:00:00"}},
+            }
+            with open(spec_path, "w") as f:
+                yaml.dump(spec_data, f)
+
+            config = Config(project_root=tmp_path)
+            generator = JobGenerator.from_spec(
+                spec_path,
+                config=config,
+                collection_name="Train Exp 2026",
+            )
+            assert generator.logs_dir == (
+                tmp_path
+                / ".jobs"
+                / "runs"
+                / "train-exp-2026"
+                / "baseline"
+                / "logs"
+            )
+
+    def test_generator_from_spec_fails_on_undefined_job_subdir_variable(self, template_dir):
+        """Undefined template variables in job_subdir should fail with context."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp_path = Path(tmpdir)
+            spec_path = tmp_path / "spec.yaml"
+            spec_data = {
+                "template": str(Path(template_dir) / "test.job.j2"),
+                "job_subdir": "runs/{{ collection_slug }}/{{ vars.stage }}",
+                "parameters": {
+                    "mode": "list",
+                    "values": [{"learning_rate": 0.1, "batch_size": 32}],
+                },
+                "slurm_args": {"defaults": {"partition": "gpu", "time": "1:00:00"}},
+            }
+            with open(spec_path, "w") as f:
+                yaml.dump(spec_data, f)
+
+            config = Config(project_root=tmp_path)
+            with pytest.raises(ValueError, match="undefined template variable"):
+                JobGenerator.from_spec(
+                    spec_path,
+                    config=config,
+                    collection_name="Train Exp 2026",
+                )
+
+    def test_generator_from_spec_rejects_non_mapping_variables(self, template_dir):
+        """Spec `variables` must be a mapping for interpolation."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp_path = Path(tmpdir)
+            spec_path = tmp_path / "spec.yaml"
+            spec_data = {
+                "template": str(Path(template_dir) / "test.job.j2"),
+                "job_subdir": "runs/{{ vars.stage }}",
+                "variables": ["bad", "data"],
+                "parameters": {
+                    "mode": "list",
+                    "values": [{"learning_rate": 0.1, "batch_size": 32}],
+                },
+                "slurm_args": {"defaults": {"partition": "gpu", "time": "1:00:00"}},
+            }
+            with open(spec_path, "w") as f:
+                yaml.dump(spec_data, f)
+
+            config = Config(project_root=tmp_path)
+            with pytest.raises(ValueError, match="Spec field 'variables' must be a mapping"):
+                JobGenerator.from_spec(
+                    spec_path,
+                    config=config,
+                    collection_name="Train Exp 2026",
+                )
+
+    def test_generator_from_spec_rejects_absolute_job_subdir_after_render(self, template_dir):
+        """Rendered job_subdir must remain relative."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp_path = Path(tmpdir)
+            spec_path = tmp_path / "spec.yaml"
+            spec_data = {
+                "template": str(Path(template_dir) / "test.job.j2"),
+                "job_subdir": "/tmp/{{ collection_slug }}",
+                "parameters": {
+                    "mode": "list",
+                    "values": [{"learning_rate": 0.1, "batch_size": 32}],
+                },
+                "slurm_args": {"defaults": {"partition": "gpu", "time": "1:00:00"}},
+            }
+            with open(spec_path, "w") as f:
+                yaml.dump(spec_data, f)
+
+            config = Config(project_root=tmp_path)
+            with pytest.raises(ValueError, match="must be relative"):
+                JobGenerator.from_spec(
+                    spec_path,
+                    config=config,
+                    collection_name="Train Exp 2026",
+                )
+
+    def test_generator_from_spec_rejects_parent_segments_after_render(self, template_dir):
+        """Rendered job_subdir cannot include parent path segments."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp_path = Path(tmpdir)
+            spec_path = tmp_path / "spec.yaml"
+            spec_data = {
+                "template": str(Path(template_dir) / "test.job.j2"),
+                "job_subdir": "runs/{{ vars.stage }}/../results",
+                "variables": {"stage": "baseline"},
+                "parameters": {
+                    "mode": "list",
+                    "values": [{"learning_rate": 0.1, "batch_size": 32}],
+                },
+                "slurm_args": {"defaults": {"partition": "gpu", "time": "1:00:00"}},
+            }
+            with open(spec_path, "w") as f:
+                yaml.dump(spec_data, f)
+
+            config = Config(project_root=tmp_path)
+            with pytest.raises(ValueError, match="cannot contain '\\.\\.'"):
+                JobGenerator.from_spec(
+                    spec_path,
+                    config=config,
+                    collection_name="Train Exp 2026",
+                )
 
     def test_generator_from_spec_with_parse_relative_path(self, template_dir):
         """Test generator from spec resolves parse file path and uses parsed params."""
