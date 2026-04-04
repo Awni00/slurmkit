@@ -34,6 +34,12 @@ warn() {
     echo -e "${YELLOW}! $1${NC}"
 }
 
+DUMMY_COLLECTIONS_READY=0
+DUMMY_COLLECTION_NAME="demo_mixed_30"
+DUMMY_FAILED_JOB_ID="990013"
+DUMMY_COMPLETED_JOB_ID="990001"
+DUMMY_RUNNING_JOB_ID="990021"
+
 # Function to run demo commands without aborting the full quickstart.
 run_demo_cmd() {
     local label="$1"
@@ -63,19 +69,49 @@ if [ -f ".slurmkit/config.yaml" ]; then
     warn "Configuration already exists. Skipping init."
 else
     echo "This will create .slurmkit/config.yaml"
-    echo "Press Enter to continue with default values, or Ctrl+C to cancel and run 'slurmkit init' manually"
+    echo "Press Enter to launch 'slurmkit init' (use Enter to accept defaults), or Ctrl+C to cancel"
     read -p ""
-
-    # Note: In a real scenario, you'd run: slurmkit init
-    # For this demo, we'll just note it
-    warn "Run 'slurmkit init' and configure for your cluster"
+    slurmkit init
+    success "Configuration initialized"
 fi
 
 # =============================================================================
-# Step 2: Review Job Specs
+# Step 2: Local Preview Data (Optional)
 # =============================================================================
 
-step "2" "Review job specifications"
+step "2" "Local preview data (optional)"
+
+echo "Create deterministic dummy collections/logs (no SLURM required)?"
+echo "This lets you try status/show/analyze output immediately."
+echo ""
+read -p "Prepare local preview data now? [y/N]: " dummy_choice
+
+if [[ "$dummy_choice" =~ ^[Yy]$ ]]; then
+    echo ""
+    echo "Preparing deterministic dummy collections..."
+    if ./setup_dummy_jobs.py --include-non-terminal; then
+        success "Dummy collections created"
+        DUMMY_COLLECTIONS_READY=1
+        echo ""
+        echo "Previewing collection inspection commands:"
+        run_demo_cmd "status $DUMMY_COLLECTION_NAME" \
+            slurmkit status "$DUMMY_COLLECTION_NAME"
+        run_demo_cmd "collections show $DUMMY_COLLECTION_NAME" \
+            slurmkit collections show "$DUMMY_COLLECTION_NAME"
+        run_demo_cmd "collections analyze $DUMMY_COLLECTION_NAME" \
+            slurmkit collections analyze "$DUMMY_COLLECTION_NAME"
+    else
+        warn "Could not create dummy collections; continuing with generated-job workflow."
+    fi
+else
+    echo "Skipped local preview data setup."
+fi
+
+# =============================================================================
+# Step 3: Review Job Specs
+# =============================================================================
+
+step "3" "Review job specifications"
 
 echo "Available demo experiments:"
 echo "  1. Parameter Sweep - Grid Mode (6 jobs, ~15 sec each)"
@@ -116,10 +152,10 @@ esac
 success "Selected: $EXPERIMENT"
 
 # =============================================================================
-# Step 3: Preview Job Generation
+# Step 4: Preview Job Generation
 # =============================================================================
 
-step "3" "Preview job generation (dry run)"
+step "4" "Preview job generation (dry run)"
 
 slurmkit generate "$JOB_SPEC" --into "$COLLECTION" --dry-run
 
@@ -127,10 +163,10 @@ echo ""
 read -p "Press Enter to continue with actual generation..."
 
 # =============================================================================
-# Step 4: Generate Jobs
+# Step 5: Generate Jobs
 # =============================================================================
 
-step "4" "Generate job scripts"
+step "5" "Generate job scripts"
 
 slurmkit generate "$JOB_SPEC" --into "$COLLECTION"
 
@@ -142,18 +178,18 @@ echo "Generated files:"
 ls -lh ".jobs/$JOB_SUBDIR/job_scripts/" | head -10
 
 # =============================================================================
-# Step 5: Review Collection
+# Step 6: Review Collection
 # =============================================================================
 
-step "5" "Review collection"
+step "6" "Review collection"
 
 slurmkit collections show "$COLLECTION"
 
 # =============================================================================
-# Step 6: Submit Jobs (Optional)
+# Step 7: Submit Jobs (Optional)
 # =============================================================================
 
-step "6" "Submit jobs (optional)"
+step "7" "Submit jobs (optional)"
 
 echo "Do you want to submit these jobs to SLURM?"
 echo "  - This will actually submit jobs to the cluster"
@@ -191,10 +227,10 @@ else
 fi
 
 # =============================================================================
-# Step 7: Notification Demos (Optional)
+# Step 8: Notification Demos (Optional)
 # =============================================================================
 
-step "7" "Notification demos (optional)"
+step "8" "Notification demos (optional)"
 
 echo "This can demo: notify test, notify job, and notify collection-final."
 echo "For live delivery (non-dry-run), ensure route credentials are configured."
@@ -217,13 +253,18 @@ if [[ "$notify_choice" =~ ^[Yy]$ ]]; then
         echo "Using --dry-run mode."
     fi
 
-    echo ""
-    echo "Preparing deterministic dummy collections..."
-    if ./setup_dummy_jobs.py --include-non-terminal; then
-        success "Dummy collections created"
+    if [[ "$DUMMY_COLLECTIONS_READY" -eq 1 ]]; then
+        success "Dummy collections already prepared"
     else
-        warn "Could not create dummy collections; skipping notification commands."
-        NOTIFY_SKIP=1
+        echo ""
+        echo "Preparing deterministic dummy collections..."
+        if ./setup_dummy_jobs.py --include-non-terminal; then
+            success "Dummy collections created"
+            DUMMY_COLLECTIONS_READY=1
+        else
+            warn "Could not create dummy collections; skipping notification commands."
+            NOTIFY_SKIP=1
+        fi
     fi
 
     if [[ -z "${NOTIFY_SKIP:-}" ]]; then
@@ -232,24 +273,21 @@ if [[ "$notify_choice" =~ ^[Yy]$ ]]; then
         run_demo_cmd "notify test" slurmkit notify test "${NOTIFY_FLAGS[@]}"
         run_demo_cmd "notify test (local_email formatter callback route)" \
             slurmkit notify test --route local_email "${NOTIFY_FLAGS[@]}"
-        run_demo_cmd "notify job (failed)" slurmkit notify job --job-id 990002 --exit-code 1 "${NOTIFY_FLAGS[@]}"
-        run_demo_cmd "notify job (completed)" slurmkit notify job --job-id 990001 --exit-code 0 --on always "${NOTIFY_FLAGS[@]}"
-        run_demo_cmd "notify collection-final (terminal failed)" \
-            slurmkit notify collection-final --collection demo_terminal_failed --job-id 990002 --no-refresh "${NOTIFY_FLAGS[@]}"
-        run_demo_cmd "notify collection-final (terminal completed)" \
-            slurmkit notify collection-final --collection demo_terminal_completed --job-id 990011 --no-refresh "${NOTIFY_FLAGS[@]}"
+        run_demo_cmd "notify job (failed)" \
+            slurmkit notify job --collection "$DUMMY_COLLECTION_NAME" --job-id "$DUMMY_FAILED_JOB_ID" --exit-code 1 "${NOTIFY_FLAGS[@]}"
+        run_demo_cmd "notify job (completed)" \
+            slurmkit notify job --collection "$DUMMY_COLLECTION_NAME" --job-id "$DUMMY_COMPLETED_JOB_ID" --exit-code 0 --on always "${NOTIFY_FLAGS[@]}"
         run_demo_cmd "notify collection-final (non-terminal skip)" \
-            slurmkit notify collection-final --collection demo_in_progress --job-id 990020 --no-refresh "${NOTIFY_FLAGS[@]}"
+            slurmkit notify collection-final --collection "$DUMMY_COLLECTION_NAME" --job-id "$DUMMY_RUNNING_JOB_ID" --no-refresh "${NOTIFY_FLAGS[@]}"
     fi
 
     echo ""
     echo "Optional collection-specific notifications demo:"
     echo "  export PYTHONPATH=\"\$PWD:\$PYTHONPATH\""
-    echo "  # uses spec override from experiments/hyperparameter_sweep/slurmkit/job_spec.yaml"
-    echo "  slurmkit notify job --collection demo_terminal_failed --job-id 990002 --exit-code 1 --dry-run"
-    echo "  slurmkit notify collection-final --collection demo_terminal_failed --job-id 990002 --no-refresh --dry-run"
-    echo "  # fallback collection (no spec notifications block) uses .slurmkit/config.yaml"
-    echo "  slurmkit notify job --collection demo_terminal_completed --job-id 990011 --exit-code 0 --on always --dry-run"
+    echo "  # mixed-state dummy collection linked to experiments/hyperparameter_sweep/slurmkit/job_spec.yaml"
+    echo "  slurmkit notify job --collection $DUMMY_COLLECTION_NAME --job-id $DUMMY_FAILED_JOB_ID --exit-code 1 --dry-run"
+    echo "  slurmkit notify job --collection $DUMMY_COLLECTION_NAME --job-id $DUMMY_COMPLETED_JOB_ID --exit-code 0 --on always --dry-run"
+    echo "  slurmkit notify collection-final --collection $DUMMY_COLLECTION_NAME --job-id $DUMMY_RUNNING_JOB_ID --no-refresh --dry-run"
     echo "  # formatter callback demo (global + route override)"
     echo "  # set notifications.formatter.callback: utilities.slurmkit.formatters:format_notification"
     echo "  # set routes[].formatter_callback as needed (or null to opt out)"
@@ -271,6 +309,10 @@ echo "What was created:"
 echo "  - Collection: $COLLECTION"
 echo "  - Job scripts: .jobs/$JOB_SUBDIR/job_scripts/"
 echo "  - Collection file: .slurmkit/collections/${COLLECTION}.yaml"
+if [[ "$DUMMY_COLLECTIONS_READY" -eq 1 ]]; then
+    echo "  - Dummy collection: $DUMMY_COLLECTION_NAME (30 jobs: COMPLETED/FAILED/RUNNING/PENDING)"
+    echo "  - Dummy logs: .jobs/dummy_demo/logs/"
+fi
 echo ""
 echo "Next steps:"
 echo "  1. Review generated scripts:"
@@ -294,8 +336,8 @@ echo ""
 echo "  6. Demo collection-final notifications:"
 echo "     ./setup_dummy_jobs.py --include-non-terminal"
 echo "     export PYTHONPATH=\"\$PWD:\$PYTHONPATH\""
-echo "     # demo_terminal_failed uses spec-level notifications override"
-echo "     slurmkit notify collection-final --collection demo_terminal_failed --job-id 990002 --no-refresh --dry-run"
+echo "     # mixed-state collection (non-terminal) demo"
+echo "     slurmkit notify collection-final --collection $DUMMY_COLLECTION_NAME --job-id $DUMMY_RUNNING_JOB_ID --no-refresh --dry-run"
 echo "     # formatter callback demo"
 echo "     slurmkit notify test --route local_email --dry-run"
 echo ""
