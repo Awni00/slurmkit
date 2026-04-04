@@ -1,10 +1,10 @@
 ---
 task_id: t-20260330-001
 task_name: refactor-slurmkit-status-cmd
-status: todo
+status: completed
 date_created: '2026-03-30'
-date_started: null
-date_completed: null
+date_started: '2026-04-04'
+date_completed: '2026-04-04'
 priority: p1
 effort: m
 spec_readiness: rough
