@@ -76,6 +76,22 @@ DEFAULT_CONFIG = {
         "mode": "auto",
         "interactive": True,
         "show_banner": True,
+        "columns": {
+            "collections_show": [
+                "job_name",
+                "job_id",
+                "state",
+                "runtime",
+                "attempt",
+                "submission_group",
+                "resubmissions",
+                "output_path",
+            ],
+        },
+        "collections_show": {
+            "pager": "chunked",
+            "pager_row_threshold": 20,
+        },
     },
 
     # Notifications (webhook transports)
@@ -428,8 +444,8 @@ def init_config(
     (root / METADATA_DIRNAME / COLLECTIONS_SUBDIR).mkdir(parents=True, exist_ok=True)
     (root / METADATA_DIRNAME / SYNC_SUBDIR).mkdir(parents=True, exist_ok=True)
     (root / METADATA_DIRNAME / LOCKS_SUBDIR / COLLECTION_LOCKS_SUBDIR).mkdir(parents=True, exist_ok=True)
-    with open(config_path, "w") as f:
-        yaml.dump(config_data, f, default_flow_style=False, sort_keys=False)
+    with open(config_path, "w", encoding="utf-8") as f:
+        f.write(format_config_yaml(config_data, with_comments=True))
 
     return config_path
 
@@ -519,3 +535,86 @@ def _set_nested(d: Dict[str, Any], key: str, value: Any) -> None:
         d = d[k]
 
     d[keys[-1]] = value
+
+
+def format_config_yaml(data: Dict[str, Any], *, with_comments: bool = False) -> str:
+    """Serialize config to YAML, optionally with user-facing comments."""
+    if not with_comments:
+        return yaml.dump(data, default_flow_style=False, sort_keys=False)
+
+    def _yaml_block(value: Any, indent: int = 0) -> str:
+        dumped = yaml.dump(value, default_flow_style=False, sort_keys=False).rstrip()
+        if indent <= 0:
+            return dumped
+        return "\n".join(
+            ((" " * indent) + line if line else "")
+            for line in dumped.splitlines()
+        )
+
+    jobs_dir = data.get("jobs_dir", DEFAULT_CONFIG["jobs_dir"])
+    output_patterns = data.get("output_patterns", DEFAULT_CONFIG["output_patterns"])
+    slurm_defaults = data.get("slurm_defaults", DEFAULT_CONFIG["slurm_defaults"])
+    cleanup = data.get("cleanup", DEFAULT_CONFIG["cleanup"])
+    ui = data.get("ui", DEFAULT_CONFIG["ui"])
+    if not isinstance(ui, dict):
+        ui = _deep_copy(DEFAULT_CONFIG["ui"])
+    columns = (ui.get("columns") if isinstance(ui, dict) else {}) or {}
+    collections_show_columns = columns.get(
+        "collections_show",
+        DEFAULT_CONFIG["ui"]["columns"]["collections_show"],
+    )
+    collections_show_ui = (ui.get("collections_show") if isinstance(ui, dict) else {}) or {}
+    pager_mode = collections_show_ui.get(
+        "pager",
+        DEFAULT_CONFIG["ui"]["collections_show"]["pager"],
+    )
+    pager_threshold = collections_show_ui.get(
+        "pager_row_threshold",
+        DEFAULT_CONFIG["ui"]["collections_show"]["pager_row_threshold"],
+    )
+    notifications = data.get("notifications", DEFAULT_CONFIG["notifications"])
+    wandb = data.get("wandb", DEFAULT_CONFIG["wandb"])
+
+    lines = [
+        "# slurmkit configuration",
+        "# Paths are resolved relative to your project root unless absolute.",
+        "",
+        "# Root directory for generated job artifacts (scripts/logs).",
+        f"jobs_dir: {jobs_dir}",
+        "",
+        "# Output filename patterns used to resolve job logs by {job_name}/{job_id}.",
+        "output_patterns:",
+        _yaml_block(output_patterns, indent=2),
+        "",
+        "# Default SLURM arguments used when generating jobs.",
+        "slurm_defaults:",
+        _yaml_block(slurm_defaults, indent=2),
+        "",
+        "# Cleanup defaults used by `slurmkit clean` commands.",
+        "cleanup:",
+        _yaml_block(cleanup, indent=2),
+        "",
+        "# CLI/UI behavior.",
+        "ui:",
+        f"  mode: {ui.get('mode', DEFAULT_CONFIG['ui']['mode'])}  # plain | rich | auto",
+        f"  interactive: {str(bool(ui.get('interactive', DEFAULT_CONFIG['ui']['interactive']))).lower()}",
+        f"  show_banner: {str(bool(ui.get('show_banner', DEFAULT_CONFIG['ui']['show_banner']))).lower()}",
+        "  # Jobs table columns for `slurmkit collections show` in display order.",
+        "  columns:",
+        "    collections_show:",
+        _yaml_block(collections_show_columns, indent=6),
+        "  collections_show:",
+        f"    pager: {pager_mode}  # less | chunked | none",
+        "    # Minimum rows before paging engages; used as chunk size in chunked mode.",
+        f"    pager_row_threshold: {pager_threshold}",
+        "",
+        "# Notification configuration used by `slurmkit notify`.",
+        "notifications:",
+        _yaml_block(notifications, indent=2),
+        "",
+        "# Optional Weights & Biases defaults.",
+        "wandb:",
+        _yaml_block(wandb, indent=2),
+        "",
+    ]
+    return "\n".join(lines)

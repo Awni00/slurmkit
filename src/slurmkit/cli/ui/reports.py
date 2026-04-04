@@ -2,9 +2,8 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional, Sequence
-
-import yaml
+from datetime import datetime, timezone
+from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 
 from slurmkit.cli.ui.backend import UIBackend
 from slurmkit.cli.ui.models import (
@@ -13,6 +12,18 @@ from slurmkit.cli.ui.models import (
     CollectionShowReport,
     MetricItem,
     TableSection,
+)
+
+
+DEFAULT_COLLECTION_SHOW_COLUMNS: tuple[str, ...] = (
+    "job_name",
+    "job_id",
+    "state",
+    "runtime",
+    "attempt",
+    "submission_group",
+    "resubmissions",
+    "output_path",
 )
 
 
@@ -49,6 +60,136 @@ def _normalize_raw_state(value: Any) -> Optional[str]:
     return raw_state_upper
 
 
+def _parse_time(value: Any) -> Optional[datetime]:
+    if value is None:
+        return None
+    text = str(value).strip()
+    if not text:
+        return None
+    if text.endswith("Z"):
+        text = f"{text[:-1]}+00:00"
+    try:
+        parsed = datetime.fromisoformat(text)
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
+def _format_duration(delta_seconds: int) -> str:
+    if delta_seconds < 0:
+        return ""
+    hours, rem = divmod(delta_seconds, 3600)
+    minutes, seconds = divmod(rem, 60)
+    if hours > 0:
+        return f"{hours}h {minutes:02d}m {seconds:02d}s"
+    if minutes > 0:
+        return f"{minutes}m {seconds:02d}s"
+    return f"{seconds}s"
+
+
+def _format_runtime(job: Dict[str, Any], now_utc: datetime) -> str:
+    started = _parse_time(job.get("effective_started_at"))
+    completed = _parse_time(job.get("effective_completed_at"))
+    if started is None:
+        return ""
+    if completed is not None:
+        if completed < started:
+            return ""
+        return _format_duration(int((completed - started).total_seconds()))
+    raw_state = str(job.get("effective_state_raw", "")).strip().upper()
+    if raw_state not in {"RUNNING", "COMPLETING"}:
+        return ""
+    return f"{_format_duration(int((now_utc - started).total_seconds()))} (running)"
+
+
+def _string_or_empty(value: Any) -> str:
+    if value is None:
+        return ""
+    return str(value)
+
+
+def _string_or_na(value: Any) -> str:
+    if value is None:
+        return "N/A"
+    text = str(value).strip()
+    return text if text else "N/A"
+
+
+def _history_string(job: Dict[str, Any]) -> str:
+    return " -> ".join(str(item) for item in job.get("attempt_history", []))
+
+
+def _normalize_path_value(value: Any) -> str:
+    if value is None:
+        return ""
+    return str(value).strip()
+
+
+_COLUMN_DEF = Tuple[str, Callable[[Dict[str, Any], datetime], str], bool]
+
+
+def _collection_show_column_registry() -> Dict[str, _COLUMN_DEF]:
+    return {
+        "job_name": ("Job Name", lambda job, _now: _string_or_empty(job.get("job_name", "")), False),
+        "job_id": ("Job ID", lambda job, _now: _string_or_na(job.get("effective_job_id")), False),
+        "state": ("State", lambda job, _now: _string_or_na(job.get("effective_state_raw")), True),
+        "runtime": ("Runtime", lambda job, now: _format_runtime(job, now), False),
+        "attempt": ("Attempt", lambda job, _now: _string_or_empty(job.get("effective_attempt_label", "")), False),
+        "submission_group": (
+            "Submission Group",
+            lambda job, _now: _string_or_empty(job.get("effective_submission_group", "")),
+            False,
+        ),
+        "resubmissions": ("Resubmissions", lambda job, _now: _string_or_empty(job.get("resubmissions_count", "")), False),
+        "hostname": ("Hostname", lambda job, _now: _string_or_empty(job.get("effective_hostname", "")), False),
+        "output_path": ("Output Path", lambda job, _now: _normalize_path_value(job.get("effective_output_path")), False),
+        "script_path": ("Script Path", lambda job, _now: _normalize_path_value(job.get("effective_script_path")), False),
+        "primary_job_id": ("Primary Job ID", lambda job, _now: _string_or_na(job.get("primary_job_id")), False),
+        "primary_state": ("Primary State", lambda job, _now: _string_or_na(job.get("primary_state_raw")), True),
+        "history": ("History", lambda job, _now: _history_string(job), False),
+    }
+
+
+def _resolve_collection_show_columns(configured: Optional[Sequence[str]]) -> tuple[str, ...]:
+    registry = _collection_show_column_registry()
+    selected: list[str] = []
+    for candidate in configured or ():
+        key = str(candidate).strip()
+        if key and key in registry and key not in selected:
+            selected.append(key)
+    if not selected:
+        selected = list(DEFAULT_COLLECTION_SHOW_COLUMNS)
+    return tuple(selected)
+
+
+def _build_collection_show_jobs_table(
+    jobs: Sequence[Dict[str, Any]],
+    *,
+    columns: Optional[Sequence[str]],
+    now_utc: datetime,
+) -> TableSection:
+    registry = _collection_show_column_registry()
+    resolved_columns = _resolve_collection_show_columns(columns)
+
+    headers = [registry[column_id][0] for column_id in resolved_columns]
+    status_columns = tuple(
+        idx for idx, column_id in enumerate(resolved_columns) if registry[column_id][2]
+    )
+    rows: list[list[str]] = []
+    for job in jobs:
+        rows.append([registry[column_id][1](job, now_utc) for column_id in resolved_columns])
+
+    return TableSection(
+        title=f"Jobs ({len(jobs)}):",
+        headers=headers,
+        rows=rows,
+        status_columns=status_columns,
+        empty_message="  (no jobs)",
+    )
+
+
 def build_collection_show_report(
     *,
     collection: Any,
@@ -56,18 +197,21 @@ def build_collection_show_report(
     summary: Dict[str, int],
     attempt_mode: str,
     submission_group: Optional[str],
-    show_primary: bool = False,
-    show_history: bool = False,
     summary_jobs: Optional[Sequence[Dict[str, Any]]] = None,
+    include_jobs_table: bool = True,
+    jobs_table_columns: Optional[Sequence[str]] = None,
+    metadata_links: Optional[Sequence[Tuple[str, str]]] = None,
+    runtime_now: Optional[datetime] = None,
 ) -> CollectionShowReport:
     """Build view-model for collection show output."""
+    summary_source_jobs = summary_jobs if summary_jobs is not None else jobs
     total = max(summary.get("total", 0), 1)
-    primary_jobs_count = len(jobs)
+    primary_jobs_count = len(summary_source_jobs)
     submitted_primary_count = sum(
-        1 for job in jobs if _has_submitted_job_id(job.get("primary_job_id"))
+        1 for job in summary_source_jobs if _has_submitted_job_id(job.get("primary_job_id"))
     )
     resubmitted_jobs_count = sum(
-        _to_non_negative_int(job.get("resubmissions_count", 0)) for job in jobs
+        _to_non_negative_int(job.get("resubmissions_count", 0)) for job in summary_source_jobs
     )
     submitted_slurm_jobs_count = submitted_primary_count + resubmitted_jobs_count
 
@@ -81,17 +225,10 @@ def build_collection_show_report(
     ]
     if submission_group:
         metadata.append(("Submission group", submission_group))
+    for label, value in metadata_links or ():
+        if value:
+            metadata.append((label, value))
 
-    parameters_yaml = None
-    if collection.parameters:
-        parameters_yaml = yaml.dump(
-            collection.parameters,
-            default_flow_style=False,
-            sort_keys=False,
-            indent=2,
-        ).rstrip()
-
-    summary_source_jobs = summary_jobs if summary_jobs is not None else jobs
     raw_state_breakdowns: Dict[str, Dict[str, int]] = {}
     for job in summary_source_jobs:
         normalized_state = str(job.get("effective_state", "")).strip().lower()
@@ -109,8 +246,13 @@ def build_collection_show_report(
         details = None
         breakdown = raw_state_breakdowns.get(key)
         if breakdown:
-            sorted_pairs = sorted(breakdown.items(), key=lambda item: (-item[1], item[0]))
-            details = ", ".join(f"{raw_state}: {raw_count}" for raw_state, raw_count in sorted_pairs)
+            sorted_pairs = sorted(
+                breakdown.items(),
+                key=lambda item: (-item[1], item[0]),
+            )
+            details = ", ".join(
+                f"{raw_state}: {raw_count}" for raw_state, raw_count in sorted_pairs
+            )
         summary_metrics.append(
             MetricItem(
                 label=key.replace("_", " ").title(),
@@ -121,57 +263,17 @@ def build_collection_show_report(
             )
         )
 
-    rows = []
-    for job in jobs:
-        row = [
-            str(job.get("job_name", "")),
-            str(job.get("effective_job_id", "N/A")),
-            str(job.get("effective_state_raw", "N/A")),
-            str(job.get("effective_attempt_label", "")),
-            str(job.get("effective_submission_group", "") or ""),
-            str(job.get("resubmissions_count", "") or ""),
-            str(job.get("effective_hostname", "") or ""),
-        ]
-        if show_primary:
-            row.extend(
-                [
-                    str(job.get("primary_job_id", "N/A")),
-                    str(job.get("primary_state_raw", "N/A")),
-                ]
-            )
-        if show_history:
-            row.append(" -> ".join(job.get("attempt_history", [])))
-
-        rows.append(row)
-
-    headers = [
-        "Job Name",
-        "Job ID",
-        "State",
-        "Attempt",
-        "Submission Group",
-        "Resubmissions",
-        "Hostname",
-    ]
-    status_columns = [2]
-    if show_primary:
-        headers.extend(["Primary Job ID", "Primary State"])
-        status_columns.append(len(headers) - 1)
-    if show_history:
-        headers.append("History")
-
-    jobs_table = TableSection(
-        title=f"Jobs ({len(jobs)}):",
-        headers=headers,
-        rows=rows,
-        status_columns=tuple(status_columns),
-        empty_message="  (no jobs)",
-    )
+    jobs_table = None
+    if include_jobs_table:
+        jobs_table = _build_collection_show_jobs_table(
+            jobs,
+            columns=jobs_table_columns,
+            now_utc=runtime_now or datetime.now(timezone.utc),
+        )
 
     return CollectionShowReport(
         title=f"Collection: {collection.name}",
         metadata=metadata,
-        parameters_yaml=parameters_yaml,
         summary_title=(
             "Summary: "
             f"{primary_jobs_count} primary jobs | "
@@ -384,17 +486,15 @@ def render_collection_show_report(report: CollectionShowReport, backend: UIBacke
     """Render collection show report with selected backend."""
     backend.heading(report.title)
     backend.kv_block(report.metadata)
-    if report.parameters_yaml:
-        backend.section("Generation Parameters:")
-        backend.text(report.parameters_yaml)
     backend.metrics(report.summary_title, report.summary_metrics)
-    backend.table(
-        title=report.jobs_table.title,
-        headers=report.jobs_table.headers,
-        rows=report.jobs_table.rows,
-        status_columns=report.jobs_table.status_columns,
-        empty_message=report.jobs_table.empty_message,
-    )
+    if report.jobs_table is not None:
+        backend.table(
+            title=report.jobs_table.title,
+            headers=report.jobs_table.headers,
+            rows=report.jobs_table.rows,
+            status_columns=report.jobs_table.status_columns,
+            empty_message=report.jobs_table.empty_message,
+        )
 
 
 def render_collection_list_report(report: CollectionListReport, backend: UIBackend) -> None:

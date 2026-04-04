@@ -140,7 +140,7 @@ slurmkit resubmit exp1 --job-id 123456 --no-regenerate -y
 Show the compact live status view for one collection.
 
 ```bash
-slurmkit status [COLLECTION] [--state all|running|pending|completed|failed] [--json]
+slurmkit status [COLLECTION] [--json]
 ```
 
 ## `collections` commands

@@ -28,6 +28,7 @@ def _write_collection_file(
     name: str,
     updated_at: str | None,
     state: str = "COMPLETED",
+    generation: dict | None = None,
 ) -> None:
     collections_dir = tmp_path / ".slurmkit" / "collections"
     collections_dir.mkdir(parents=True, exist_ok=True)
@@ -39,7 +40,7 @@ def _write_collection_file(
         "updated_at": updated_at,
         "cluster": "cluster-a",
         "parameters": {},
-        "generation": {},
+        "generation": generation or {},
         "notifications": {},
         "jobs": [
             {
@@ -50,6 +51,12 @@ def _write_collection_file(
                         "kind": "primary",
                         "job_id": "100",
                         "state": state,
+                        "hostname": "cluster-a",
+                        "submitted_at": "2026-03-20T10:00:00",
+                        "started_at": "2026-03-20T10:00:10",
+                        "completed_at": "2026-03-20T11:00:00",
+                        "script_path": str(tmp_path / ".jobs" / name / "job_scripts" / "job.sh"),
+                        "output_path": str(tmp_path / ".jobs" / name / "logs" / "job.100.out"),
                     }
                 ],
             }
@@ -173,6 +180,84 @@ def test_collections_list_empty_state_shows_no_collections_message(tmp_path):
 
     assert result.exit_code == 0
     assert "(no collections)" in result.stdout
+
+
+def test_status_command_rejects_removed_state_option(tmp_path):
+    config_path = _write_config(tmp_path)
+    _write_collection_file(tmp_path, name="exp1", updated_at="2026-03-24T10:00:00")
+
+    result = runner.invoke(
+        cli_app,
+        ["--config", str(config_path), "status", "exp1", "--state", "failed"],
+    )
+
+    assert result.exit_code != 0
+    assert "No such option: --state" in (result.stderr or result.stdout)
+
+
+def test_status_text_is_summary_only_and_includes_header_links(tmp_path):
+    config_path = _write_config(tmp_path)
+    _write_collection_file(
+        tmp_path,
+        name="exp1",
+        updated_at="2026-03-24T10:00:00",
+        generation={
+            "spec_path": "experiments/exp1/slurmkit/job_spec.yaml",
+            "scripts_dir": ".jobs/exp1/job_scripts",
+            "logs_dir": ".jobs/exp1/logs",
+        },
+    )
+
+    result = runner.invoke(
+        cli_app,
+        ["--config", str(config_path), "--ui", "plain", "status", "exp1"],
+    )
+
+    assert result.exit_code == 0
+    assert "Summary:" in result.stdout
+    assert "Jobs (" not in result.stdout
+    assert "Generation Parameters:" not in result.stdout
+    assert "Spec" in result.stdout
+    assert "Collection File" in result.stdout
+    assert "Scripts Dir" in result.stdout
+    assert "Logs Dir" in result.stdout
+    assert "experiments/exp1/slurmkit/job_spec.yaml" in result.stdout
+    assert ".slurmkit/collections/exp1.yaml" in result.stdout
+    assert ".jobs/exp1/job_scripts" in result.stdout
+    assert ".jobs/exp1/logs" in result.stdout
+    assert str(tmp_path) not in result.stdout
+
+
+def test_status_json_is_compact_and_omits_jobs(tmp_path):
+    config_path = _write_config(tmp_path)
+    _write_collection_file(
+        tmp_path,
+        name="exp1",
+        updated_at="2026-03-24T10:00:00",
+        generation={
+            "spec_path": "experiments/exp1/slurmkit/job_spec.yaml",
+            "scripts_dir": ".jobs/exp1/job_scripts",
+            "logs_dir": ".jobs/exp1/logs",
+        },
+    )
+
+    result = runner.invoke(
+        cli_app,
+        ["--config", str(config_path), "status", "exp1", "--json"],
+    )
+
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert set(payload.keys()) == {"collection", "summary", "links"}
+    assert "jobs" not in payload
+    assert payload["collection"]["name"] == "exp1"
+    assert payload["summary"]["total"] == 1
+    assert set(payload["links"].keys()) == {
+        "spec_path",
+        "collection_file",
+        "scripts_dir",
+        "logs_dir",
+    }
 
 
 def test_migrate_command_runs(tmp_path):

@@ -247,7 +247,6 @@ def register(app: typer.Typer) -> None:
     def status_command(
         ctx: typer.Context,
         collection: Optional[str] = typer.Argument(None, help="Collection name."),
-        state_filter: str = typer.Option("all", "--state", help="Filter by normalized job state."),
         json_mode: bool = typer.Option(False, "--json", help="Emit JSON output."),
     ) -> None:
         state = get_state(ctx)
@@ -264,11 +263,12 @@ def register(app: typer.Typer) -> None:
             manager=manager,
             name=collection_name,
             refresh=True,
-            state_filter=state_filter,
+            state_filter="all",
             json_mode=json_mode,
             attempt_mode="latest",
-            show_primary=False,
-            show_history=False,
+            include_jobs_table=False,
+            include_jobs_in_payload=False,
+            compact_payload=True,
         )
         if json_mode:
             print_json(rendered.payload)

@@ -10,7 +10,7 @@ from typing import Any, Dict, Optional
 
 import yaml
 
-from slurmkit.config import DEFAULT_CONFIG
+from slurmkit.config import DEFAULT_CONFIG, format_config_yaml
 
 
 def deep_merge(base: Dict[str, Any], override: Dict[str, Any]) -> Dict[str, Any]:
@@ -41,7 +41,7 @@ def normalize_config_data(raw: Dict[str, Any]) -> Dict[str, Any]:
 def write_config_data(path: Path, data: Dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with open(path, "w", encoding="utf-8") as handle:
-        yaml.dump(data, handle, default_flow_style=False, sort_keys=False)
+        handle.write(format_config_yaml(data, with_comments=True))
 
 
 def open_config_in_editor(path: Path) -> None:

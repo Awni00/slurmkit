@@ -37,10 +37,9 @@ class CollectionShowReport:
 
     title: str
     metadata: KeyValueList
-    parameters_yaml: Optional[str]
     summary_title: str
     summary_metrics: Sequence[MetricItem]
-    jobs_table: TableSection
+    jobs_table: Optional[TableSection]
 
 
 @dataclass(frozen=True)

@@ -53,6 +53,19 @@ ui:
   mode: auto
   interactive: true
   show_banner: true
+  columns:
+    collections_show:
+      - job_name
+      - job_id
+      - state
+      - runtime
+      - attempt
+      - submission_group
+      - resubmissions
+      - output_path
+  collections_show:
+    pager: chunked  # less | chunked | none
+    pager_row_threshold: 20
 ```
 
 `collections_dir`, `sync_dir`, and job subdirectory names are no longer user-configurable. They are fixed under `.slurmkit/` and `.jobs/`.

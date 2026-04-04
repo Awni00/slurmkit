@@ -46,6 +46,19 @@ ui:
   mode: auto
   interactive: true
   show_banner: true
+  columns:
+    collections_show:
+      - job_name
+      - job_id
+      - state
+      - runtime
+      - attempt
+      - submission_group
+      - resubmissions
+      - output_path
+  collections_show:
+    pager: chunked  # less | chunked | none
+    pager_row_threshold: 20
 
 notifications:
   defaults:
@@ -133,6 +146,10 @@ This yields:
 - `auto`
 
 `ui.interactive` enables prompt fallback and the command picker when the terminal supports it.
+
+`ui.columns.collections_show` controls which jobs table columns render in `slurmkit collections show`.
+
+`ui.collections_show.pager` and `ui.collections_show.pager_row_threshold` control auto-paging for large `collections show` output.
 
 ## Notifications
 

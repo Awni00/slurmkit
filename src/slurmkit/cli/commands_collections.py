@@ -121,13 +121,19 @@ def show_command(
         state_filter=state_filter,
         json_mode=json_mode,
         attempt_mode="latest",
-        show_primary=True,
-        show_history=True,
+        include_jobs_table=True,
+        include_jobs_in_payload=True,
+        jobs_table_columns=state.config.get("ui.columns.collections_show"),
     )
     if json_mode:
         print_json(rendered.payload)
     else:
-        render_collection_show(args=type("Args", (), {"ui": state.ui})(), config=state.config, report=rendered.report)
+        render_collection_show(
+            args=type("Args", (), {"ui": state.ui})(),
+            config=state.config,
+            report=rendered.report,
+            enable_pager=True,
+        )
     raise typer.Exit(0)
 
 

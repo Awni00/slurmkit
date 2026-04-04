@@ -265,6 +265,19 @@ slurm_defaults:
 
 ui:
   mode: plain  # plain | rich | auto
+  columns:
+    collections_show:
+      - job_name
+      - job_id
+      - state
+      - runtime
+      - attempt
+      - submission_group
+      - resubmissions
+      - output_path
+  collections_show:
+    pager: chunked  # less | chunked | none
+    pager_row_threshold: 20
 
 notifications:
   defaults:

@@ -179,3 +179,12 @@ class TestInitConfig:
                 data = yaml.safe_load(f)
 
             assert data["jobs_dir"] == "my_jobs/"
+
+    def test_init_config_writes_commented_yaml(self):
+        """Init output should include user-facing inline comments."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config_path = init_config(project_root=tmpdir, overwrite=True)
+            raw = config_path.read_text(encoding="utf-8")
+            assert "# slurmkit configuration" in raw
+            assert "pager: chunked  # less | chunked | none" in raw
+            assert "# Jobs table columns for `slurmkit collections show` in display order." in raw

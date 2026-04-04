@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Sequence, Tuple
 
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
+from rich.text import Text
 
 from slurmkit.cli.ui.models import MetricItem
 
@@ -22,9 +24,10 @@ class RichBackend:
         "unknown": "bold magenta",
         "not submitted": "dim",
     }
+    _HEADER_PATH_LABELS = {"spec", "collection file", "scripts dir", "logs dir"}
 
-    def __init__(self):
-        self.console = Console()
+    def __init__(self, console: Console | None = None):
+        self.console = console or Console()
 
     def heading(self, text: str) -> None:
         self.console.print(Panel.fit(text, border_style="cyan"))
@@ -36,7 +39,7 @@ class RichBackend:
         table.add_column(style="bold cyan", no_wrap=True)
         table.add_column(style="white")
         for label, value in rows:
-            table.add_row(label, value)
+            table.add_row(label, self._render_kv_value(label, value))
         self.console.print(table)
 
     def section(self, title: str) -> None:
@@ -83,10 +86,16 @@ class RichBackend:
         for header in headers:
             table.add_column(header, overflow="fold")
 
+        output_path_indexes = {
+            idx for idx, header in enumerate(headers) if str(header).strip().lower() == "output path"
+        }
+
         for row in rows:
             rendered = []
             for idx, value in enumerate(row):
-                text = value
+                text: str | Text = value
+                if idx in output_path_indexes:
+                    text = self._render_output_link(value)
                 if idx in status_columns:
                     text = self.style_status(value)
                 rendered.append(text)
@@ -105,3 +114,31 @@ class RichBackend:
         if not style:
             return value
         return f"[{style}]{value}[/{style}]"
+
+    def _render_output_link(self, value: str) -> str | Text:
+        target = str(value or "").strip()
+        if not target:
+            return ""
+        path = Path(target).expanduser()
+        try:
+            if not path.is_absolute():
+                path = (Path.cwd() / path).resolve()
+            uri = path.as_uri()
+        except ValueError:
+            return target
+        return Text("OUTPUT", style=f"link {uri}")
+
+    def _render_kv_value(self, label: str, value: str) -> str | Text:
+        if str(label).strip().lower() not in self._HEADER_PATH_LABELS:
+            return value
+        target = str(value or "").strip()
+        if not target:
+            return ""
+        path = Path(target).expanduser()
+        try:
+            if not path.is_absolute():
+                path = (Path.cwd() / path).resolve()
+            uri = path.as_uri()
+        except ValueError:
+            return target
+        return Text(target, style=f"link {uri}")

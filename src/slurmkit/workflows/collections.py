@@ -84,13 +84,43 @@ def show_collection(
     manager: CollectionManager,
     name: str,
     refresh: bool,
-    state_filter: str,
+    state_filter: str = "all",
     json_mode: bool,
     attempt_mode: str,
-    show_primary: bool,
-    show_history: bool,
     submission_group: Optional[str] = None,
+    include_jobs_table: bool = True,
+    include_jobs_in_payload: bool = True,
+    jobs_table_columns: Optional[List[str]] = None,
+    compact_payload: bool = False,
 ) -> RenderableReport:
+    def _resolve_link_path(raw: Any) -> Optional[str]:
+        if raw is None:
+            return None
+        text = str(raw).strip()
+        if not text:
+            return None
+        path = Path(text).expanduser()
+        if not path.is_absolute():
+            path = config.project_root / path
+        try:
+            return str(path.resolve())
+        except OSError:
+            return str(path)
+
+    def _display_link_path(resolved: Optional[str]) -> Optional[str]:
+        if resolved is None:
+            return None
+        text = str(resolved).strip()
+        if not text:
+            return None
+        path = Path(text).expanduser()
+        if not path.is_absolute():
+            return text
+        try:
+            return str(path.relative_to(config.project_root.resolve()))
+        except ValueError:
+            return str(path)
+
     collection = manager.load(name)
     if refresh:
         collection.refresh_states()
@@ -114,36 +144,70 @@ def show_collection(
             state=None,
         )
 
-    serialized_jobs = []
-    for row in effective_jobs:
-        serialized = {
-            "job_name": row["job_name"],
-            "parameters": row.get("parameters", {}),
-            "attempts_count": row.get("attempts_count"),
-            "resubmissions_count": row.get("resubmissions_count"),
-            "effective_job_id": row.get("effective_job_id"),
-            "effective_state": row.get("effective_state_raw"),
-            "effective_state_normalized": row.get("effective_state"),
-            "effective_hostname": row.get("effective_hostname"),
-            "effective_attempt_label": row.get("effective_attempt_label"),
-            "effective_attempt_index": row.get("effective_attempt_index"),
-            "effective_submission_group": row.get("effective_submission_group"),
-            "primary_job_id": row.get("primary_job_id"),
-            "primary_state": row.get("primary_state_raw"),
-        }
-        if show_history:
-            serialized["effective_attempt_history"] = row.get("attempt_history", [])
-        serialized_jobs.append(serialized)
+    generation = collection.generation if isinstance(collection.generation, dict) else {}
+    links = {
+        "spec_path": _resolve_link_path(generation.get("spec_path")),
+        "collection_file": _resolve_link_path(manager.collections_dir / f"{collection.name}.yaml"),
+        "scripts_dir": _resolve_link_path(generation.get("scripts_dir")),
+        "logs_dir": _resolve_link_path(generation.get("logs_dir")),
+    }
+    metadata_links = [
+        ("Spec", _display_link_path(links["spec_path"])),
+        ("Collection File", _display_link_path(links["collection_file"])),
+        ("Scripts Dir", _display_link_path(links["scripts_dir"])),
+        ("Logs Dir", _display_link_path(links["logs_dir"])),
+    ]
 
     payload = None
     if json_mode:
-        payload = {
-            **collection.to_dict(),
-            "jobs": serialized_jobs,
-            "effective_summary": effective_summary,
-            "effective_attempt_mode": attempt_mode,
-            "effective_submission_group": submission_group,
-        }
+        if compact_payload:
+            payload = {
+                "collection": {
+                    "name": collection.name,
+                    "description": collection.description,
+                    "created_at": collection.created_at,
+                    "updated_at": collection.updated_at,
+                    "cluster": collection.cluster,
+                    "attempt_mode": attempt_mode,
+                    "submission_group": submission_group,
+                },
+                "summary": effective_summary,
+                "links": links,
+            }
+        else:
+            payload = {
+                **collection.to_dict(),
+                "effective_summary": effective_summary,
+                "effective_attempt_mode": attempt_mode,
+                "effective_submission_group": submission_group,
+                "links": links,
+            }
+            if include_jobs_in_payload:
+                serialized_jobs = []
+                for row in effective_jobs:
+                    serialized_jobs.append(
+                        {
+                            "job_name": row["job_name"],
+                            "parameters": row.get("parameters", {}),
+                            "attempts_count": row.get("attempts_count"),
+                            "resubmissions_count": row.get("resubmissions_count"),
+                            "effective_job_id": row.get("effective_job_id"),
+                            "effective_state": row.get("effective_state_raw"),
+                            "effective_state_normalized": row.get("effective_state"),
+                            "effective_hostname": row.get("effective_hostname"),
+                            "effective_attempt_label": row.get("effective_attempt_label"),
+                            "effective_attempt_index": row.get("effective_attempt_index"),
+                            "effective_submission_group": row.get("effective_submission_group"),
+                            "effective_started_at": row.get("effective_started_at"),
+                            "effective_completed_at": row.get("effective_completed_at"),
+                            "effective_script_path": row.get("effective_script_path"),
+                            "effective_output_path": row.get("effective_output_path"),
+                            "effective_attempt_history": row.get("attempt_history", []),
+                            "primary_job_id": row.get("primary_job_id"),
+                            "primary_state": row.get("primary_state_raw"),
+                        }
+                    )
+                payload["jobs"] = serialized_jobs
 
     report = build_collection_show_report(
         collection=collection,
@@ -151,9 +215,14 @@ def show_collection(
         summary=effective_summary,
         attempt_mode=attempt_mode,
         submission_group=submission_group,
-        show_primary=show_primary,
-        show_history=show_history,
         summary_jobs=summary_jobs,
+        include_jobs_table=include_jobs_table,
+        jobs_table_columns=jobs_table_columns,
+        metadata_links=[
+            (label, str(value))
+            for label, value in metadata_links
+            if value is not None and str(value).strip()
+        ],
     )
     return RenderableReport(report=report, payload=payload)
 
