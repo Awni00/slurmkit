@@ -4,8 +4,9 @@
 from __future__ import annotations
 
 import argparse
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
+import random
 import sys
 from typing import List
 
@@ -26,8 +27,8 @@ except ModuleNotFoundError as exc:  # pragma: no cover - startup guard
     raise SystemExit(1)
 
 
-def _now_iso() -> str:
-    return datetime.now().isoformat(timespec="seconds")
+def _to_iso(value: datetime) -> str:
+    return value.isoformat(timespec="seconds")
 
 
 def _write_demo_log(path: Path, lines: List[str]) -> None:
@@ -97,6 +98,7 @@ def main() -> int:
         + ["RUNNING"] * 6
         + ["PENDING"] * 4
     )
+    rng = random.Random(42)
     algorithms = ("algo_a", "algo_b", "algo_c")
     datasets = ("small", "medium", "large")
 
@@ -147,9 +149,27 @@ def main() -> int:
         if output_path is not None:
             _write_demo_log(output_path, log_lines)
 
-        submitted_at = _now_iso()
-        started_at = None if state == "PENDING" else _now_iso()
-        completed_at = _now_iso() if state in {"COMPLETED", "FAILED"} else None
+        now = datetime.now()
+        if state in {"COMPLETED", "FAILED"}:
+            runtime_seconds = rng.randint(45, 3 * 3600)
+            completed_ago_seconds = rng.randint(60, 6 * 3600)
+            completed_dt = now - timedelta(seconds=completed_ago_seconds)
+            started_dt = completed_dt - timedelta(seconds=runtime_seconds)
+            submitted_dt = started_dt - timedelta(seconds=rng.randint(10, 180))
+            submitted_at = _to_iso(submitted_dt)
+            started_at = _to_iso(started_dt)
+            completed_at = _to_iso(completed_dt)
+        elif state == "RUNNING":
+            running_seconds = rng.randint(60, 4 * 3600)
+            started_dt = now - timedelta(seconds=running_seconds)
+            submitted_dt = started_dt - timedelta(seconds=rng.randint(10, 120))
+            submitted_at = _to_iso(submitted_dt)
+            started_at = _to_iso(started_dt)
+            completed_at = None
+        else:
+            submitted_at = _to_iso(now - timedelta(seconds=rng.randint(30, 3 * 3600)))
+            started_at = None
+            completed_at = None
 
         collection.add_job(
             job_name=job_name,
