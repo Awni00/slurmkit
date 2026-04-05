@@ -89,7 +89,7 @@ DEFAULT_CONFIG = {
             ],
         },
         "collections_show": {
-            "pager": "chunked",
+            "pager": "less",  # less | chunked | none
             "pager_row_threshold": 20,
         },
     },
