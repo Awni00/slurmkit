@@ -47,7 +47,6 @@ def test_render_collection_show_uses_pager_when_enabled(monkeypatch):
             {
                 "ui.mode": "plain",
                 "ui.collections_show.pager": "less",
-                "ui.collections_show.pager_row_threshold": 0,
             }
         ),
         report=_sample_report(1),
@@ -74,35 +73,9 @@ def test_render_collection_show_skips_pager_when_non_interactive(monkeypatch):
             {
                 "ui.mode": "plain",
                 "ui.collections_show.pager": "less",
-                "ui.collections_show.pager_row_threshold": 20,
             }
         ),
         report=_sample_report(100),
-        enable_pager=True,
-    )
-
-    assert called["count"] == 0
-
-
-def test_render_collection_show_skips_pager_when_below_threshold(monkeypatch):
-    called = {"count": 0}
-
-    def _capture(_message, color=None):
-        called["count"] += 1
-
-    monkeypatch.setattr("slurmkit.cli.rendering.supports_interaction", lambda: True)
-    monkeypatch.setattr("slurmkit.cli.rendering.click.echo_via_pager", _capture)
-
-    render_collection_show(
-        args=SimpleNamespace(ui="plain"),
-        config=_FakeConfig(
-            {
-                "ui.mode": "plain",
-                "ui.collections_show.pager": "less",
-                "ui.collections_show.pager_row_threshold": 20,
-            }
-        ),
-        report=_sample_report(20),
         enable_pager=True,
     )
 
@@ -126,7 +99,6 @@ def test_render_collection_show_rich_pager_preserves_ansi(monkeypatch):
             {
                 "ui.mode": "rich",
                 "ui.collections_show.pager": "less",
-                "ui.collections_show.pager_row_threshold": 0,
             }
         ),
         report=_sample_report(1),
@@ -138,7 +110,7 @@ def test_render_collection_show_rich_pager_preserves_ansi(monkeypatch):
     assert "\x1b[" in called["content"]
 
 
-def test_render_collection_show_chunked_mode_skips_echo_pager(monkeypatch):
+def test_render_collection_show_pager_none_skips_echo_pager(monkeypatch):
     called = {"count": 0}
 
     def _capture(_message, color=None):
@@ -146,15 +118,13 @@ def test_render_collection_show_chunked_mode_skips_echo_pager(monkeypatch):
 
     monkeypatch.setattr("slurmkit.cli.rendering.supports_interaction", lambda: True)
     monkeypatch.setattr("slurmkit.cli.rendering.click.echo_via_pager", _capture)
-    monkeypatch.setattr("slurmkit.cli.rendering.click.getchar", lambda: "q")
 
     render_collection_show(
         args=SimpleNamespace(ui="plain"),
         config=_FakeConfig(
             {
                 "ui.mode": "plain",
-                "ui.collections_show.pager": "chunked",
-                "ui.collections_show.pager_row_threshold": 20,
+                "ui.collections_show.pager": "none",
             }
         ),
         report=_sample_report(40),

@@ -5,7 +5,6 @@ from __future__ import annotations
 import io
 import json
 import shutil
-from dataclasses import replace
 from contextlib import redirect_stdout
 from typing import Any, Optional, Sequence
 
@@ -52,17 +51,10 @@ def _resolve_collection_show_pager_mode(*, config: Any, report: Any, enable_page
     if not supports_interaction():
         return "none"
 
-    pager_mode = str(config.get("ui.collections_show.pager", "chunked")).strip().lower()
-    if pager_mode not in {"less", "chunked", "none"}:
-        pager_mode = "chunked"
-    if pager_mode == "none":
-        return "none"
-
-    try:
-        threshold = max(int(config.get("ui.collections_show.pager_row_threshold", 20)), 0)
-    except (TypeError, ValueError):
-        threshold = 20
-    if len(getattr(jobs_table, "rows", [])) <= threshold:
+    pager_mode = str(config.get("ui.collections_show.pager", "less")).strip().lower()
+    if pager_mode not in {"less", "none"}:
+        pager_mode = "less"
+    if pager_mode != "less":
         return "none"
     return pager_mode
 
@@ -86,59 +78,6 @@ def _render_collection_show_to_text(*, ui_context: Any, report: Any) -> str:
     return buffer.getvalue()
 
 
-def _render_collection_show_chunked(*, ui_context: Any, report: Any, chunk_size: int) -> None:
-    backend = create_ui_backend(ui_context)
-    jobs_table = getattr(report, "jobs_table", None)
-    if jobs_table is None:
-        render_collection_show_report(report, backend)
-        return
-
-    summary_only_report = replace(report, jobs_table=None)
-    render_collection_show_report(summary_only_report, backend)
-
-    rows = list(jobs_table.rows)
-    total = len(rows)
-    if total == 0:
-        backend.table(
-            title=jobs_table.title,
-            headers=jobs_table.headers,
-            rows=(),
-            status_columns=jobs_table.status_columns,
-            empty_message=jobs_table.empty_message,
-        )
-        return
-
-    size = max(int(chunk_size), 1)
-    start = 0
-    while start < total:
-        end = min(start + size, total)
-        chunk_table = replace(
-            jobs_table,
-            title=f"{jobs_table.title} [{start + 1}-{end} of {total}]",
-            rows=rows[start:end],
-        )
-        backend.table(
-            title=chunk_table.title,
-            headers=chunk_table.headers,
-            rows=chunk_table.rows,
-            status_columns=chunk_table.status_columns,
-            empty_message=chunk_table.empty_message,
-        )
-        start = end
-        if start >= total:
-            break
-
-        click.echo("")
-        click.echo(
-            "Press Enter/Space for next chunk, 'q' to stop.",
-            err=False,
-        )
-        choice = click.getchar()
-        click.echo("")
-        if str(choice).strip().lower() == "q":
-            break
-
-
 def render_collection_show(*, args: Any, config: Any, report: Any, enable_pager: bool = False) -> None:
     try:
         ui_context = resolve_ui_context(args, config)
@@ -155,13 +94,6 @@ def render_collection_show(*, args: Any, config: Any, report: Any, enable_pager:
             _render_collection_show_to_text(ui_context=ui_context, report=report),
             color=True,
         )
-        return
-    if pager_mode == "chunked":
-        try:
-            chunk_size = max(int(config.get("ui.collections_show.pager_row_threshold", 20)), 1)
-        except (TypeError, ValueError):
-            chunk_size = 20
-        _render_collection_show_chunked(ui_context=ui_context, report=report, chunk_size=chunk_size)
         return
 
     backend = create_ui_backend(ui_context)

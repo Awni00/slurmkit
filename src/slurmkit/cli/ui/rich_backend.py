@@ -126,7 +126,7 @@ class RichBackend:
             uri = path.as_uri()
         except ValueError:
             return target
-        label = "output logs"
+        label = ".out file"
         text = Text(label)
         text.stylize(f"link {uri}", 0, len(label))
         return text

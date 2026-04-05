@@ -276,8 +276,7 @@ ui:
       - resubmissions
       - output_path
   collections_show:
-    pager: chunked  # less | chunked | none
-    pager_row_threshold: 20
+    pager: less  # less | none
 
 notifications:
   defaults:

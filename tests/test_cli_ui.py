@@ -406,7 +406,7 @@ def test_plain_backend_metrics_renders_indented_details_line(capsys):
 def test_rich_backend_output_path_cell_renders_short_hyperlink_label():
     backend = RichBackend()
     rendered = backend._render_output_link("/tmp/demo_output.out")
-    assert rendered.plain == "output logs"
+    assert rendered.plain == ".out file"
     assert any("link file://" in str(span.style) for span in rendered.spans)
 
 

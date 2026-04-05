@@ -89,8 +89,7 @@ DEFAULT_CONFIG = {
             ],
         },
         "collections_show": {
-            "pager": "less",  # less | chunked | none
-            "pager_row_threshold": 20,
+            "pager": "less",  # less | none
         },
     },
 
@@ -568,10 +567,6 @@ def format_config_yaml(data: Dict[str, Any], *, with_comments: bool = False) -> 
         "pager",
         DEFAULT_CONFIG["ui"]["collections_show"]["pager"],
     )
-    pager_threshold = collections_show_ui.get(
-        "pager_row_threshold",
-        DEFAULT_CONFIG["ui"]["collections_show"]["pager_row_threshold"],
-    )
     notifications = data.get("notifications", DEFAULT_CONFIG["notifications"])
     wandb = data.get("wandb", DEFAULT_CONFIG["wandb"])
 
@@ -604,9 +599,7 @@ def format_config_yaml(data: Dict[str, Any], *, with_comments: bool = False) -> 
         "    collections_show:",
         _yaml_block(collections_show_columns, indent=6),
         "  collections_show:",
-        f"    pager: {pager_mode}  # less | chunked | none",
-        "    # Minimum rows before paging engages; used as chunk size in chunked mode.",
-        f"    pager_row_threshold: {pager_threshold}",
+        f"    pager: {pager_mode}  # less | none",
         "",
         "# Notification configuration used by `slurmkit notify`.",
         "notifications:",

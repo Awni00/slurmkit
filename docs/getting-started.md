@@ -64,8 +64,7 @@ ui:
       - resubmissions
       - output_path
   collections_show:
-    pager: chunked  # less | chunked | none
-    pager_row_threshold: 20
+    pager: less  # less | none
 ```
 
 `collections_dir`, `sync_dir`, and job subdirectory names are no longer user-configurable. They are fixed under `.slurmkit/` and `.jobs/`.

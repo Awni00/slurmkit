@@ -186,5 +186,5 @@ class TestInitConfig:
             config_path = init_config(project_root=tmpdir, overwrite=True)
             raw = config_path.read_text(encoding="utf-8")
             assert "# slurmkit configuration" in raw
-            assert "pager: chunked  # less | chunked | none" in raw
+            assert "pager: less  # less | none" in raw
             assert "# Jobs table columns for `slurmkit collections show` in display order." in raw

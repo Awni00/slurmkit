@@ -57,8 +57,7 @@ ui:
       - resubmissions
       - output_path
   collections_show:
-    pager: chunked  # less | chunked | none
-    pager_row_threshold: 20
+    pager: less  # less | none
 
 notifications:
   defaults:
@@ -149,7 +148,7 @@ This yields:
 
 `ui.columns.collections_show` controls which jobs table columns render in `slurmkit collections show`.
 
-`ui.collections_show.pager` and `ui.collections_show.pager_row_threshold` control auto-paging for large `collections show` output.
+`ui.collections_show.pager` controls paging for `slurmkit collections show` (`less` or `none`).
 
 ## Notifications
 
