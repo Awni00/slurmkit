@@ -32,6 +32,15 @@ from slurmkit.config import JOB_LOGS_SUBDIR, JOB_SCRIPTS_SUBDIR, Config, get_con
 
 # Default fields to query from sacct
 DEFAULT_SACCT_FIELDS = ["JobID", "State", "Elapsed", "Start", "End", "ExitCode"]
+CANONICAL_SACCT_FIELDS = [
+    "JobID",
+    "State",
+    "ExitCode",
+    "DerivedExitCode",
+    "Reason",
+    "Start",
+    "End",
+]
 
 # All available sacct fields for reference (commonly used ones):
 # Time: Elapsed, Start, End, Submit, Timelimit, CPUTime, TotalCPU, ElapsedRaw
@@ -45,6 +54,7 @@ COMPLETED_STATES = {"COMPLETED"}
 FAILED_STATES = {"FAILED", "CANCELLED", "TIMEOUT", "NODE_FAIL", "PREEMPTED", "OUT_OF_MEMORY"}
 RUNNING_STATES = {"RUNNING", "COMPLETING"}
 PENDING_STATES = {"PENDING", "REQUEUED", "SUSPENDED"}
+_UNKNOWN_SACCT_VALUES = {"", "UNKNOWN", "N/A", "(NULL)"}
 
 
 # =============================================================================
@@ -79,6 +89,9 @@ def run_command(
 # sacct Functions
 # =============================================================================
 
+# NOTE: Compatibility boundary
+# get_sacct_info() intentionally keeps the legacy parent-row-only contract.
+# New canonical state inference lives in get_canonical_sacct_states().
 def get_sacct_info(
     job_ids: Union[str, List[str]],
     fields: Optional[List[str]] = None,
@@ -178,6 +191,326 @@ def get_job_status(job_ids: Union[str, List[str]]) -> Dict[str, str]:
     """
     info = get_sacct_info(job_ids, fields=["JobID", "State"])
     return {jid: data.get("State", "UNKNOWN") for jid, data in info.items()}
+
+
+def _is_known_sacct_value(value: Optional[str]) -> bool:
+    if value is None:
+        return False
+    text = str(value).strip()
+    return bool(text) and text.upper() not in _UNKNOWN_SACCT_VALUES
+
+
+def _normalize_sacct_state_token(state: Optional[str]) -> str:
+    """Normalize a raw sacct state string to a base uppercase state token."""
+    if not _is_known_sacct_value(state):
+        return "UNKNOWN"
+
+    # sacct can emit decorated tokens like "COMPLETED+" and phrases such as
+    # "CANCELLED by 1234". Canonical logic operates on the base state token.
+    text = str(state).strip().upper()
+    token = text.split()[0].rstrip("+")
+    match = re.match(r"^[A-Z_]+", token)
+    if match:
+        token = match.group(0)
+    return token or "UNKNOWN"
+
+
+def _parse_exit_code_nonzero(value: Optional[str]) -> Optional[bool]:
+    """Parse an ExitCode/DerivedExitCode value and return True when non-zero."""
+    if not _is_known_sacct_value(value):
+        return None
+    text = str(value).strip()
+    match = re.match(r"^(-?\d+):(-?\d+)$", text)
+    if not match:
+        return None
+    status = int(match.group(1))
+    signal = int(match.group(2))
+    return not (status == 0 and signal == 0)
+
+
+def _reason_indicates_preemption(reason: str) -> bool:
+    text = reason.lower()
+    return any(fragment in text for fragment in ("preempt", "preemption", "qos preempt"))
+
+
+def _reason_indicates_timeout(reason: str) -> bool:
+    text = reason.lower()
+    return any(fragment in text for fragment in ("time limit", "timelimit", "deadline", "timeout"))
+
+
+def _query_sacct_rows(
+    job_ids: Union[str, List[str]],
+    fields: Optional[List[str]] = None,
+) -> List[Dict[str, str]]:
+    """
+    Query sacct and return all matching rows including step rows.
+
+    Unlike get_sacct_info(), this helper does not filter out dot-suffixed job
+    step records such as `.batch` and `.extern`.
+    """
+    if isinstance(job_ids, str):
+        job_ids = [job_ids]
+
+    normalized_job_ids = [str(job_id).strip() for job_id in job_ids if str(job_id).strip()]
+    if not normalized_job_ids:
+        return []
+
+    if fields is None:
+        fields = CANONICAL_SACCT_FIELDS.copy()
+
+    if "JobID" not in fields:
+        fields = ["JobID"] + list(fields)
+
+    cmd = [
+        "sacct",
+        "-j", ",".join(normalized_job_ids),
+        f"--format={','.join(fields)}",
+        "--parsable2",
+        "--noheader",
+    ]
+
+    try:
+        result = run_command(cmd)
+        rows: List[Dict[str, str]] = []
+        for line in result.stdout.splitlines():
+            if not line.strip():
+                continue
+            parts = line.strip().split("|")
+            if len(parts) < len(fields):
+                continue
+            rows.append({field: parts[i] for i, field in enumerate(fields)})
+        return rows
+    except FileNotFoundError:
+        print("Error: sacct command not found. Is SLURM installed?", file=sys.stderr)
+        return []
+
+
+def _row_preference_key(row: Dict[str, str], index: int) -> Tuple[int, str, int, str, int]:
+    # Deterministic tie-break for duplicate rows:
+    # 1) known End, 2) later End, 3) known Start, 4) later Start, 5) latest row.
+    end_value = str(row.get("End", "") or "").strip()
+    start_value = str(row.get("Start", "") or "").strip()
+    return (
+        1 if _is_known_sacct_value(end_value) else 0,
+        end_value if _is_known_sacct_value(end_value) else "",
+        1 if _is_known_sacct_value(start_value) else 0,
+        start_value if _is_known_sacct_value(start_value) else "",
+        index,
+    )
+
+
+def _pick_preferred_row(rows: List[Dict[str, str]]) -> Optional[Dict[str, str]]:
+    """Pick a deterministic representative row across duplicate sacct records."""
+    if not rows:
+        return None
+    best_index = max(range(len(rows)), key=lambda index: _row_preference_key(rows[index], index))
+    return rows[best_index]
+
+
+def _row_to_raw_state_entry(row: Optional[Dict[str, str]]) -> Optional[Dict[str, Optional[str]]]:
+    if row is None:
+        return None
+    return {
+        "job_id": row.get("JobID"),
+        "state_raw": row.get("State"),
+        "state_base": _normalize_sacct_state_token(row.get("State")),
+        "exit_code": row.get("ExitCode"),
+        "derived_exit_code": row.get("DerivedExitCode"),
+        "reason": row.get("Reason"),
+        "start": row.get("Start"),
+        "end": row.get("End"),
+    }
+
+
+def _resolve_terminal_state(
+    row: Optional[Dict[str, str]],
+    parent_row: Optional[Dict[str, str]],
+) -> Tuple[str, str]:
+    if row is None:
+        return "UNKNOWN", "no_terminal_row"
+
+    base_state = _normalize_sacct_state_token(row.get("State"))
+    parent_base = _normalize_sacct_state_token(parent_row.get("State")) if parent_row else "UNKNOWN"
+
+    reason_parts = [str(row.get("Reason") or "")]
+    if parent_row is not None:
+        reason_parts.append(str(parent_row.get("Reason") or ""))
+    merged_reason = " ".join(part for part in reason_parts if part).strip()
+
+    if base_state == "COMPLETED":
+        # Script-level truth for COMPLETED depends on exit status, not token alone.
+        # Prefer ExitCode, then fallback to DerivedExitCode when ExitCode is missing.
+        exit_nonzero = _parse_exit_code_nonzero(row.get("ExitCode"))
+        if exit_nonzero is None:
+            exit_nonzero = _parse_exit_code_nonzero(row.get("DerivedExitCode"))
+        if exit_nonzero is False:
+            return "COMPLETED", "completed_exit_zero"
+        if exit_nonzero is True:
+            return "FAILED", "completed_nonzero_exit"
+        return "UNKNOWN", "completed_exit_unknown"
+
+    if base_state in {"TIMEOUT", "OUT_OF_MEMORY", "PREEMPTED", "FAILED", "NODE_FAIL"}:
+        return base_state, f"terminal_{base_state.lower()}"
+
+    if base_state == "CANCELLED":
+        # CANCELLED is ambiguous; reclassify with parent/reason context when possible.
+        if parent_base == "PREEMPTED" or _reason_indicates_preemption(merged_reason):
+            return "PREEMPTED", "cancelled_preempted"
+        if _reason_indicates_timeout(merged_reason):
+            return "TIMEOUT", "cancelled_timeout"
+        return "CANCELLED", "cancelled"
+
+    return "UNKNOWN", f"terminal_unknown_{base_state.lower()}"
+
+
+def _select_time_value(
+    field: str,
+    preferred_row: Optional[Dict[str, str]],
+    parent_row: Optional[Dict[str, str]],
+    batch_row: Optional[Dict[str, str]],
+    all_rows: List[Dict[str, str]],
+) -> Optional[str]:
+    ordered = [preferred_row, parent_row, batch_row, *all_rows]
+    for row in ordered:
+        if row is None:
+            continue
+        value = row.get(field)
+        if _is_known_sacct_value(value):
+            return str(value).strip()
+    return None
+
+
+def _resolve_canonical_state_for_rows(parent_job_id: str, rows: List[Dict[str, str]]) -> Dict[str, Any]:
+    parent_rows: List[Dict[str, str]] = []
+    batch_rows: List[Dict[str, str]] = []
+    extern_rows: List[Dict[str, str]] = []
+    other_rows: List[Dict[str, str]] = []
+    live_rows: List[Dict[str, str]] = []
+    queue_rows: List[Dict[str, str]] = []
+
+    batch_job_id = f"{parent_job_id}.batch"
+    extern_job_id = f"{parent_job_id}.extern"
+
+    for row in rows:
+        job_id = str(row.get("JobID") or "").strip()
+        if job_id == parent_job_id:
+            parent_rows.append(row)
+        elif job_id == batch_job_id:
+            batch_rows.append(row)
+        elif job_id == extern_job_id:
+            extern_rows.append(row)
+        else:
+            other_rows.append(row)
+
+        base_state = _normalize_sacct_state_token(row.get("State"))
+        if base_state in RUNNING_STATES:
+            live_rows.append(row)
+        elif base_state in PENDING_STATES:
+            queue_rows.append(row)
+
+    parent_row = _pick_preferred_row(parent_rows)
+    batch_row = _pick_preferred_row(batch_rows)
+    extern_row = _pick_preferred_row(extern_rows)
+
+    resolution_row: Optional[Dict[str, str]] = None
+    resolution_used_row = "none"
+
+    # Canonical precedence:
+    # 1) live rows override everything,
+    # 2) queue rows override terminal rows,
+    # 3) terminal resolution prefers .batch over parent.
+    if live_rows:
+        resolution_row = _pick_preferred_row(live_rows)
+        canonical_state = "RUNNING"
+        resolution_rule = "live_state_present"
+        resolution_used_row = "live"
+    elif queue_rows:
+        resolution_row = _pick_preferred_row(queue_rows)
+        canonical_state = "PENDING"
+        resolution_rule = "queue_state_present"
+        resolution_used_row = "queue"
+    elif batch_row is not None:
+        resolution_row = batch_row
+        canonical_state, rule_detail = _resolve_terminal_state(batch_row, parent_row)
+        resolution_rule = f"batch_{rule_detail}"
+        resolution_used_row = "batch"
+    elif parent_row is not None:
+        resolution_row = parent_row
+        canonical_state, rule_detail = _resolve_terminal_state(parent_row, parent_row)
+        resolution_rule = f"parent_{rule_detail}"
+        resolution_used_row = "parent"
+    elif other_rows:
+        resolution_row = _pick_preferred_row(other_rows)
+        canonical_state, rule_detail = _resolve_terminal_state(resolution_row, parent_row)
+        resolution_rule = f"other_{rule_detail}"
+        resolution_used_row = "other"
+    else:
+        canonical_state = "UNKNOWN"
+        resolution_rule = "no_rows"
+
+    start_value = _select_time_value("Start", resolution_row, parent_row, batch_row, rows)
+    end_value = _select_time_value("End", resolution_row, parent_row, batch_row, rows)
+
+    return {
+        "state": canonical_state,
+        "start": start_value,
+        "end": end_value,
+        "raw_state": {
+            "rows": {
+                "parent": _row_to_raw_state_entry(parent_row),
+                "batch": _row_to_raw_state_entry(batch_row),
+                "extern": _row_to_raw_state_entry(extern_row),
+                "others": [_row_to_raw_state_entry(row) for row in other_rows],
+            },
+            "all_rows": [_row_to_raw_state_entry(row) for row in rows],
+            "resolution": {
+                "canonical_state": canonical_state,
+                "rule": resolution_rule,
+                "used_row": resolution_used_row,
+                "live_rows": [str(row.get("JobID") or "") for row in live_rows],
+                "queue_rows": [str(row.get("JobID") or "") for row in queue_rows],
+            },
+        },
+    }
+
+
+def get_canonical_sacct_states(job_ids: Union[str, List[str]]) -> Dict[str, Dict[str, Any]]:
+    """
+    Query sacct full rows and resolve canonical state per parent SLURM job ID.
+
+    Canonical resolution order:
+    1) Any RUNNING/COMPLETING row => RUNNING
+    2) Else any PENDING/REQUEUED/SUSPENDED row => PENDING
+    3) Else terminal mapping using `.batch` first, then parent fallback
+    """
+    # This function is the full-row state resolver used by collections refresh.
+    # It intentionally does not replace get_sacct_info() legacy behavior.
+    if isinstance(job_ids, str):
+        job_ids = [job_ids]
+
+    requested = [str(job_id).strip() for job_id in job_ids if str(job_id).strip()]
+    if not requested:
+        return {}
+
+    rows = _query_sacct_rows(requested, fields=CANONICAL_SACCT_FIELDS.copy())
+    grouped: Dict[str, List[Dict[str, str]]] = {}
+    for row in rows:
+        row_job_id = str(row.get("JobID") or "").strip()
+        if not row_job_id:
+            continue
+        parent_job_id = row_job_id.split(".", 1)[0]
+        grouped.setdefault(parent_job_id, []).append(row)
+
+    resolved: Dict[str, Dict[str, Any]] = {}
+    for requested_job_id in requested:
+        parent_job_id = requested_job_id.split(".", 1)[0]
+        if parent_job_id in resolved:
+            continue
+        parent_rows = grouped.get(parent_job_id, [])
+        if not parent_rows:
+            continue
+        resolved[parent_job_id] = _resolve_canonical_state_for_rows(parent_job_id, parent_rows)
+    return resolved
 
 
 # =============================================================================

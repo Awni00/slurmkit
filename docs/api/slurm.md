@@ -19,7 +19,14 @@ This module provides wrapper functions for common SLURM operations:
 
 ::: slurmkit.slurm.get_sacct_info
 
+::: slurmkit.slurm.get_canonical_sacct_states
+
 ::: slurmkit.slurm.get_pending_jobs
+
+`get_sacct_info()` preserves the legacy parent-row-only view (`job_id` without
+step rows). `get_canonical_sacct_states()` evaluates full `sacct` rows
+(`job_id`, `.batch`, `.extern`, other steps), returns canonical state, and
+includes row-level `raw_state` diagnostics.
 
 ### Job Submission
 

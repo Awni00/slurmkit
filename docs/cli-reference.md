@@ -178,6 +178,9 @@ slurmkit collections analyze exp1 --json
 slurmkit status exp1 --json
 ```
 
+`slurmkit collections show --json` includes `effective_raw_state` for each job,
+which exposes row-level SLURM diagnostics used to derive canonical state.
+
 ## `notify` commands
 
 ```bash

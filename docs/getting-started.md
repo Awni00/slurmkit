@@ -130,6 +130,10 @@ Refresh collection state from SLURM explicitly:
 slurmkit collections refresh my_experiment
 ```
 
+Refresh computes a canonical attempt state from full `sacct` rows (including
+`.batch` / `.extern`) and stores row-level diagnostics in each attempt's
+`raw_state` field.
+
 ## Retry failures
 
 ```bash

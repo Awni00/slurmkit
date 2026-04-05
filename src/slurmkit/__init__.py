@@ -15,6 +15,7 @@ __author__ = "Awni Altabaa"
 from slurmkit.config import Config, get_config
 from slurmkit.collections import Collection, CollectionManager
 from slurmkit.slurm import (
+    get_canonical_sacct_states,
     get_job_status,
     get_sacct_info,
     get_pending_jobs,
@@ -33,6 +34,7 @@ __all__ = [
     "Collection",
     "CollectionManager",
     # SLURM utilities
+    "get_canonical_sacct_states",
     "get_job_status",
     "get_sacct_info",
     "get_pending_jobs",

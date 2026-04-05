@@ -194,6 +194,9 @@ def show_collection(
                             "effective_job_id": row.get("effective_job_id"),
                             "effective_state": row.get("effective_state_raw"),
                             "effective_state_normalized": row.get("effective_state"),
+                            # JSON/debug contract: expose full row diagnostics
+                            # without altering default human table rendering.
+                            "effective_raw_state": row.get("effective_raw_state"),
                             "effective_hostname": row.get("effective_hostname"),
                             "effective_attempt_label": row.get("effective_attempt_label"),
                             "effective_attempt_index": row.get("effective_attempt_index"),

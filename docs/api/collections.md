@@ -11,6 +11,9 @@ Collections allow you to group related jobs together, track their states, and pe
 - Current job states
 - Timestamps
 
+`Collection.refresh_states()` derives canonical SLURM state from full `sacct`
+rows and stores per-attempt debug details in `attempt.raw_state`.
+
 ## Classes
 
 ### Collection

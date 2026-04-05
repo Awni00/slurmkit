@@ -73,3 +73,81 @@ def test_collection_manager_resolve_job_id_can_be_ambiguous(tmp_path):
 
     assert len(resolution.matches) == 2
     assert sorted(match.collection_name for match in resolution.matches) == ["exp1", "exp2"]
+
+
+def test_collection_refresh_states_uses_canonical_state_and_persists_raw_state(monkeypatch, tmp_path):
+    manager = CollectionManager(collections_dir=tmp_path)
+    collection = Collection("exp1")
+    collection.add_job("job1", script_path="jobs/job1.job", job_id="100", state="PREEMPTED")
+    manager.save(collection)
+
+    monkeypatch.setattr(
+        "slurmkit.collections.get_canonical_sacct_states",
+        lambda *_args, **_kwargs: {
+            "100": {
+                "state": "COMPLETED",
+                "start": "2026-04-05T10:00:00",
+                "end": "2026-04-05T10:05:00",
+                "raw_state": {
+                    "rows": {
+                        "parent": {
+                            "job_id": "100",
+                            "state_raw": "PREEMPTED",
+                            "state_base": "PREEMPTED",
+                            "exit_code": "0:0",
+                            "derived_exit_code": "0:0",
+                            "reason": "preempted",
+                            "start": "2026-04-05T10:00:00",
+                            "end": "2026-04-05T10:05:00",
+                        },
+                        "batch": {
+                            "job_id": "100.batch",
+                            "state_raw": "COMPLETED",
+                            "state_base": "COMPLETED",
+                            "exit_code": "0:0",
+                            "derived_exit_code": "0:0",
+                            "reason": "",
+                            "start": "2026-04-05T10:00:00",
+                            "end": "2026-04-05T10:05:00",
+                        },
+                        "extern": None,
+                        "others": [],
+                    },
+                    "all_rows": [],
+                    "resolution": {
+                        "canonical_state": "COMPLETED",
+                        "rule": "batch_completed_exit_zero",
+                        "used_row": "batch",
+                        "live_rows": [],
+                        "queue_rows": [],
+                    },
+                },
+            }
+        },
+    )
+
+    updated = collection.refresh_states()
+    assert updated == 1
+    attempt = collection.jobs[0]["attempts"][0]
+    assert attempt["state"] == "COMPLETED"
+    assert attempt["raw_state"]["resolution"]["canonical_state"] == "COMPLETED"
+    assert attempt["started_at"] == "2026-04-05T10:00:00"
+    assert attempt["completed_at"] == "2026-04-05T10:05:00"
+
+    manager.save(collection)
+    restored = manager.load("exp1")
+    restored_attempt = restored.jobs[0]["attempts"][0]
+    assert restored_attempt["raw_state"]["resolution"]["rule"] == "batch_completed_exit_zero"
+
+
+def test_collection_refresh_states_keeps_attempt_when_no_canonical_row(monkeypatch):
+    collection = Collection("exp1")
+    collection.add_job("job1", script_path="jobs/job1.job", job_id="100", state="FAILED")
+
+    monkeypatch.setattr("slurmkit.collections.get_canonical_sacct_states", lambda *_args, **_kwargs: {})
+
+    updated = collection.refresh_states()
+    assert updated == 0
+    attempt = collection.jobs[0]["attempts"][0]
+    assert attempt["state"] == "FAILED"
+    assert attempt["raw_state"] is None

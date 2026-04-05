@@ -51,7 +51,7 @@ def test_resubmit_job_id_succeeds_for_unique_match(monkeypatch, tmp_path):
     manager = _manager_from_config(config_path)
     _add_collection_with_job(manager=manager, project_root=tmp_path, name="exp1", job_name="job1", job_id="100")
 
-    monkeypatch.setattr("slurmkit.collections.get_sacct_info", lambda *_args, **_kwargs: {})
+    monkeypatch.setattr("slurmkit.collections.get_canonical_sacct_states", lambda *_args, **_kwargs: {})
     monkeypatch.setattr(
         "slurmkit.workflows.jobs.submit_job",
         lambda _path, dry_run=False: (True, "101", "Submitted batch job 101"),
@@ -109,7 +109,7 @@ def test_resubmit_job_id_with_collection_scope_disambiguates(monkeypatch, tmp_pa
     _add_collection_with_job(manager=manager, project_root=tmp_path, name="exp1", job_name="job1", job_id="100")
     _add_collection_with_job(manager=manager, project_root=tmp_path, name="exp2", job_name="job2", job_id="100")
 
-    monkeypatch.setattr("slurmkit.collections.get_sacct_info", lambda *_args, **_kwargs: {})
+    monkeypatch.setattr("slurmkit.collections.get_canonical_sacct_states", lambda *_args, **_kwargs: {})
     monkeypatch.setattr(
         "slurmkit.workflows.jobs.submit_job",
         lambda _path, dry_run=False: (True, "101", "Submitted batch job 101"),

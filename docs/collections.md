@@ -42,6 +42,22 @@ jobs:
       - kind: primary
         job_id: "123456"
         state: COMPLETED
+        raw_state:
+          rows:
+            parent:
+              job_id: "123456"
+              state_raw: PREEMPTED
+              state_base: PREEMPTED
+            batch:
+              job_id: "123456.batch"
+              state_raw: COMPLETED
+              state_base: COMPLETED
+            extern: null
+            others: []
+          resolution:
+            canonical_state: COMPLETED
+            rule: batch_completed_exit_zero
+            used_row: batch
         script_path: /abs/path/to/.jobs/sweeps/exp1/job_scripts/lr0.001_bs32.job
         output_path: /abs/path/to/.jobs/sweeps/exp1/logs/lr0.001_bs32.123456.out
         submitted_at: "2026-03-15T10:35:00"
@@ -129,6 +145,8 @@ slurmkit resubmit exp1 --filter failed
 - `slurmkit status <collection>` is the compact live entry point
 - `slurmkit collections show <collection>` is the fuller collection view
 - `slurmkit collections analyze <collection>` summarizes parameter-outcome patterns
+- `attempt.state` is canonical (deterministic) state used for filtering, summaries, and resubmit behavior
+- `attempt.raw_state` stores full `sacct` row diagnostics (`parent`, `.batch`, `.extern`, other rows) and resolution metadata
 
 ## Migration note
 

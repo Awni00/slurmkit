@@ -182,7 +182,7 @@ def test_resubmit_workflow_single_target_allows_nonfailed_and_warns(monkeypatch,
     collection.add_job("job1", script_path=script, job_id="100", state="COMPLETED", parameters={"lr": 0.1})
     manager.save(collection)
 
-    monkeypatch.setattr("slurmkit.collections.get_sacct_info", lambda *_args, **_kwargs: {})
+    monkeypatch.setattr("slurmkit.collections.get_canonical_sacct_states", lambda *_args, **_kwargs: {})
     monkeypatch.setattr("slurmkit.workflows.jobs.submit_job", lambda _path, dry_run=False: (True, "101", "Submitted batch job 101"))
 
     plan = plan_resubmit_collection(
@@ -219,7 +219,7 @@ def test_resubmit_workflow_single_target_dry_run_does_not_mutate_collection(monk
     collection.add_job("job1", script_path=script, job_id="100", state="FAILED", parameters={"lr": 0.1})
     manager.save(collection)
 
-    monkeypatch.setattr("slurmkit.collections.get_sacct_info", lambda *_args, **_kwargs: {})
+    monkeypatch.setattr("slurmkit.collections.get_canonical_sacct_states", lambda *_args, **_kwargs: {})
     monkeypatch.setattr("slurmkit.workflows.jobs.submit_job", lambda _path, dry_run=False: (True, "101", "Submitted batch job 101"))
 
     plan = plan_resubmit_collection(
@@ -255,7 +255,7 @@ def test_resubmit_workflow_single_target_uses_latest_attempt_chain(monkeypatch, 
     collection.get_job("job1")["attempts"][-1]["state"] = "FAILED"
     manager.save(collection)
 
-    monkeypatch.setattr("slurmkit.collections.get_sacct_info", lambda *_args, **_kwargs: {})
+    monkeypatch.setattr("slurmkit.collections.get_canonical_sacct_states", lambda *_args, **_kwargs: {})
     monkeypatch.setattr("slurmkit.workflows.jobs.submit_job", lambda _path, dry_run=False: (True, "102", "Submitted batch job 102"))
 
     plan = plan_resubmit_collection(

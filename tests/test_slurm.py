@@ -7,6 +7,7 @@ from types import SimpleNamespace
 import pytest
 
 from slurmkit.slurm import (
+    get_canonical_sacct_states,
     get_pending_jobs,
     parse_elapsed_to_seconds,
     parse_timestamp,
@@ -214,3 +215,160 @@ def test_get_pending_jobs_preserves_dot_suffixes(monkeypatch):
 
     pending = get_pending_jobs()
     assert pending[0]["job_name"] == "train.resubmit-1"
+
+
+def _mock_sacct_rows(monkeypatch, output: str) -> None:
+    from slurmkit import slurm
+
+    monkeypatch.setattr(
+        slurm,
+        "run_command",
+        lambda _cmd: SimpleNamespace(stdout=output),
+    )
+
+
+def test_canonical_state_prefers_batch_completed_zero_exit(monkeypatch):
+    _mock_sacct_rows(
+        monkeypatch,
+        (
+            "123|PREEMPTED|0:0|0:0|Preempted by scheduler|2026-04-05T10:00:00|2026-04-05T10:12:00\n"
+            "123.batch|COMPLETED|0:0|0:0||2026-04-05T10:00:00|2026-04-05T10:11:00\n"
+            "123.extern|COMPLETED|0:0|0:0||2026-04-05T10:00:00|2026-04-05T10:11:30\n"
+        ),
+    )
+
+    result = get_canonical_sacct_states(["123"])
+    assert result["123"]["state"] == "COMPLETED"
+    assert result["123"]["end"] == "2026-04-05T10:11:00"
+    assert result["123"]["raw_state"]["resolution"]["rule"] == "batch_completed_exit_zero"
+
+
+def test_canonical_state_completed_nonzero_exit_is_failed(monkeypatch):
+    _mock_sacct_rows(
+        monkeypatch,
+        (
+            "200|FAILED|1:0|1:0||2026-04-05T10:00:00|2026-04-05T10:01:00\n"
+            "200.batch|COMPLETED|1:0|1:0||2026-04-05T10:00:00|2026-04-05T10:01:00\n"
+        ),
+    )
+
+    result = get_canonical_sacct_states(["200"])
+    assert result["200"]["state"] == "FAILED"
+    assert result["200"]["raw_state"]["resolution"]["rule"] == "batch_completed_nonzero_exit"
+
+
+def test_canonical_state_live_rows_take_precedence(monkeypatch):
+    _mock_sacct_rows(
+        monkeypatch,
+        (
+            "300|FAILED|1:0|1:0||2026-04-05T10:00:00|2026-04-05T10:01:00\n"
+            "300.batch|COMPLETED|0:0|0:0||2026-04-05T10:00:00|2026-04-05T10:01:00\n"
+            "300.extern|RUNNING|0:0|0:0||2026-04-05T10:00:00|Unknown\n"
+        ),
+    )
+
+    result = get_canonical_sacct_states(["300"])
+    assert result["300"]["state"] == "RUNNING"
+    assert result["300"]["raw_state"]["resolution"]["rule"] == "live_state_present"
+
+
+def test_canonical_state_queue_rows_take_precedence_when_no_live(monkeypatch):
+    _mock_sacct_rows(
+        monkeypatch,
+        (
+            "400|FAILED|1:0|1:0||2026-04-05T10:00:00|2026-04-05T10:01:00\n"
+            "400.batch|FAILED|1:0|1:0||2026-04-05T10:00:00|2026-04-05T10:01:00\n"
+            "400.extern|PENDING|0:0|0:0|Priority|Unknown|Unknown\n"
+        ),
+    )
+
+    result = get_canonical_sacct_states(["400"])
+    assert result["400"]["state"] == "PENDING"
+    assert result["400"]["raw_state"]["resolution"]["rule"] == "queue_state_present"
+
+
+def test_canonical_state_cancelled_preemption_and_timeout_reason(monkeypatch):
+    _mock_sacct_rows(
+        monkeypatch,
+        (
+            "500|PREEMPTED|0:0|0:0||2026-04-05T10:00:00|2026-04-05T10:05:00\n"
+            "500.batch|CANCELLED|0:0|0:0|QOS preempted|2026-04-05T10:00:00|2026-04-05T10:05:00\n"
+            "501|CANCELLED|0:0|0:0||2026-04-05T10:00:00|2026-04-05T10:06:00\n"
+            "501.batch|CANCELLED|0:0|0:0|TIME LIMIT reached|2026-04-05T10:00:00|2026-04-05T10:06:00\n"
+        ),
+    )
+
+    result = get_canonical_sacct_states(["500", "501"])
+    assert result["500"]["state"] == "PREEMPTED"
+    assert result["500"]["raw_state"]["resolution"]["rule"] == "batch_cancelled_preempted"
+    assert result["501"]["state"] == "TIMEOUT"
+    assert result["501"]["raw_state"]["resolution"]["rule"] == "batch_cancelled_timeout"
+
+
+def test_canonical_state_parent_fallback_without_batch(monkeypatch):
+    _mock_sacct_rows(
+        monkeypatch,
+        "600|COMPLETED|1:0|1:0||2026-04-05T10:00:00|2026-04-05T10:07:00\n",
+    )
+
+    result = get_canonical_sacct_states(["600"])
+    assert result["600"]["state"] == "FAILED"
+    assert result["600"]["raw_state"]["resolution"]["rule"] == "parent_completed_nonzero_exit"
+
+
+def test_canonical_state_normalizes_state_tokens(monkeypatch):
+    _mock_sacct_rows(
+        monkeypatch,
+        (
+            "700|FAILED|1:0|1:0||2026-04-05T10:00:00|2026-04-05T10:01:00\n"
+            "700.batch|COMPLETED+|0:0|0:0||2026-04-05T10:00:00|2026-04-05T10:01:00\n"
+            "701|FAILED|1:0|1:0||2026-04-05T10:00:00|2026-04-05T10:01:00\n"
+            "701.batch|CANCELLED by 1234|0:0|0:0||2026-04-05T10:00:00|2026-04-05T10:01:00\n"
+        ),
+    )
+
+    result = get_canonical_sacct_states(["700", "701"])
+    assert result["700"]["raw_state"]["rows"]["batch"]["state_base"] == "COMPLETED"
+    assert result["700"]["state"] == "COMPLETED"
+    assert result["701"]["raw_state"]["rows"]["batch"]["state_base"] == "CANCELLED"
+    assert result["701"]["state"] == "CANCELLED"
+
+
+def test_canonical_state_prefers_latest_duplicate_batch_row(monkeypatch):
+    _mock_sacct_rows(
+        monkeypatch,
+        (
+            "800|PREEMPTED|0:0|0:0|preempted|2026-04-05T10:00:00|2026-04-05T10:03:00\n"
+            "800.batch|COMPLETED|1:0|1:0||2026-04-05T10:00:00|2026-04-05T10:02:00\n"
+            "800.batch|COMPLETED|0:0|0:0||2026-04-05T10:00:00|2026-04-05T10:04:00\n"
+        ),
+    )
+
+    result = get_canonical_sacct_states(["800"])
+    assert result["800"]["state"] == "COMPLETED"
+    assert result["800"]["end"] == "2026-04-05T10:04:00"
+
+
+def test_canonical_state_uses_derived_exit_code_when_exit_code_missing(monkeypatch):
+    _mock_sacct_rows(
+        monkeypatch,
+        (
+            "900|FAILED|Unknown|Unknown||2026-04-05T10:00:00|2026-04-05T10:03:00\n"
+            "900.batch|COMPLETED|Unknown|1:0||2026-04-05T10:00:00|2026-04-05T10:03:00\n"
+        ),
+    )
+
+    result = get_canonical_sacct_states(["900"])
+    assert result["900"]["state"] == "FAILED"
+    assert result["900"]["raw_state"]["resolution"]["rule"] == "batch_completed_nonzero_exit"
+
+
+def test_canonical_state_resolves_when_parent_row_missing(monkeypatch):
+    _mock_sacct_rows(
+        monkeypatch,
+        "910.batch|COMPLETED|0:0|0:0||2026-04-05T10:00:00|2026-04-05T10:02:00\n",
+    )
+
+    result = get_canonical_sacct_states(["910"])
+    assert result["910"]["state"] == "COMPLETED"
+    assert result["910"]["raw_state"]["rows"]["parent"] is None

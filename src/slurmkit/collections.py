@@ -12,6 +12,7 @@ from __future__ import annotations
 import json
 import socket
 import subprocess
+from copy import deepcopy
 from dataclasses import dataclass
 from datetime import datetime
 from functools import lru_cache
@@ -21,7 +22,7 @@ from typing import Any, Dict, Iterator, List, Optional, Set, Union
 import yaml
 
 from slurmkit.config import Config, get_config
-from slurmkit.slurm import get_sacct_info
+from slurmkit.slurm import get_canonical_sacct_states
 
 
 COLLECTION_SCHEMA_VERSION = 2
@@ -144,11 +145,13 @@ class Collection:
         parameters: Optional[Dict[str, Any]] = None,
         extra_params: Optional[Dict[str, Any]] = None,
         regenerated: Optional[bool] = None,
+        raw_state: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         git_metadata = _get_git_metadata()
         return {
             "kind": kind,
             "job_id": _string_or_none(job_id),
+            # Canonical operational state used by all filtering/summaries.
             "state": _string_or_none(state),
             "hostname": _string_or_none(hostname) or socket.gethostname(),
             "submitted_at": _string_or_none(submitted_at),
@@ -161,6 +164,9 @@ class Collection:
             "parameters": dict(parameters or {}),
             "extra_params": dict(extra_params or {}),
             "regenerated": regenerated,
+            # raw_state is diagnostics-only metadata; deepcopy avoids sharing mutable
+            # nested structures across attempts/callers.
+            "raw_state": deepcopy(raw_state) if raw_state is not None else None,
             "git_branch": git_metadata["git_branch"],
             "git_commit_id": git_metadata["git_commit_id"],
         }
@@ -181,6 +187,7 @@ class Collection:
             parameters=raw_attempt.get("parameters"),
             extra_params=raw_attempt.get("extra_params"),
             regenerated=raw_attempt.get("regenerated"),
+            raw_state=raw_attempt.get("raw_state"),
         )
         if raw_attempt.get("git_branch") is not None:
             attempt["git_branch"] = raw_attempt.get("git_branch")
@@ -465,6 +472,7 @@ class Collection:
                     "primary_hostname": primary.get("hostname"),
                     "effective_job_id": effective.get("job_id"),
                     "effective_state_raw": effective.get("state"),
+                    "effective_raw_state": effective.get("raw_state"),
                     "effective_state": effective_state,
                     "effective_hostname": effective.get("hostname"),
                     "effective_submitted_at": effective.get("submitted_at"),
@@ -702,7 +710,9 @@ class Collection:
         if not job_ids:
             return 0
 
-        info_map = get_sacct_info(job_ids, fields=["JobID", "State", "Start", "End"])
+        # Refresh uses canonical state inference from full sacct rows, not the
+        # legacy parent-only sacct view.
+        info_map = get_canonical_sacct_states(job_ids)
         updated = 0
         for job in self._jobs:
             for attempt in job["attempts"]:
@@ -710,14 +720,19 @@ class Collection:
                 if not job_id or job_id not in info_map:
                     continue
                 info = info_map[job_id]
-                new_state = info.get("State")
+                new_state = info.get("state")
                 if attempt.get("state") != new_state:
                     attempt["state"] = new_state
                     updated += 1
-                if info.get("Start") and info["Start"] != "Unknown":
-                    attempt["started_at"] = info["Start"]
-                if info.get("End") and info["End"] != "Unknown":
-                    attempt["completed_at"] = info["End"]
+                # Persist row-level diagnostics alongside canonical state to
+                # support debugging without affecting state-based behavior.
+                attempt["raw_state"] = info.get("raw_state")
+                # Start/end come from the canonical resolver's selected/fallback
+                # row ordering, rather than directly trusting the parent row.
+                if info.get("start") and info["start"] != "Unknown":
+                    attempt["started_at"] = info["start"]
+                if info.get("end") and info["end"] != "Unknown":
+                    attempt["completed_at"] = info["end"]
 
         if updated > 0:
             self._touch()
