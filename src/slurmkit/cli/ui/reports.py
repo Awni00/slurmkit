@@ -101,7 +101,7 @@ def _format_runtime(job: Dict[str, Any], now_utc: datetime) -> str:
     raw_state = str(job.get("effective_state_raw", "")).strip().upper()
     if raw_state not in {"RUNNING", "COMPLETING"}:
         return ""
-    return f"{_format_duration(int((now_utc - started).total_seconds()))} (running)"
+    return _format_duration(int((now_utc - started).total_seconds()))
 
 
 def _string_or_empty(value: Any) -> str:

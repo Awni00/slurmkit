@@ -126,7 +126,10 @@ class RichBackend:
             uri = path.as_uri()
         except ValueError:
             return target
-        return Text("OUTPUT", style=f"link {uri}")
+        label = "output logs"
+        text = Text(label)
+        text.stylize(f"link {uri}", 0, len(label))
+        return text
 
     def _render_kv_value(self, label: str, value: str) -> str | Text:
         if str(label).strip().lower() not in self._HEADER_PATH_LABELS:
@@ -141,4 +144,6 @@ class RichBackend:
             uri = path.as_uri()
         except ValueError:
             return target
-        return Text(target, style=f"link {uri}")
+        text = Text(target)
+        text.stylize(f"link {uri}", 0, len(target))
+        return text

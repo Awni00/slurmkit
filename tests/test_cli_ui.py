@@ -212,7 +212,7 @@ def test_collection_show_report_runtime_column_completed_and_running():
     )
 
     assert report.jobs_table.rows[0][1] == "1m 05s"
-    assert report.jobs_table.rows[1][1].endswith("(running)")
+    assert report.jobs_table.rows[1][1] == "1m 30s"
 
 
 def test_collection_show_report_can_skip_jobs_table():
@@ -407,11 +407,11 @@ def test_rich_backend_output_path_cell_renders_short_hyperlink_label():
     backend = RichBackend()
     rendered = backend._render_output_link("/tmp/demo_output.out")
     assert rendered.plain == "output logs"
-    assert "link file://" in str(rendered.style)
+    assert any("link file://" in str(span.style) for span in rendered.spans)
 
 
 def test_rich_backend_header_path_value_renders_relative_hyperlink():
     backend = RichBackend()
     rendered = backend._render_kv_value("Spec", "experiments/exp1/slurmkit/job_spec.yaml")
     assert rendered.plain == "experiments/exp1/slurmkit/job_spec.yaml"
-    assert "link file://" in str(rendered.style)
+    assert any("link file://" in str(span.style) for span in rendered.spans)
