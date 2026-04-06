@@ -10,6 +10,7 @@ import yaml
 from typer.testing import CliRunner
 
 from slurmkit.cli.app import app as cli_app
+from tests.cli_output import plain_cli_output
 
 
 runner = CliRunner()
@@ -110,13 +111,13 @@ def test_structured_output_disables_prompt_fallback(tmp_path):
     result = runner.invoke(cli_app, ["--config", str(config_path), "collections", "show", "--json"])
 
     assert result.exit_code != 0
-    assert "Missing collection argument." in (result.stderr or result.stdout)
+    assert "Missing collection argument." in plain_cli_output(result)
 
 
 def test_removed_jobs_namespace_is_not_registered():
     result = runner.invoke(cli_app, ["jobs"])
     assert result.exit_code != 0
-    assert "No such command" in (result.stderr or result.stdout)
+    assert "No such command" in plain_cli_output(result)
 
 
 def test_collections_list_table_renders_expected_columns_and_newest_first(tmp_path):
@@ -192,7 +193,7 @@ def test_status_command_rejects_removed_state_option(tmp_path):
     )
 
     assert result.exit_code != 0
-    assert "No such option: --state" in (result.stderr or result.stdout)
+    assert "No such option: --state" in plain_cli_output(result)
 
 
 def test_status_text_is_summary_only_and_includes_header_links(tmp_path):
@@ -379,7 +380,7 @@ def test_install_skill_command_missing_npx(monkeypatch):
     result = runner.invoke(cli_app, ["install-skill", "--yes"])
 
     assert result.exit_code == 1
-    assert "`npx` not found." in (result.stderr or result.stdout)
+    assert "`npx` not found." in plain_cli_output(result)
 
 
 def test_install_skill_command_nonzero_exit(monkeypatch):
@@ -396,7 +397,7 @@ def test_install_skill_command_nonzero_exit(monkeypatch):
     result = runner.invoke(cli_app, ["install-skill", "--yes"])
 
     assert result.exit_code == 1
-    assert "exited with code 7" in (result.stderr or result.stdout)
+    assert "exited with code 7" in plain_cli_output(result)
 
 
 def test_install_skill_command_canceled_by_prompt(monkeypatch):
@@ -479,7 +480,7 @@ def test_spec_template_errors_when_output_exists_without_force(tmp_path, monkeyp
     result = runner.invoke(cli_app, ["spec-template"])
 
     assert result.exit_code != 0
-    assert "already exists" in (result.stderr or result.stdout)
+    assert "already exists" in plain_cli_output(result)
     assert output.read_text(encoding="utf-8") == "existing\n"
 
 

@@ -9,6 +9,7 @@ from typer.testing import CliRunner
 from slurmkit.cli.app import app as cli_app
 from slurmkit.collections import Collection, CollectionManager
 from slurmkit.config import get_config
+from tests.cli_output import plain_cli_output
 
 
 runner = CliRunner()
@@ -81,7 +82,7 @@ def test_resubmit_job_id_errors_on_ambiguous_match(tmp_path):
         ["--config", str(config_path), "resubmit", "--job-id", "100", "--no-regenerate", "-y"],
     )
 
-    output = result.stderr or result.stdout
+    output = plain_cli_output(result)
     assert result.exit_code != 0
     assert "matched multiple collections" in output
     assert "exp1" in output
@@ -98,7 +99,7 @@ def test_resubmit_job_id_errors_when_missing(tmp_path):
         ["--config", str(config_path), "resubmit", "--job-id", "999", "--no-regenerate", "-y"],
     )
 
-    output = result.stderr or result.stdout
+    output = plain_cli_output(result)
     assert result.exit_code != 0
     assert "No collection found for job ID '999'" in output
 
@@ -136,7 +137,7 @@ def test_resubmit_job_id_rejects_filter_all(tmp_path):
         ["--config", str(config_path), "resubmit", "--job-id", "100", "--filter", "all"],
     )
 
-    output = result.stderr or result.stdout
+    output = plain_cli_output(result)
     assert result.exit_code != 0
     assert "--filter" in output
     assert "cannot be used with" in output
@@ -152,7 +153,7 @@ def test_resubmit_job_id_rejects_select_file(tmp_path):
         ["--config", str(config_path), "resubmit", "--job-id", "100", "--select-file", str(selector)],
     )
 
-    output = result.stderr or result.stdout
+    output = plain_cli_output(result)
     assert result.exit_code != 0
     assert "--select-file" in output
     assert "cannot be used with" in output
@@ -166,7 +167,7 @@ def test_resubmit_job_id_rejects_non_default_select_function(tmp_path):
         ["--config", str(config_path), "resubmit", "--job-id", "100", "--select-function", "custom_selector"],
     )
 
-    output = result.stderr or result.stdout
+    output = plain_cli_output(result)
     assert result.exit_code != 0
     assert "--select-function" in output
     assert "cannot be used with" in output
