@@ -215,6 +215,90 @@ def test_collection_show_report_runtime_column_completed_and_running():
     assert report.jobs_table.rows[1][1] == "1m 30s"
 
 
+def test_collection_show_report_eta_completion_column_formats_relative_minutes():
+    class _Collection:
+        name = "exp_eta"
+        description = ""
+        created_at = "2026-02-07T10:00:00"
+        updated_at = "2026-02-07T11:00:00"
+        cluster = "cluster-a"
+
+    report = build_collection_show_report(
+        collection=_Collection(),
+        jobs=[
+            {
+                "job_name": "running_job",
+                "effective_job_id": "102",
+                "effective_state_raw": "RUNNING",
+                "effective_attempt_label": "primary",
+                "resubmissions_count": 0,
+                "primary_job_id": "102",
+                "effective_eta_completion_at": "2026-02-07T18:30:00+00:00",
+            },
+            {
+                "job_name": "completed_job",
+                "effective_job_id": "103",
+                "effective_state_raw": "COMPLETED",
+                "effective_attempt_label": "primary",
+                "resubmissions_count": 0,
+                "primary_job_id": "103",
+                "effective_eta_completion_at": None,
+            },
+        ],
+        summary={
+            "total": 2,
+            "completed": 1,
+            "failed": 0,
+            "running": 1,
+            "pending": 0,
+            "unknown": 0,
+            "not_submitted": 0,
+        },
+        attempt_mode="latest",
+        submission_group=None,
+        jobs_table_columns=["job_name", "eta_completion"],
+        runtime_now=datetime.fromisoformat("2026-02-07T17:00:00+00:00"),
+    )
+
+    assert report.jobs_table.rows[0][1].endswith("(in 1h 30m)")
+    assert report.jobs_table.rows[1][1] == ""
+
+
+def test_collection_show_report_metadata_includes_collection_estimated_completion():
+    class _Collection:
+        name = "exp_eta_header"
+        description = ""
+        created_at = "2026-02-07T10:00:00"
+        updated_at = "2026-02-07T11:00:00"
+        cluster = "cluster-a"
+
+    report = build_collection_show_report(
+        collection=_Collection(),
+        jobs=[],
+        summary={
+            "total": 0,
+            "completed": 0,
+            "failed": 0,
+            "running": 0,
+            "pending": 0,
+            "unknown": 0,
+            "not_submitted": 0,
+        },
+        attempt_mode="latest",
+        submission_group=None,
+        include_jobs_table=False,
+        runtime_now=datetime.fromisoformat("2026-02-07T17:00:00+00:00"),
+        estimated_completion_at="2026-02-07T18:30:00+00:00",
+        estimable_active_jobs=1,
+        active_jobs=2,
+    )
+    metadata = dict(report.metadata)
+    assert "Collection Est. Completion" in metadata
+    value = metadata["Collection Est. Completion"]
+    assert "(in 1h 30m)" in value
+    assert value.endswith("(1/2 estimable active jobs)")
+
+
 def test_collection_show_report_can_skip_jobs_table():
     """Summary-only views should not carry a jobs table."""
 

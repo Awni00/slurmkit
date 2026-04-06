@@ -20,6 +20,7 @@ DEFAULT_COLLECTION_SHOW_COLUMNS: tuple[str, ...] = (
     "job_id",
     "state",
     "runtime",
+    "eta_completion",
     "attempt",
     "submission_group",
     "resubmissions",
@@ -104,6 +105,67 @@ def _format_runtime(job: Dict[str, Any], now_utc: datetime) -> str:
     return _format_duration(int((now_utc - started).total_seconds()))
 
 
+def _format_relative_minutes(total_seconds: int) -> str:
+    remaining_seconds = max(int(total_seconds), 0)
+    total_minutes = remaining_seconds // 60
+    days, rem_minutes = divmod(total_minutes, 1440)
+    hours, minutes = divmod(rem_minutes, 60)
+
+    parts: list[str] = []
+    if days > 0:
+        parts.append(f"{days}d")
+    if hours > 0:
+        parts.append(f"{hours}h")
+    if minutes > 0 or not parts:
+        parts.append(f"{minutes}m")
+    return f"in {' '.join(parts)}"
+
+
+def _parse_eta_time(value: Any, now_utc: datetime) -> Optional[datetime]:
+    if value is None:
+        return None
+    text = str(value).strip()
+    if not text:
+        return None
+    if text in {"N/A", "UNKNOWN", "Unknown"}:
+        return None
+    if text.endswith("Z"):
+        text = f"{text[:-1]}+00:00"
+    try:
+        parsed = datetime.fromisoformat(text)
+    except ValueError:
+        return None
+
+    local_tz = now_utc.astimezone().tzinfo
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=local_tz)
+    return parsed.astimezone(local_tz)
+
+
+def _format_eta_completion(value: Any, now_utc: datetime) -> str:
+    eta = _parse_eta_time(value, now_utc)
+    if eta is None:
+        return ""
+    now_local = now_utc.astimezone(eta.tzinfo)
+    delta_seconds = int((eta - now_local).total_seconds())
+    relative = _format_relative_minutes(delta_seconds)
+    return f"{eta.strftime('%Y-%m-%d %H:%M %Z')} ({relative})"
+
+
+def _format_collection_estimated_completion(
+    *,
+    estimated_completion_at: Optional[str],
+    estimable_active_jobs: int,
+    active_jobs: int,
+    now_utc: datetime,
+) -> str:
+    coverage = f"{estimable_active_jobs}/{active_jobs} estimable active jobs"
+    formatted = _format_eta_completion(estimated_completion_at, now_utc)
+    if not formatted:
+        return f"N/A ({coverage})"
+    return f"{formatted} ({coverage})"
+
+
 def _string_or_empty(value: Any) -> str:
     if value is None:
         return ""
@@ -136,6 +198,7 @@ def _collection_show_column_registry() -> Dict[str, _COLUMN_DEF]:
         "job_id": ("Job ID", lambda job, _now: _string_or_na(job.get("effective_job_id")), False),
         "state": ("State", lambda job, _now: _string_or_na(job.get("effective_state_raw")), True),
         "runtime": ("Runtime", lambda job, now: _format_runtime(job, now), False),
+        "eta_completion": ("ETA Completion", lambda job, now: _format_eta_completion(job.get("effective_eta_completion_at"), now), False),
         "attempt": ("Attempt", lambda job, _now: _string_or_empty(job.get("effective_attempt_label", "")), False),
         "submission_group": (
             "Submission Group",
@@ -202,8 +265,13 @@ def build_collection_show_report(
     jobs_table_columns: Optional[Sequence[str]] = None,
     metadata_links: Optional[Sequence[Tuple[str, str]]] = None,
     runtime_now: Optional[datetime] = None,
+    estimated_completion_at: Optional[str] = None,
+    estimated_remaining_seconds: Optional[int] = None,
+    estimable_active_jobs: int = 0,
+    active_jobs: int = 0,
 ) -> CollectionShowReport:
     """Build view-model for collection show output."""
+    now_utc = runtime_now or datetime.now(timezone.utc)
     summary_source_jobs = summary_jobs if summary_jobs is not None else jobs
     total = max(summary.get("total", 0), 1)
     primary_jobs_count = len(summary_source_jobs)
@@ -225,6 +293,17 @@ def build_collection_show_report(
     ]
     if submission_group:
         metadata.append(("Submission group", submission_group))
+    metadata.append(
+        (
+            "Collection Est. Completion",
+            _format_collection_estimated_completion(
+                estimated_completion_at=estimated_completion_at,
+                estimable_active_jobs=estimable_active_jobs,
+                active_jobs=active_jobs,
+                now_utc=now_utc,
+            ),
+        )
+    )
     for label, value in metadata_links or ():
         if value:
             metadata.append((label, value))
@@ -268,7 +347,7 @@ def build_collection_show_report(
         jobs_table = _build_collection_show_jobs_table(
             jobs,
             columns=jobs_table_columns,
-            now_utc=runtime_now or datetime.now(timezone.utc),
+            now_utc=now_utc,
         )
 
     return CollectionShowReport(

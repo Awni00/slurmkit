@@ -217,6 +217,8 @@ def test_status_text_is_summary_only_and_includes_header_links(tmp_path):
     assert "Summary:" in result.stdout
     assert "Jobs (" not in result.stdout
     assert "Generation Parameters:" not in result.stdout
+    assert "Collection Est. Completion" in result.stdout
+    assert "N/A (0/0 estimable active jobs)" in result.stdout
     assert "Spec" in result.stdout
     assert "Collection File" in result.stdout
     assert "Scripts Dir" in result.stdout
@@ -251,6 +253,19 @@ def test_status_json_is_compact_and_omits_jobs(tmp_path):
     assert set(payload.keys()) == {"collection", "summary", "links"}
     assert "jobs" not in payload
     assert payload["collection"]["name"] == "exp1"
+    assert set(payload["collection"].keys()) == {
+        "name",
+        "description",
+        "created_at",
+        "updated_at",
+        "cluster",
+        "attempt_mode",
+        "submission_group",
+        "estimated_completion_at",
+        "estimated_remaining_seconds",
+        "estimable_active_jobs",
+        "active_jobs",
+    }
     assert payload["summary"]["total"] == 1
     assert set(payload["links"].keys()) == {
         "spec_path",
@@ -258,6 +273,46 @@ def test_status_json_is_compact_and_omits_jobs(tmp_path):
         "scripts_dir",
         "logs_dir",
     }
+
+
+def test_collections_show_json_includes_eta_fields(monkeypatch, tmp_path):
+    config_path = _write_config(tmp_path)
+    _write_collection_file(
+        tmp_path,
+        name="exp_eta",
+        updated_at="2026-03-24T10:00:00",
+        state="RUNNING",
+    )
+
+    monkeypatch.setattr(
+        "slurmkit.workflows.collections.get_active_queue_timing",
+        lambda job_ids=None: {
+            "100": {
+                "job_id": "100",
+                "state_raw": "RUNNING",
+                "estimated_start_at": None,
+                "time_limit_seconds": None,
+                "time_left_seconds": 1800,
+            }
+        },
+    )
+
+    result = runner.invoke(
+        cli_app,
+        ["--config", str(config_path), "collections", "show", "exp_eta", "--json"],
+    )
+
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["estimated_completion_at"] is not None
+    assert isinstance(payload["estimated_remaining_seconds"], int)
+    assert payload["estimable_active_jobs"] == 1
+    assert payload["active_jobs"] == 1
+    assert len(payload["jobs"]) == 1
+    row = payload["jobs"][0]
+    assert "effective_eta_start_at" in row
+    assert row["effective_eta_completion_at"] is not None
+    assert isinstance(row["effective_eta_remaining_seconds"], int)
 
 
 def test_migrate_command_runs(tmp_path):

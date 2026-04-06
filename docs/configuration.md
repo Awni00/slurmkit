@@ -52,6 +52,7 @@ ui:
       - job_id
       - state
       - runtime
+      - eta_completion
       - attempt
       - submission_group
       - resubmissions

@@ -130,6 +130,15 @@ class TestConfig:
             assert isinstance(patterns, list)
             assert len(patterns) > 0
 
+    def test_default_collections_show_columns_include_eta_completion_after_runtime(self):
+        """Default `collections show` columns should include eta_completion after runtime."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config = Config(project_root=tmpdir)
+            columns = config.get("ui.columns.collections_show")
+            assert "runtime" in columns
+            runtime_index = columns.index("runtime")
+            assert columns[runtime_index + 1] == "eta_completion"
+
     def test_env_override(self):
         """Test environment variable overrides."""
         with tempfile.TemporaryDirectory() as tmpdir:

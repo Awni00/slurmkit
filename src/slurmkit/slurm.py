@@ -580,6 +580,117 @@ def get_pending_jobs(user: Optional[str] = None) -> List[Dict[str, str]]:
         return []
 
 
+def parse_slurm_duration_to_seconds(value: Optional[str]) -> Optional[int]:
+    """
+    Parse a SLURM duration string into total seconds.
+
+    Supports formats:
+    - "MM:SS"
+    - "HH:MM:SS"
+    - "D-HH:MM:SS"
+
+    Returns None when parsing fails or value is unknown.
+    """
+    if value is None:
+        return None
+    text = str(value).strip()
+    if not text:
+        return None
+    if text.upper() in {"N/A", "UNKNOWN", "UNLIMITED", "INFINITE", "NOT_SET"}:
+        return None
+
+    days = 0
+    time_part = text
+    if "-" in text:
+        day_part, time_part = text.split("-", 1)
+        try:
+            days = int(day_part)
+        except ValueError:
+            return None
+
+    parts = time_part.split(":")
+    try:
+        if len(parts) == 3:
+            hours, minutes, seconds = int(parts[0]), int(parts[1]), int(parts[2])
+        elif len(parts) == 2:
+            hours = 0
+            minutes, seconds = int(parts[0]), int(parts[1])
+        else:
+            return None
+    except ValueError:
+        return None
+
+    total = days * 86400 + hours * 3600 + minutes * 60 + seconds
+    return total if total >= 0 else None
+
+
+def get_active_queue_timing(
+    job_ids: Optional[List[str]] = None,
+    user: Optional[str] = None,
+) -> Dict[str, Dict[str, Any]]:
+    """
+    Query active queue timing fields for pending/running jobs.
+
+    Uses:
+    squeue --start --format=%i|%T|%S|%l|%L --noheader
+
+    Returns a map keyed by job_id with machine-friendly values:
+    - job_id
+    - state_raw
+    - estimated_start_at
+    - time_limit_seconds
+    - time_left_seconds
+    """
+    normalized_ids = [
+        str(job_id).strip()
+        for job_id in (job_ids or [])
+        if str(job_id).strip()
+    ]
+    cmd = ["squeue", "--start", "--format=%i|%T|%S|%l|%L", "--noheader"]
+    if normalized_ids:
+        cmd.extend(["-j", ",".join(normalized_ids)])
+    elif user:
+        cmd.extend(["-u", user])
+    else:
+        cmd.append("--me")
+
+    try:
+        result = run_command(cmd)
+    except FileNotFoundError:
+        print("Error: squeue command not found. Is SLURM installed?", file=sys.stderr)
+        return {}
+
+    timing_map: Dict[str, Dict[str, Any]] = {}
+    for line in result.stdout.splitlines():
+        if not line.strip():
+            continue
+        parts = line.strip().split("|")
+        if len(parts) < 5:
+            continue
+        job_id_raw, state_raw, start_time_raw, time_limit_raw, time_left_raw = parts[:5]
+        job_id = str(job_id_raw).strip()
+        if not job_id:
+            continue
+
+        estimated_start_at: Optional[str] = None
+        start_time_text = str(start_time_raw).strip()
+        if start_time_text and start_time_text not in {"N/A", "Unknown", "UNKNOWN"}:
+            try:
+                parsed_start = datetime.strptime(start_time_text, "%Y-%m-%dT%H:%M:%S")
+                estimated_start_at = parsed_start.isoformat(timespec="seconds")
+            except ValueError:
+                estimated_start_at = None
+
+        timing_map[job_id] = {
+            "job_id": job_id,
+            "state_raw": str(state_raw).strip() or None,
+            "estimated_start_at": estimated_start_at,
+            "time_limit_seconds": parse_slurm_duration_to_seconds(time_limit_raw),
+            "time_left_seconds": parse_slurm_duration_to_seconds(time_left_raw),
+        }
+    return timing_map
+
+
 def _parse_wait_time(start_time_str: str, now: datetime) -> str:
     """
     Parse estimated start time and format as wait time string.
@@ -1040,30 +1151,8 @@ def parse_elapsed_to_seconds(elapsed: str) -> int:
         >>> parse_elapsed_to_seconds("1-12:30:00")
         131400
     """
-    if not elapsed or elapsed in ("N/A", "UNKNOWN", "Unknown"):
-        return -1
-
-    try:
-        days = 0
-        if "-" in elapsed:
-            day_part, time_part = elapsed.split("-", 1)
-            days = int(day_part)
-        else:
-            time_part = elapsed
-
-        parts = time_part.split(":")
-        if len(parts) == 3:
-            hours, minutes, seconds = int(parts[0]), int(parts[1]), int(parts[2])
-        elif len(parts) == 2:
-            hours = 0
-            minutes, seconds = int(parts[0]), int(parts[1])
-        else:
-            return -1
-
-        return days * 86400 + hours * 3600 + minutes * 60 + seconds
-
-    except (ValueError, IndexError):
-        return -1
+    parsed = parse_slurm_duration_to_seconds(elapsed)
+    return parsed if parsed is not None else -1
 
 
 def parse_timestamp(timestamp_str: str) -> Optional[datetime]:

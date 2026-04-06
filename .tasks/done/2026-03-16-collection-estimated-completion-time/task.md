@@ -1,10 +1,10 @@
 ---
 task_id: t-20260316-001
 task_name: collection-estimated-completion-time
-status: todo
+status: completed
 date_created: '2026-03-16'
-date_started: null
-date_completed: null
+date_started: '2026-04-06'
+date_completed: '2026-04-06'
 priority: p2
 effort: m
 spec_readiness: rough
