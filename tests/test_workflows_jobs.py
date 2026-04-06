@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from slurmkit.collections import Collection, CollectionManager
 from slurmkit.config import get_config
 from slurmkit.workflows.jobs import (
@@ -173,7 +175,7 @@ def test_resubmit_workflow_adds_attempt(monkeypatch, tmp_path):
     assert updated.jobs[0]["attempts"][1]["submission_group"] == "group_a"
 
 
-def test_resubmit_workflow_single_target_allows_nonfailed_and_warns(monkeypatch, tmp_path):
+def test_resubmit_workflow_single_target_errors_when_filter_mismatch(monkeypatch, tmp_path):
     config = get_config(project_root=tmp_path, reload=True)
     manager = CollectionManager(config=config)
     collection = Collection("exp1")
@@ -183,31 +185,149 @@ def test_resubmit_workflow_single_target_allows_nonfailed_and_warns(monkeypatch,
     manager.save(collection)
 
     monkeypatch.setattr("slurmkit.collections.get_canonical_sacct_states", lambda *_args, **_kwargs: {})
-    monkeypatch.setattr("slurmkit.workflows.jobs.submit_job", lambda _path, dry_run=False: (True, "101", "Submitted batch job 101"))
+
+    with pytest.raises(ValueError, match="do not match --filter failed"):
+        plan_resubmit_collection(
+            config=config,
+            collection=collection,
+            filter_name="failed",
+            template=None,
+            extra_params=None,
+            extra_params_file=None,
+            extra_params_function="get_extra_params",
+            select_file=None,
+            select_function="should_resubmit",
+            submission_group="group_b",
+            regenerate=False,
+            target_job_names=["job1"],
+        )
+
+
+def test_resubmit_workflow_filter_preempted_uses_raw_state_mapping(monkeypatch, tmp_path):
+    config = get_config(project_root=tmp_path, reload=True)
+    collection = Collection("exp1")
+    script_a = tmp_path / "job_a.job"
+    script_b = tmp_path / "job_b.job"
+    script_a.write_text("#!/bin/bash\n", encoding="utf-8")
+    script_b.write_text("#!/bin/bash\n", encoding="utf-8")
+    collection.add_job("job_preempted", script_path=script_a, job_id="100", state="FAILED")
+    collection.add_job("job_failed", script_path=script_b, job_id="101", state="FAILED")
+    collection.get_job("job_preempted")["attempts"][-1]["raw_state"] = {
+        "resolution": {"canonical_state": "PREEMPTED"},
+    }
+    collection.get_job("job_failed")["attempts"][-1]["raw_state"] = {
+        "resolution": {"canonical_state": "FAILED"},
+    }
+
+    monkeypatch.setattr("slurmkit.collections.get_canonical_sacct_states", lambda *_args, **_kwargs: {})
 
     plan = plan_resubmit_collection(
         config=config,
         collection=collection,
-        filter_name="failed",
+        filter_name="preempted",
         template=None,
         extra_params=None,
         extra_params_file=None,
         extra_params_function="get_extra_params",
         select_file=None,
         select_function="should_resubmit",
-        submission_group="group_b",
+        submission_group="group_preempted",
         regenerate=False,
-        target_job_names=["job1"],
     )
-    assert len(plan.items) == 1
-    assert len(plan.warnings) == 1
-    assert "not failed" in plan.warnings[0]
 
-    result = execute_resubmit_collection(manager=manager, plan=plan, dry_run=False)
-    updated = manager.load("exp1")
-    assert result["resubmitted_count"] == 1
-    assert len(updated.jobs[0]["attempts"]) == 2
-    assert updated.jobs[0]["attempts"][1]["job_id"] == "101"
+    assert [item["job_name"] for item in plan.items] == ["job_preempted"]
+
+
+@pytest.mark.parametrize(
+    ("filter_name", "expected_job_name"),
+    [
+        ("timeout", "job_timeout"),
+        ("cancelled", "job_cancelled"),
+        ("node_fail", "job_node_fail"),
+        ("out_of_memory", "job_oom"),
+        ("oom", "job_oom"),
+    ],
+)
+def test_resubmit_workflow_terminal_filters(filter_name, expected_job_name, monkeypatch, tmp_path):
+    config = get_config(project_root=tmp_path, reload=True)
+    collection = Collection("exp1")
+    states = {
+        "job_timeout": "TIMEOUT",
+        "job_cancelled": "CANCELLED",
+        "job_node_fail": "NODE_FAIL",
+        "job_oom": "OUT_OF_MEMORY",
+    }
+    for job_name, state in states.items():
+        script = tmp_path / f"{job_name}.job"
+        script.write_text("#!/bin/bash\n", encoding="utf-8")
+        collection.add_job(job_name, script_path=script, job_id=f"id_{job_name}", state=state)
+
+    monkeypatch.setattr("slurmkit.collections.get_canonical_sacct_states", lambda *_args, **_kwargs: {})
+
+    plan = plan_resubmit_collection(
+        config=config,
+        collection=collection,
+        filter_name=filter_name,
+        template=None,
+        extra_params=None,
+        extra_params_file=None,
+        extra_params_function="get_extra_params",
+        select_file=None,
+        select_function="should_resubmit",
+        submission_group="group_terminal",
+        regenerate=False,
+    )
+
+    assert [item["job_name"] for item in plan.items] == [expected_job_name]
+
+
+def test_resubmit_workflow_invalid_filter_raises(tmp_path):
+    config = get_config(project_root=tmp_path, reload=True)
+    collection = Collection("exp1")
+    script = tmp_path / "job1.job"
+    script.write_text("#!/bin/bash\n", encoding="utf-8")
+    collection.add_job("job1", script_path=script, job_id="100", state="FAILED")
+
+    with pytest.raises(ValueError, match="Allowed values:"):
+        plan_resubmit_collection(
+            config=config,
+            collection=collection,
+            filter_name="nonsense",
+            template=None,
+            extra_params=None,
+            extra_params_file=None,
+            extra_params_function="get_extra_params",
+            select_file=None,
+            select_function="should_resubmit",
+            submission_group="group_invalid",
+            regenerate=False,
+        )
+
+
+def test_resubmit_workflow_all_filter_is_explicit(monkeypatch, tmp_path):
+    config = get_config(project_root=tmp_path, reload=True)
+    collection = Collection("exp1")
+    for idx, state in enumerate(("FAILED", "COMPLETED", "RUNNING"), start=1):
+        script = tmp_path / f"job{idx}.job"
+        script.write_text("#!/bin/bash\n", encoding="utf-8")
+        collection.add_job(f"job{idx}", script_path=script, job_id=str(100 + idx), state=state)
+
+    monkeypatch.setattr("slurmkit.collections.get_canonical_sacct_states", lambda *_args, **_kwargs: {})
+
+    plan = plan_resubmit_collection(
+        config=config,
+        collection=collection,
+        filter_name="all",
+        template=None,
+        extra_params=None,
+        extra_params_file=None,
+        extra_params_function="get_extra_params",
+        select_file=None,
+        select_function="should_resubmit",
+        submission_group="group_all",
+        regenerate=False,
+    )
+    assert [item["job_name"] for item in plan.items] == ["job1", "job2", "job3"]
 
 
 def test_resubmit_workflow_single_target_dry_run_does_not_mutate_collection(monkeypatch, tmp_path):

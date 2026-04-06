@@ -42,7 +42,10 @@ def _add_collection_with_job(
 ) -> None:
     script_path = project_root / f"{name}_{job_name}.job"
     script_path.write_text("#!/bin/bash\n", encoding="utf-8")
-    collection = Collection(name)
+    if manager.exists(name):
+        collection = manager.load(name)
+    else:
+        collection = Collection(name)
     collection.add_job(job_name, script_path=script_path, job_id=job_id, state=state, parameters={"x": 1})
     manager.save(collection)
 
@@ -129,18 +132,114 @@ def test_resubmit_job_id_with_collection_scope_disambiguates(monkeypatch, tmp_pa
     assert len(updated_exp2.jobs[0]["attempts"]) == 1
 
 
-def test_resubmit_job_id_rejects_filter_all(tmp_path):
+def test_resubmit_invalid_filter_errors_with_allowed_values(monkeypatch, tmp_path):
     config_path = _write_config(tmp_path)
+    manager = _manager_from_config(config_path)
+    _add_collection_with_job(manager=manager, project_root=tmp_path, name="exp1", job_name="job1", job_id="100")
+
+    monkeypatch.setattr("slurmkit.collections.get_canonical_sacct_states", lambda *_args, **_kwargs: {})
 
     result = runner.invoke(
         cli_app,
-        ["--config", str(config_path), "resubmit", "--job-id", "100", "--filter", "all"],
+        ["--config", str(config_path), "resubmit", "exp1", "--filter", "nonsense", "--dry-run"],
     )
 
     output = plain_cli_output(result)
     assert result.exit_code != 0
-    assert "--filter" in output
-    assert "cannot be used with" in output
+    assert "Unsupported --filter value 'nonsense'" in output
+    assert "Invalid value for --filter" in output
+    assert "out_of_memory, oom, all" in output
+
+
+def test_resubmit_filter_preempted_selects_only_preempted(monkeypatch, tmp_path):
+    config_path = _write_config(tmp_path)
+    manager = _manager_from_config(config_path)
+    _add_collection_with_job(
+        manager=manager,
+        project_root=tmp_path,
+        name="exp1",
+        job_name="job_preempted",
+        job_id="100",
+        state="PREEMPTED",
+    )
+    _add_collection_with_job(
+        manager=manager,
+        project_root=tmp_path,
+        name="exp1",
+        job_name="job_failed",
+        job_id="101",
+        state="FAILED",
+    )
+
+    monkeypatch.setattr("slurmkit.collections.get_canonical_sacct_states", lambda *_args, **_kwargs: {})
+    monkeypatch.setattr(
+        "slurmkit.workflows.jobs.submit_job",
+        lambda _path, dry_run=False: (True, "201", "Submitted batch job 201"),
+    )
+
+    result = runner.invoke(
+        cli_app,
+        ["--config", str(config_path), "resubmit", "exp1", "--filter", "preempted", "--no-regenerate", "-y"],
+        catch_exceptions=False,
+    )
+
+    assert result.exit_code == 0
+    assert "Resubmitted 1/1 job(s)." in result.stdout
+    updated = manager.load("exp1")
+    assert len(updated.get_job("job_preempted")["attempts"]) == 2
+    assert len(updated.get_job("job_failed")["attempts"]) == 1
+
+
+def test_resubmit_job_id_allows_filter_when_job_matches(monkeypatch, tmp_path):
+    config_path = _write_config(tmp_path)
+    manager = _manager_from_config(config_path)
+    _add_collection_with_job(
+        manager=manager,
+        project_root=tmp_path,
+        name="exp1",
+        job_name="job1",
+        job_id="100",
+        state="PREEMPTED",
+    )
+
+    monkeypatch.setattr("slurmkit.collections.get_canonical_sacct_states", lambda *_args, **_kwargs: {})
+    monkeypatch.setattr(
+        "slurmkit.workflows.jobs.submit_job",
+        lambda _path, dry_run=False: (True, "101", "Submitted batch job 101"),
+    )
+
+    result = runner.invoke(
+        cli_app,
+        ["--config", str(config_path), "resubmit", "--job-id", "100", "--filter", "preempted", "--no-regenerate", "-y"],
+        catch_exceptions=False,
+    )
+
+    assert result.exit_code == 0
+    assert "Resubmitted 1/1 job(s)." in result.stdout
+
+
+def test_resubmit_job_id_filter_mismatch_errors(monkeypatch, tmp_path):
+    config_path = _write_config(tmp_path)
+    manager = _manager_from_config(config_path)
+    _add_collection_with_job(
+        manager=manager,
+        project_root=tmp_path,
+        name="exp1",
+        job_name="job1",
+        job_id="100",
+        state="COMPLETED",
+    )
+
+    monkeypatch.setattr("slurmkit.collections.get_canonical_sacct_states", lambda *_args, **_kwargs: {})
+
+    result = runner.invoke(
+        cli_app,
+        ["--config", str(config_path), "resubmit", "--job-id", "100", "--filter", "failed", "--no-regenerate", "-y"],
+    )
+
+    output = plain_cli_output(result)
+    assert result.exit_code != 0
+    assert "do not match --filter failed" in output
 
 
 def test_resubmit_job_id_rejects_select_file(tmp_path):

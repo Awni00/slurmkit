@@ -104,7 +104,7 @@ slurmkit submit exp1 --filter all --delay 1
 Retry jobs from a collection, or target one logical job by tracked SLURM job ID.
 
 ```bash
-slurmkit resubmit [COLLECTION] [--job-id JOB_ID] [--filter failed|all] [--dry-run] [-y]
+slurmkit resubmit [COLLECTION] [--job-id JOB_ID] [--filter pending|running|completed|failed|unknown|preempted|timeout|cancelled|node_fail|out_of_memory|oom|all] [--dry-run] [-y]
 ```
 
 Job-ID targeting rules:
@@ -112,7 +112,7 @@ Job-ID targeting rules:
 - With `--job-id`, collection is inferred automatically unless `[COLLECTION]` is provided to scope lookup.
 - If no collection matches the job ID, the command errors.
 - If multiple collections match the job ID, the command errors and asks for `[COLLECTION]`.
-- In `--job-id` mode, only the default `--filter failed` is allowed.
+- In `--job-id` mode, `--filter` is allowed and enforced against the targeted job's latest effective state.
 - In `--job-id` mode, `--select-file`/`--select-function` are not supported.
 
 Advanced regeneration controls are also available:

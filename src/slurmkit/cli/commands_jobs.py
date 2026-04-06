@@ -17,9 +17,12 @@ from .runtime import can_prompt, get_state, is_structured_format
 from .ui import resolve_ui_context
 from slurmkit.workflows.collections import show_collection
 from slurmkit.workflows.jobs import (
+    ResubmitFilterError,
     execute_generate,
     execute_resubmit_collection,
     execute_submit_collection,
+    format_resubmit_filter_values,
+    normalize_resubmit_filter_name,
     plan_generate,
     plan_resubmit_collection,
     plan_submit_collection,
@@ -27,6 +30,12 @@ from slurmkit.workflows.jobs import (
 
 
 def register(app: typer.Typer) -> None:
+    def _parse_resubmit_filter(value: str) -> str:
+        try:
+            return normalize_resubmit_filter_name(value)
+        except ResubmitFilterError as exc:
+            raise typer.BadParameter(str(exc), param_hint="--filter") from exc
+
     @app.command("spec-template")
     def spec_template_command(
         ctx: typer.Context,
@@ -146,7 +155,15 @@ def register(app: typer.Typer) -> None:
             "--job-id",
             help="Resubmit one logical job by a tracked SLURM job ID.",
         ),
-        filter_name: str = typer.Option("failed", "--filter", help="Resubmit failed jobs or all jobs."),
+        filter_name: str = typer.Option(
+            "failed",
+            "--filter",
+            callback=_parse_resubmit_filter,
+            help=(
+                "Resubmit jobs by latest effective state. "
+                f"Allowed: {format_resubmit_filter_values()}."
+            ),
+        ),
         template: Optional[Path] = typer.Option(None, "--template", help="Override template for regenerated scripts."),
         extra_params: Optional[str] = typer.Option(None, "--extra-params", help="Comma-separated KEY=VAL overrides."),
         extra_params_file: Optional[Path] = typer.Option(None, "--extra-params-file", help="Python file with get_extra_params(context)->dict."),
@@ -170,11 +187,6 @@ def register(app: typer.Typer) -> None:
             )
             target = manager.load(collection_name)
         else:
-            if filter_name != "failed":
-                raise typer.BadParameter(
-                    "`--filter` cannot be used with `--job-id` (only the default `failed` scope is supported).",
-                    param_hint="--filter",
-                )
             if select_file is not None:
                 raise typer.BadParameter(
                     "`--select-file` cannot be used with `--job-id`.",
@@ -213,20 +225,23 @@ def register(app: typer.Typer) -> None:
             match = resolution.matches[0]
             target = match.collection
             target_job_names = [str(match.job["job_name"])]
-        plan = plan_resubmit_collection(
-            config=state.config,
-            collection=target,
-            filter_name=filter_name,
-            template=template,
-            extra_params=extra_params,
-            extra_params_file=extra_params_file,
-            extra_params_function=extra_params_function,
-            select_file=select_file,
-            select_function=select_function,
-            submission_group=submission_group,
-            regenerate=regenerate,
-            target_job_names=target_job_names,
-        )
+        try:
+            plan = plan_resubmit_collection(
+                config=state.config,
+                collection=target,
+                filter_name=filter_name,
+                template=template,
+                extra_params=extra_params,
+                extra_params_file=extra_params_file,
+                extra_params_function=extra_params_function,
+                select_file=select_file,
+                select_function=select_function,
+                submission_group=submission_group,
+                regenerate=regenerate,
+                target_job_names=target_job_names,
+            )
+        except ResubmitFilterError as exc:
+            raise typer.BadParameter(str(exc), param_hint="--filter") from exc
         manager.save(target)
         print_review(plan.review)
         for warning in plan.warnings:

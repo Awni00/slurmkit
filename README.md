@@ -159,8 +159,11 @@ slurmkit collections show exp1
 # Rich UI (if installed)
 slurmkit --ui rich collections analyze exp1
 
-# Resubmit failed jobs
+# Resubmit jobs by state filter
 slurmkit resubmit exp1 --filter failed
+
+# Resubmit only preempted jobs
+slurmkit resubmit exp1 --filter preempted
 
 # Resubmit a single tracked job by SLURM job ID (collection inferred)
 slurmkit resubmit --job-id 123456 -y
@@ -231,7 +234,7 @@ slurmkit resubmit exp1 --filter failed --dry-run
 | `slurmkit status <collection>` | Show live status for a collection |
 | `slurmkit generate <spec>` | Generate job scripts from a spec into a collection |
 | `slurmkit submit <collection>` | Submit a collection |
-| `slurmkit resubmit [collection] [--job-id <id>]` | Resubmit failed jobs in a collection or one tracked job |
+| `slurmkit resubmit [collection] [--job-id <id>]` | Resubmit jobs by explicit state filter in a collection or one tracked job |
 | `slurmkit notify` | Send job lifecycle notifications |
 | `slurmkit collections` | List, inspect, analyze, refresh, cancel, and delete collections |
 | `slurmkit clean outputs` | Clean failed job outputs |
@@ -367,7 +370,7 @@ Key features at a glance:
 - Inspect, analyze, and refresh collections: `slurmkit status exp1`, `slurmkit collections show exp1`, `slurmkit collections refresh exp1`
 - Cancel active jobs across tracked attempts: `slurmkit collections cancel exp1 --dry-run`
 - Analyze outcomes by parameter values: `slurmkit collections analyze exp1 --top-k 10`
-- Resubmit failed jobs with deterministic regeneration by default, including optional selection and parameter callbacks (e.g., checkpoint dir): `slurmkit resubmit exp1 --filter failed --select-file callbacks.py --extra-params-file extra.py`
+- Resubmit filtered jobs with deterministic regeneration by default, including optional selection and parameter callbacks (e.g., checkpoint dir): `slurmkit resubmit exp1 --filter failed --select-file callbacks.py --extra-params-file extra.py`
 
 **3) Notifications and Cross-Cluster Sync**
 

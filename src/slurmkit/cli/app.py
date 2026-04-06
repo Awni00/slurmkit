@@ -55,7 +55,7 @@ def _command_sections() -> list[CommandPaletteSection]:
                 CommandPaletteEntry("spec_template", "spec-template", "Create a starter job spec template"),
                 CommandPaletteEntry("generate", "generate", "Generate jobs from a spec"),
                 CommandPaletteEntry("submit", "submit", "Submit a collection"),
-                CommandPaletteEntry("resubmit", "resubmit", "Resubmit failed jobs in a collection or by job ID"),
+                CommandPaletteEntry("resubmit", "resubmit", "Resubmit jobs by state filter in a collection or by job ID"),
                 CommandPaletteEntry("status", "status", "View live status for a collection"),
             ],
         ),

@@ -6,9 +6,18 @@ import time
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+import re
+from typing import Any, Dict, List, Optional, Set, Tuple
 
-from slurmkit.collections import Collection, CollectionManager, JOB_STATE_FAILED
+from slurmkit.collections import (
+    Collection,
+    CollectionManager,
+    JOB_STATE_COMPLETED,
+    JOB_STATE_FAILED,
+    JOB_STATE_PENDING,
+    JOB_STATE_RUNNING,
+    JOB_STATE_UNKNOWN,
+)
 from slurmkit.config import Config
 from slurmkit.generate import JobGenerator, load_job_spec
 from slurmkit.spec_interpolation import has_template_syntax
@@ -23,6 +32,126 @@ from .shared import (
     resolve_generation_context,
     resolve_job_paths_from_spec,
 )
+
+RESUBMIT_FILTER_VALUES: Tuple[str, ...] = (
+    JOB_STATE_PENDING,
+    JOB_STATE_RUNNING,
+    JOB_STATE_COMPLETED,
+    JOB_STATE_FAILED,
+    JOB_STATE_UNKNOWN,
+    "preempted",
+    "timeout",
+    "cancelled",
+    "node_fail",
+    "out_of_memory",
+    "oom",
+    "all",
+)
+_RESUBMIT_FILTER_VALUE_SET = set(RESUBMIT_FILTER_VALUES)
+_RESUBMIT_CANONICAL_FILTERS = {
+    JOB_STATE_PENDING,
+    JOB_STATE_RUNNING,
+    JOB_STATE_COMPLETED,
+    JOB_STATE_FAILED,
+    JOB_STATE_UNKNOWN,
+}
+_RESUBMIT_TERMINAL_FILTER_TOKENS = {
+    "preempted": "PREEMPTED",
+    "timeout": "TIMEOUT",
+    "cancelled": "CANCELLED",
+    "node_fail": "NODE_FAIL",
+    "out_of_memory": "OUT_OF_MEMORY",
+    "oom": "OUT_OF_MEMORY",
+}
+
+
+class ResubmitFilterError(ValueError):
+    """Raised when a resubmit filter is invalid or does not match target jobs."""
+
+
+def format_resubmit_filter_values() -> str:
+    return ", ".join(RESUBMIT_FILTER_VALUES)
+
+
+def normalize_resubmit_filter_name(filter_name: str) -> str:
+    normalized = str(filter_name or "").strip().lower()
+    if normalized not in _RESUBMIT_FILTER_VALUE_SET:
+        raise ResubmitFilterError(
+            f"Unsupported --filter value '{filter_name}'. "
+            f"Allowed values: {format_resubmit_filter_values()}"
+        )
+    if normalized == "oom":
+        return "out_of_memory"
+    return normalized
+
+
+def _normalize_state_token(value: Any) -> Optional[str]:
+    if value is None:
+        return None
+    text = str(value).strip()
+    if not text:
+        return None
+    token = text.upper().split()[0].rstrip("+")
+    match = re.match(r"^[A-Z_]+", token)
+    if match:
+        token = match.group(0)
+    return token or None
+
+
+def _collect_raw_state_tokens(raw_state: Any) -> Set[str]:
+    if not isinstance(raw_state, dict):
+        return set()
+
+    tokens: Set[str] = set()
+
+    def _add_token(value: Any) -> None:
+        token = _normalize_state_token(value)
+        if token:
+            tokens.add(token)
+
+    resolution = raw_state.get("resolution")
+    if isinstance(resolution, dict):
+        _add_token(resolution.get("canonical_state"))
+
+    rows = raw_state.get("rows")
+    if isinstance(rows, dict):
+        for key in ("parent", "batch", "extern"):
+            entry = rows.get(key)
+            if isinstance(entry, dict):
+                _add_token(entry.get("state_base"))
+                _add_token(entry.get("state_raw"))
+        others = rows.get("others")
+        if isinstance(others, list):
+            for entry in others:
+                if isinstance(entry, dict):
+                    _add_token(entry.get("state_base"))
+                    _add_token(entry.get("state_raw"))
+
+    all_rows = raw_state.get("all_rows")
+    if isinstance(all_rows, list):
+        for entry in all_rows:
+            if isinstance(entry, dict):
+                _add_token(entry.get("state_base"))
+                _add_token(entry.get("state_raw"))
+
+    return tokens
+
+
+def _row_matches_resubmit_filter(row: Dict[str, Any], normalized_filter: str) -> bool:
+    if normalized_filter == "all":
+        return True
+
+    effective_state = str(row.get("effective_state") or JOB_STATE_UNKNOWN).strip().lower()
+    if normalized_filter in _RESUBMIT_CANONICAL_FILTERS:
+        return effective_state == normalized_filter
+
+    desired_terminal = _RESUBMIT_TERMINAL_FILTER_TOKENS[normalized_filter]
+    terminal_tokens = set()
+    effective_state_raw = _normalize_state_token(row.get("effective_state_raw"))
+    if effective_state_raw:
+        terminal_tokens.add(effective_state_raw)
+    terminal_tokens.update(_collect_raw_state_tokens(row.get("effective_raw_state")))
+    return desired_terminal in terminal_tokens
 
 
 @dataclass
@@ -262,21 +391,37 @@ def _resolve_resubmit_jobs(
     filter_name: str,
     target_job_names: Optional[List[str]] = None,
 ) -> List[Dict[str, Any]]:
+    normalized_filter = normalize_resubmit_filter_name(filter_name)
+    latest_rows_by_name = {
+        row["job_name"]: row
+        for row in collection.get_effective_jobs(attempt_mode="latest")
+    }
+
     if target_job_names:
-        jobs_by_name = {job["job_name"]: job for job in collection.jobs}
-        missing = [job_name for job_name in target_job_names if job_name not in jobs_by_name]
+        missing = [job_name for job_name in target_job_names if job_name not in latest_rows_by_name]
         if missing:
             missing_text = ", ".join(sorted(set(missing)))
             raise ValueError(
                 f"Target jobs not found in collection '{collection.name}': {missing_text}"
             )
-        return [jobs_by_name[job_name] for job_name in target_job_names]
-    if filter_name == "failed":
-        return [
-            row["job"]
-            for row in collection.get_effective_jobs(attempt_mode="latest", state=JOB_STATE_FAILED)
+
+        mismatched = [
+            job_name
+            for job_name in target_job_names
+            if not _row_matches_resubmit_filter(latest_rows_by_name[job_name], normalized_filter)
         ]
-    return list(collection.jobs)
+        if mismatched:
+            mismatch_text = ", ".join(sorted(set(mismatched)))
+            raise ResubmitFilterError(
+                f"Target job(s) do not match --filter {normalized_filter}: {mismatch_text}"
+            )
+        return [latest_rows_by_name[job_name]["job"] for job_name in target_job_names]
+
+    return [
+        row["job"]
+        for row in latest_rows_by_name.values()
+        if _row_matches_resubmit_filter(row, normalized_filter)
+    ]
 
 
 def plan_resubmit_collection(
@@ -294,6 +439,7 @@ def plan_resubmit_collection(
     regenerate: Optional[bool],
     target_job_names: Optional[List[str]] = None,
 ) -> ResubmitPlan:
+    normalized_filter = normalize_resubmit_filter_name(filter_name)
     collection.refresh_states()
     static_extra_params = parse_key_value_pairs(extra_params)
     resolved_regenerate = True if regenerate is None else bool(regenerate)
@@ -312,25 +458,10 @@ def plan_resubmit_collection(
 
     jobs_to_consider = _resolve_resubmit_jobs(
         collection,
-        filter_name,
+        normalized_filter,
         target_job_names=target_job_names,
     )
     warnings: List[str] = []
-    if target_job_names:
-        latest_rows = {
-            row["job_name"]: row
-            for row in collection.get_effective_jobs(attempt_mode="latest")
-        }
-        for job_name in target_job_names:
-            row = latest_rows.get(job_name)
-            if row is None:
-                continue
-            state = str(row.get("effective_state") or "unknown")
-            if state != JOB_STATE_FAILED:
-                warnings.append(
-                    f"Job '{job_name}' latest state is '{state}' (not failed); "
-                    "proceeding due to explicit target."
-                )
     generation_context: Optional[Dict[str, Any]] = None
     resubmit_generator: Optional[JobGenerator] = None
     if resolved_regenerate:
@@ -433,7 +564,7 @@ def plan_resubmit_collection(
         "Resubmit plan",
         [
             f"Collection: {collection.name}",
-            f"Target scope: {filter_name}",
+            f"Target scope: {normalized_filter}",
             f"Regenerate scripts: {'yes' if resolved_regenerate else 'no'}",
             f"Submission group: {group_name}",
             f"Jobs to resubmit: {len(items)}",
