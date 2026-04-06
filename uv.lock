@@ -282,7 +282,7 @@ toml = [
 
 [[package]]
 name = "dot-tasks"
-version = "0.1.5"
+version = "0.1.7"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "inquirerpy" },
@@ -290,9 +290,9 @@ dependencies = [
     { name = "rich" },
     { name = "typer" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/69/66/6ff3e767deeb3a57fd3b18c5abc4e749a35a4cf77822c8364dd9659601ec/dot_tasks-0.1.5.tar.gz", hash = "sha256:932ec011d1a59dc0b355936a724d05cfd469f97b235218812d4db1fdbce1f0f2", size = 62034, upload-time = "2026-03-14T22:53:22.765Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/82/f1/5707c7860ebef73dda9fe4859e64f997553e189c24c0b2f95b715320cfb0/dot_tasks-0.1.7.tar.gz", hash = "sha256:07c8d2c742e3f23f1aa4ca865d9f4cb5f9dd4c3269eff46a59b4dad391521471", size = 63646, upload-time = "2026-03-19T20:28:51.652Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/fd/2d/c90eb8849a7819332a2ab6a8fb9b6903f35bedbc7684fc208f366b147b22/dot_tasks-0.1.5-py3-none-any.whl", hash = "sha256:01bf0404b0e58755966ff5f316a9555fd5027107fbf62a452f0495f389f9eb53", size = 39158, upload-time = "2026-03-14T22:53:21.43Z" },
+    { url = "https://files.pythonhosted.org/packages/7e/6e/69665b9b272c4b66e2b271e0d67780cf1813df38f61cc27661fbb4a221f2/dot_tasks-0.1.7-py3-none-any.whl", hash = "sha256:20b622e3400bbb38c87c5bdfe4cc9ba4bd9c6a32b8d14b389d9ee9d705e22efe", size = 39811, upload-time = "2026-03-19T20:28:50.419Z" },
 ]
 
 [[package]]
@@ -323,6 +323,7 @@ wheels = [
 name = "griffelib"
 version = "2.0.0"
 source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/ad/06/eccbd311c9e2b3ca45dbc063b93134c57a1ccc7607c5e545264ad092c4a9/griffelib-2.0.0.tar.gz", hash = "sha256:e504d637a089f5cab9b5daf18f7645970509bf4f53eda8d79ed71cce8bd97934", size = 166312, upload-time = "2026-03-23T21:06:55.954Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/4d/51/c936033e16d12b627ea334aaaaf42229c37620d0f15593456ab69ab48161/griffelib-2.0.0-py3-none-any.whl", hash = "sha256:01284878c966508b6d6f1dbff9b6fa607bc062d8261c5c7253cb285b06422a7f", size = 142004, upload-time = "2026-02-09T19:09:40.561Z" },
 ]
