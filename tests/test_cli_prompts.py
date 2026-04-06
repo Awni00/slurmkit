@@ -77,3 +77,72 @@ def test_pick_or_create_collection_keeps_create_sentinel_first(monkeypatch, tmp_
     assert selected == "newer"
     assert captured["options"][0][0] == prompts._CREATE_NEW_SENTINEL
     assert [value for value, _label in captured["options"][1:]] == ["newer", "older"]
+
+
+def test_read_created_at_timestamp_fast_path_skips_full_parse(monkeypatch, tmp_path):
+    _write_collection(tmp_path, "fast", {"created_at": "2026-03-24T12:00:00"})
+    manager = SimpleNamespace(collections_dir=tmp_path)
+
+    def _unexpected_full_parse(_path):
+        raise AssertionError("full parse should not be called for fast-path metadata")
+
+    monkeypatch.setattr(prompts, "_read_created_at_timestamp_full", _unexpected_full_parse)
+
+    timestamp = prompts._read_created_at_timestamp(manager, "fast")
+
+    assert timestamp == prompts._parse_created_at("2026-03-24T12:00:00")
+
+
+def test_read_created_at_timestamp_falls_back_when_jobs_section_seen(monkeypatch, tmp_path):
+    _write_collection(
+        tmp_path,
+        "reordered",
+        "name: reordered\njobs: []\ncreated_at: 2026-03-24T12:00:00\n",
+    )
+    manager = SimpleNamespace(collections_dir=tmp_path)
+    original = prompts._read_created_at_timestamp_full
+    seen: list[str] = []
+
+    def _spy_full_parse(path):
+        seen.append(path.name)
+        return original(path)
+
+    monkeypatch.setattr(prompts, "_read_created_at_timestamp_full", _spy_full_parse)
+
+    timestamp = prompts._read_created_at_timestamp(manager, "reordered")
+
+    assert seen == ["reordered.yaml"]
+    assert timestamp == prompts._parse_created_at("2026-03-24T12:00:00")
+
+
+def test_read_created_at_timestamp_falls_back_when_scan_limit_exceeded(monkeypatch, tmp_path):
+    _write_collection(
+        tmp_path,
+        "limited",
+        "name: limited\ndescription: x\ncreated_at: 2026-03-24T12:00:00\n",
+    )
+    manager = SimpleNamespace(collections_dir=tmp_path)
+    original = prompts._read_created_at_timestamp_full
+    seen: list[str] = []
+
+    def _spy_full_parse(path):
+        seen.append(path.name)
+        return original(path)
+
+    monkeypatch.setattr(prompts, "_HEADER_SCAN_MAX_LINES", 2)
+    monkeypatch.setattr(prompts, "_read_created_at_timestamp_full", _spy_full_parse)
+
+    timestamp = prompts._read_created_at_timestamp(manager, "limited")
+
+    assert seen == ["limited.yaml"]
+    assert timestamp == prompts._parse_created_at("2026-03-24T12:00:00")
+
+
+def test_read_created_at_timestamp_handles_non_utf8_without_crashing(tmp_path):
+    path = tmp_path / "binary.yaml"
+    path.write_bytes(b"\xff\xfe\x00\x81")
+    manager = SimpleNamespace(collections_dir=tmp_path)
+
+    timestamp = prompts._read_created_at_timestamp(manager, "binary")
+
+    assert timestamp is None

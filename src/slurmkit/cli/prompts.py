@@ -23,6 +23,8 @@ from .selector_ui import (
 )
 
 _CREATE_NEW_SENTINEL = "__create_new__"
+_HEADER_SCAN_MAX_LINES = 256
+_HEADER_SCAN_MAX_BYTES = 64 * 1024
 
 
 @dataclass(frozen=True)
@@ -36,6 +38,12 @@ class CommandPaletteEntry:
 class CommandPaletteSection:
     title: str
     commands: list[CommandPaletteEntry]
+
+
+@dataclass(frozen=True)
+class _TimestampProbe:
+    timestamp: float | None
+    complete: bool
 
 
 def _warn_selector_fallback(exc: Exception) -> None:
@@ -240,11 +248,64 @@ def _parse_created_at(value: object) -> float | None:
         return None
 
 
-def _read_created_at_timestamp(manager: CollectionManager, name: str) -> float | None:
-    path = manager.collections_dir / f"{name}.yaml"
+def _parse_top_level_mapping_line(raw_line: str) -> tuple[str, str] | None:
+    if not raw_line:
+        return None
+    if raw_line[0] in {" ", "\t"}:
+        return None
+    text = raw_line.strip()
+    if not text or text.startswith("#"):
+        return None
+    if text in {"---", "..."}:
+        return None
+    key, separator, value = text.partition(":")
+    if not separator:
+        return None
+    normalized_key = key.strip()
+    if not normalized_key:
+        return None
+    return normalized_key, value
+
+
+def _probe_created_at_fast(path: Path) -> _TimestampProbe:
+    line_count = 0
+    bytes_read = 0
+    try:
+        with open(path, "rb") as handle:
+            for raw_line in handle:
+                line_count += 1
+                bytes_read += len(raw_line)
+                if line_count > _HEADER_SCAN_MAX_LINES or bytes_read > _HEADER_SCAN_MAX_BYTES:
+                    return _TimestampProbe(timestamp=None, complete=False)
+                try:
+                    decoded = raw_line.decode("utf-8")
+                except UnicodeDecodeError:
+                    return _TimestampProbe(timestamp=None, complete=True)
+                parsed = _parse_top_level_mapping_line(decoded.rstrip("\r\n"))
+                if parsed is None:
+                    continue
+                key, value = parsed
+                if key == "jobs":
+                    return _TimestampProbe(timestamp=None, complete=False)
+                if key != "created_at":
+                    continue
+                scalar = value.strip()
+                if not scalar:
+                    return _TimestampProbe(timestamp=None, complete=False)
+                try:
+                    parsed_value = yaml.safe_load(scalar)
+                except yaml.YAMLError:
+                    return _TimestampProbe(timestamp=None, complete=False)
+                return _TimestampProbe(timestamp=_parse_created_at(parsed_value), complete=True)
+    except OSError:
+        return _TimestampProbe(timestamp=None, complete=True)
+    return _TimestampProbe(timestamp=None, complete=False)
+
+
+def _read_created_at_timestamp_full(path: Path) -> float | None:
     try:
         raw = path.read_text(encoding="utf-8")
-    except OSError:
+    except (OSError, UnicodeDecodeError):
         return None
     try:
         payload = yaml.safe_load(raw) or {}
@@ -253,6 +314,14 @@ def _read_created_at_timestamp(manager: CollectionManager, name: str) -> float |
     if not isinstance(payload, dict):
         return None
     return _parse_created_at(payload.get("created_at"))
+
+
+def _read_created_at_timestamp(manager: CollectionManager, name: str) -> float | None:
+    path = manager.collections_dir / f"{name}.yaml"
+    probe = _probe_created_at_fast(path)
+    if probe.complete:
+        return probe.timestamp
+    return _read_created_at_timestamp_full(path)
 
 
 def _collection_options(manager: CollectionManager) -> list[tuple[str, str]]:
