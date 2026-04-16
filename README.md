@@ -190,13 +190,13 @@ Then run:
 
 ```bash
 slurmkit collections list
-slurmkit status demo_terminal_failed
-slurmkit collections show demo_terminal_failed
-slurmkit collections analyze demo_terminal_failed
+slurmkit status demo/fixtures/mixed_30
+slurmkit collections show demo/fixtures/mixed_30
+slurmkit collections analyze demo/fixtures/mixed_30
 # Optional richer formatting (requires rich extra):
-slurmkit --ui rich collections analyze demo_terminal_failed
+slurmkit --ui rich collections analyze demo/fixtures/mixed_30
 slurmkit notify test --dry-run
-slurmkit notify collection-final --collection demo_terminal_failed --job-id 990002 --no-refresh --dry-run
+slurmkit notify collection-final --collection demo/notifications/terminal_failed --job-id 991002 --no-refresh --dry-run
 ```
 
 ### B) Real Cluster Workflow

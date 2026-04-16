@@ -35,10 +35,14 @@ warn() {
 }
 
 DUMMY_COLLECTIONS_READY=0
-DUMMY_COLLECTION_NAME="demo_mixed_30"
+DUMMY_COLLECTION_NAME="demo/fixtures/mixed_30"
 DUMMY_FAILED_JOB_ID="990013"
-DUMMY_COMPLETED_JOB_ID="990001"
-DUMMY_RUNNING_JOB_ID="990021"
+NOTIFY_FAILED_COLLECTION="demo/notifications/terminal_failed"
+NOTIFY_FAILED_JOB_ID="991002"
+NOTIFY_COMPLETED_COLLECTION="demo/notifications/terminal_completed"
+NOTIFY_COMPLETED_JOB_ID="992011"
+NOTIFY_IN_PROGRESS_COLLECTION="demo/notifications/in_progress"
+NOTIFY_RUNNING_JOB_ID="993020"
 
 # Function to run demo commands without aborting the full quickstart.
 run_demo_cmd() {
@@ -117,11 +121,13 @@ echo "Available demo experiments:"
 echo "  1. Parameter Sweep - Grid Mode (6 jobs, ~15 sec each)"
 echo "     experiments/hyperparameter_sweep/slurmkit/job_spec.yaml"
 echo "     job_subdir: hyperparameter_sweep"
+echo "     collection id: demo/generated/hyperparameter_sweep"
 echo "     8 combos minus 2 filtered (algo_b + small) = 6 jobs"
 echo ""
 echo "  2. Parameter List - List Mode (4 jobs, 10-30 sec each)"
 echo "     experiments/model_comparison/slurmkit/job_spec.yaml"
 echo "     job_subdir: comparisons/model_comparison  # nested path demo"
+echo "     collection id: demo/generated/model_comparison"
 echo "     4 explicit parameter combinations"
 echo ""
 
@@ -132,20 +138,20 @@ case $choice in
         EXPERIMENT="hyperparameter_sweep"
         JOB_SUBDIR="hyperparameter_sweep"
         JOB_SPEC="experiments/hyperparameter_sweep/slurmkit/job_spec.yaml"
-        COLLECTION="hp_sweep"
+        COLLECTION="demo/generated/hyperparameter_sweep"
         ;;
     2)
         EXPERIMENT="model_comparison"
         JOB_SUBDIR="comparisons/model_comparison"
         JOB_SPEC="experiments/model_comparison/slurmkit/job_spec.yaml"
-        COLLECTION="model_comp"
+        COLLECTION="demo/generated/model_comparison"
         ;;
     *)
         echo "Invalid choice. Using hyperparameter_sweep."
         EXPERIMENT="hyperparameter_sweep"
         JOB_SUBDIR="hyperparameter_sweep"
         JOB_SPEC="experiments/hyperparameter_sweep/slurmkit/job_spec.yaml"
-        COLLECTION="hp_sweep"
+        COLLECTION="demo/generated/hyperparameter_sweep"
         ;;
 esac
 
@@ -274,20 +280,22 @@ if [[ "$notify_choice" =~ ^[Yy]$ ]]; then
         run_demo_cmd "notify test (local_email formatter callback route)" \
             slurmkit notify test --route local_email "${NOTIFY_FLAGS[@]}"
         run_demo_cmd "notify job (failed)" \
-            slurmkit notify job --collection "$DUMMY_COLLECTION_NAME" --job-id "$DUMMY_FAILED_JOB_ID" --exit-code 1 "${NOTIFY_FLAGS[@]}"
+            slurmkit notify job --collection "$NOTIFY_FAILED_COLLECTION" --job-id "$NOTIFY_FAILED_JOB_ID" --exit-code 1 "${NOTIFY_FLAGS[@]}"
         run_demo_cmd "notify job (completed)" \
-            slurmkit notify job --collection "$DUMMY_COLLECTION_NAME" --job-id "$DUMMY_COMPLETED_JOB_ID" --exit-code 0 --on always "${NOTIFY_FLAGS[@]}"
+            slurmkit notify job --collection "$NOTIFY_COMPLETED_COLLECTION" --job-id "$NOTIFY_COMPLETED_JOB_ID" --exit-code 0 --on always "${NOTIFY_FLAGS[@]}"
         run_demo_cmd "notify collection-final (non-terminal skip)" \
-            slurmkit notify collection-final --collection "$DUMMY_COLLECTION_NAME" --job-id "$DUMMY_RUNNING_JOB_ID" --no-refresh "${NOTIFY_FLAGS[@]}"
+            slurmkit notify collection-final --collection "$NOTIFY_IN_PROGRESS_COLLECTION" --job-id "$NOTIFY_RUNNING_JOB_ID" --no-refresh "${NOTIFY_FLAGS[@]}"
     fi
 
     echo ""
     echo "Optional collection-specific notifications demo:"
     echo "  export PYTHONPATH=\"\$PWD:\$PYTHONPATH\""
-    echo "  # mixed-state dummy collection linked to experiments/hyperparameter_sweep/slurmkit/job_spec.yaml"
-    echo "  slurmkit notify job --collection $DUMMY_COLLECTION_NAME --job-id $DUMMY_FAILED_JOB_ID --exit-code 1 --dry-run"
-    echo "  slurmkit notify job --collection $DUMMY_COLLECTION_NAME --job-id $DUMMY_COMPLETED_JOB_ID --exit-code 0 --on always --dry-run"
-    echo "  slurmkit notify collection-final --collection $DUMMY_COLLECTION_NAME --job-id $DUMMY_RUNNING_JOB_ID --no-refresh --dry-run"
+    echo "  # spec override demo (hyperparameter_sweep notifications block)"
+    echo "  slurmkit notify job --collection $NOTIFY_FAILED_COLLECTION --job-id $NOTIFY_FAILED_JOB_ID --exit-code 1 --dry-run"
+    echo "  # global fallback demo (model_comparison has no notifications block)"
+    echo "  slurmkit notify job --collection $NOTIFY_COMPLETED_COLLECTION --job-id $NOTIFY_COMPLETED_JOB_ID --exit-code 0 --on always --dry-run"
+    echo "  # non-terminal collection-final skip demo"
+    echo "  slurmkit notify collection-final --collection $NOTIFY_IN_PROGRESS_COLLECTION --job-id $NOTIFY_RUNNING_JOB_ID --no-refresh --dry-run"
     echo "  # formatter callback demo (global + route override)"
     echo "  # set notifications.formatter.callback: utilities.slurmkit.formatters:format_notification"
     echo "  # set routes[].formatter_callback as needed (or null to opt out)"
@@ -310,7 +318,8 @@ echo "  - Collection: $COLLECTION"
 echo "  - Job scripts: .jobs/$JOB_SUBDIR/job_scripts/"
 echo "  - Collection file: .slurmkit/collections/${COLLECTION}.yaml"
 if [[ "$DUMMY_COLLECTIONS_READY" -eq 1 ]]; then
-    echo "  - Dummy collection: $DUMMY_COLLECTION_NAME (30 jobs: COMPLETED/FAILED/RUNNING/PENDING)"
+    echo "  - Dummy fixture collection: $DUMMY_COLLECTION_NAME (30 jobs: COMPLETED/FAILED/RUNNING/PENDING)"
+    echo "  - Dummy notification collections: $NOTIFY_FAILED_COLLECTION, $NOTIFY_COMPLETED_COLLECTION, $NOTIFY_IN_PROGRESS_COLLECTION"
     echo "  - Dummy logs: .jobs/dummy_demo/logs/"
 fi
 echo ""
@@ -336,8 +345,8 @@ echo ""
 echo "  6. Demo collection-final notifications:"
 echo "     ./setup_dummy_jobs.py --include-non-terminal"
 echo "     export PYTHONPATH=\"\$PWD:\$PYTHONPATH\""
-echo "     # mixed-state collection (non-terminal) demo"
-echo "     slurmkit notify collection-final --collection $DUMMY_COLLECTION_NAME --job-id $DUMMY_RUNNING_JOB_ID --no-refresh --dry-run"
+echo "     # non-terminal collection demo"
+echo "     slurmkit notify collection-final --collection $NOTIFY_IN_PROGRESS_COLLECTION --job-id $NOTIFY_RUNNING_JOB_ID --no-refresh --dry-run"
 echo "     # formatter callback demo"
 echo "     slurmkit notify test --route local_email --dry-run"
 echo ""

@@ -48,14 +48,14 @@ cd demo_project
 # Initialize
 slurmkit init
 
-# Generate test jobs
-slurmkit generate experiments/hyperparameter_sweep/job_spec.yaml --into test
+# Generate test jobs into a hierarchical collection id
+slurmkit generate experiments/hyperparameter_sweep/job_spec.yaml --into demo/generated/hyperparameter_sweep
 
 # View generated scripts
 ls .jobs/hyperparameter_sweep/job_scripts/
 
 # Test status without submitting
-slurmkit status test
+slurmkit status demo/generated/hyperparameter_sweep
 ```
 
 ### 3. As a Template

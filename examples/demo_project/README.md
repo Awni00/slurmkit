@@ -163,14 +163,21 @@ Refresh dummy collections with embedded `generation.spec_path` metadata:
 export PYTHONPATH="$PWD:$PYTHONPATH"
 ```
 
+This prepares four hierarchical collection IDs:
+
+- `demo/fixtures/mixed_30`
+- `demo/notifications/terminal_failed`
+- `demo/notifications/terminal_completed`
+- `demo/notifications/in_progress`
+
 Compare behavior:
 
 ```bash
 # Uses spec override (hyperparameter_sweep spec has notifications.job.ai.enabled=true)
-slurmkit notify job --collection demo_terminal_failed --job-id 990002 --exit-code 1 --dry-run
+slurmkit notify job --collection demo/notifications/terminal_failed --job-id 991002 --exit-code 1 --dry-run
 
 # Uses global fallback (model_comparison spec has no notifications block)
-slurmkit notify job --collection demo_terminal_completed --job-id 990011 --exit-code 0 --on always --dry-run
+slurmkit notify job --collection demo/notifications/terminal_completed --job-id 992011 --exit-code 0 --on always --dry-run
 ```
 
 In dry-run payload preview, compare:
@@ -180,8 +187,8 @@ In dry-run payload preview, compare:
 Collection-final behavior follows the same precedence:
 
 ```bash
-slurmkit notify collection-final --collection demo_terminal_failed --job-id 990002 --no-refresh --dry-run
-slurmkit notify collection-final --collection demo_terminal_completed --job-id 990011 --no-refresh --dry-run
+slurmkit notify collection-final --collection demo/notifications/terminal_failed --job-id 991002 --no-refresh --dry-run
+slurmkit notify collection-final --collection demo/notifications/terminal_completed --job-id 992011 --no-refresh --dry-run
 ```
 
 If a collection references a missing/invalid spec, notify prints `[context-warning]` and falls back to global notifications.
@@ -198,8 +205,8 @@ export PYTHONPATH="$PWD:$PYTHONPATH"
 Create generated job-script projects (still no real submission):
 
 ```bash
-slurmkit generate experiments/hyperparameter_sweep/slurmkit/job_spec.yaml --into hp_sweep_demo
-slurmkit generate experiments/model_comparison/slurmkit/job_spec.yaml --into model_comp_demo
+slurmkit generate experiments/hyperparameter_sweep/slurmkit/job_spec.yaml --into demo/generated/hyperparameter_sweep
+slurmkit generate experiments/model_comparison/slurmkit/job_spec.yaml --into demo/generated/model_comparison
 ```
 
 ## Command Coverage Matrix
@@ -208,28 +215,29 @@ slurmkit generate experiments/model_comparison/slurmkit/job_spec.yaml --into mod
 |---|---|---|
 | `slurmkit init` | Demoed | `slurmkit init` |
 | `slurmkit migrate` | Demoed | `slurmkit migrate` |
-| `slurmkit status` | Demoed | `slurmkit status demo_terminal_failed` |
+| `slurmkit status` | Demoed | `slurmkit status demo/fixtures/mixed_30` |
 | `slurmkit clean outputs` | Partially demoed | Collection-first; works best when tracked outputs exist |
 | `slurmkit clean wandb` | Not self-contained | Requires W&B setup/projects |
 | `slurmkit generate` | Demoed | Use the two `generate` commands above |
-| `slurmkit submit` | Demoed (`--dry-run` locally) | `slurmkit submit hp_sweep_demo --dry-run` |
-| `slurmkit resubmit` | Demoed (`--dry-run`/fixture collections) | `slurmkit resubmit demo_terminal_failed --filter failed --dry-run` |
+| `slurmkit submit` | Demoed (`--dry-run` locally) | `slurmkit submit demo/generated/hyperparameter_sweep --dry-run` |
+| `slurmkit resubmit` | Demoed (`--dry-run`/fixture collections) | `slurmkit resubmit demo/fixtures/mixed_30 --filter failed --dry-run` |
 | `slurmkit collections list` | Demoed | `slurmkit collections list` |
-| `slurmkit collections show` | Demoed | `slurmkit collections show demo_terminal_failed` |
-| `slurmkit collections analyze` | Demoed | `slurmkit collections analyze demo_terminal_failed` |
+| `slurmkit collections show` | Demoed | `slurmkit collections show demo/fixtures/mixed_30` |
+| `slurmkit collections analyze` | Demoed | `slurmkit collections analyze demo/fixtures/mixed_30` |
 | `slurmkit collections refresh` | Partially demoed | Works best with real SLURM job IDs |
-| `slurmkit collections delete` | Demoed | `slurmkit collections delete hp_sweep_demo -y` |
+| `slurmkit collections delete` | Demoed | `slurmkit collections delete demo/generated/hyperparameter_sweep -y` |
 | `slurmkit notify test` | Demoed | `slurmkit notify test --dry-run` |
-| `slurmkit notify job` | Demoed (dummy context + dry-run) | `slurmkit notify job --job-id 990002 --exit-code 1 --dry-run` |
+| `slurmkit notify job` | Demoed (dummy context + dry-run) | `slurmkit notify job --collection demo/notifications/terminal_failed --job-id 991002 --exit-code 1 --dry-run` |
 | `slurmkit notify collection-final` | Demoed | examples below |
 | `slurmkit sync` | Partially demoed | `slurmkit sync`; `--push` needs git remote/workflow |
 
 ## Notification Demos (Dummy Data)
 
 Use `setup_dummy_jobs.py` output collections:
-- `demo_terminal_failed`
-- `demo_terminal_completed`
-- `demo_in_progress` (when `--include-non-terminal` is used)
+- `demo/fixtures/mixed_30`
+- `demo/notifications/terminal_failed`
+- `demo/notifications/terminal_completed`
+- `demo/notifications/in_progress`
 
 ### 1) Route sanity check
 
@@ -243,28 +251,28 @@ slurmkit notify test --route local_email
 ### 2) Job-level notification
 
 ```bash
-slurmkit notify job --job-id 990002 --exit-code 1 --dry-run
-slurmkit notify job --job-id 990001 --exit-code 0 --on always --dry-run
+slurmkit notify job --collection demo/notifications/terminal_failed --job-id 991002 --exit-code 1 --dry-run
+slurmkit notify job --collection demo/notifications/terminal_completed --job-id 992011 --exit-code 0 --on always --dry-run
 ```
 
 ### 3) Collection-final failed/completed/non-terminal
 
 ```bash
 slurmkit notify collection-final \
-  --collection demo_terminal_failed \
-  --job-id 990002 \
+  --collection demo/notifications/terminal_failed \
+  --job-id 991002 \
   --no-refresh \
   --dry-run
 
 slurmkit notify collection-final \
-  --collection demo_terminal_completed \
-  --job-id 990011 \
+  --collection demo/notifications/terminal_completed \
+  --job-id 992011 \
   --no-refresh \
   --dry-run
 
 slurmkit notify collection-final \
-  --collection demo_in_progress \
-  --job-id 990020 \
+  --collection demo/notifications/in_progress \
+  --job-id 993020 \
   --no-refresh \
   --dry-run
 ```
@@ -272,26 +280,26 @@ slurmkit notify collection-final \
 ### 4) Dedup and force behavior
 
 ```bash
-slurmkit notify collection-final --collection demo_terminal_failed --job-id 990002 --no-refresh
-slurmkit notify collection-final --collection demo_terminal_failed --job-id 990002 --no-refresh
-slurmkit notify collection-final --collection demo_terminal_failed --job-id 990002 --no-refresh --force
+slurmkit notify collection-final --collection demo/notifications/terminal_failed --job-id 991002 --no-refresh
+slurmkit notify collection-final --collection demo/notifications/terminal_failed --job-id 991002 --no-refresh
+slurmkit notify collection-final --collection demo/notifications/terminal_failed --job-id 991002 --no-refresh --force
 ```
 
 ### 5) AI callback demo
 
 ```bash
 export PYTHONPATH="$PWD:$PYTHONPATH"
-# Already enabled by spec override for demo_terminal_failed
-slurmkit notify job --collection demo_terminal_failed --job-id 990002 --exit-code 1 --dry-run
+# Already enabled by spec override for demo/notifications/terminal_failed
+slurmkit notify job --collection demo/notifications/terminal_failed --job-id 991002 --exit-code 1 --dry-run
 
-# Also enabled by spec override for demo_terminal_failed
-slurmkit notify collection-final --collection demo_terminal_failed --job-id 990002 --no-refresh --dry-run
+# Also enabled by spec override for demo/notifications/terminal_failed
+slurmkit notify collection-final --collection demo/notifications/terminal_failed --job-id 991002 --no-refresh --dry-run
 
 # For fallback collection (model_comparison spec has no notifications block),
 # enable global config keys if you want AI summary there too:
 # notifications.job.ai.enabled: true
 # notifications.collection_final.ai.enabled: true
-slurmkit notify job --collection demo_terminal_completed --job-id 990011 --exit-code 0 --on always --dry-run
+slurmkit notify job --collection demo/notifications/terminal_completed --job-id 992011 --exit-code 0 --on always --dry-run
 ```
 
 Look for `ai_status` and `ai_summary` in payload preview.
@@ -321,14 +329,14 @@ Dry-run still validates callback loading/shape:
 
 ```bash
 slurmkit notify test --route local_email --dry-run
-slurmkit notify job --collection demo_terminal_failed --job-id 990002 --exit-code 1 --route local_email --dry-run
+slurmkit notify job --collection demo/notifications/terminal_failed --job-id 991002 --exit-code 1 --route local_email --dry-run
 ```
 
 To inspect formatted email subject/body, run live against local SMTP (`aiosmtpd` from setup above):
 
 ```bash
 slurmkit notify test --route local_email
-slurmkit notify job --collection demo_terminal_failed --job-id 990002 --exit-code 1 --route local_email
+slurmkit notify job --collection demo/notifications/terminal_failed --job-id 991002 --exit-code 1 --route local_email
 ```
 
 Use these edits to experiment with precedence behavior:
@@ -347,13 +355,13 @@ notifications:
 ## End-to-End Cluster Workflow (Real SLURM)
 
 ```bash
-slurmkit generate experiments/hyperparameter_sweep/slurmkit/job_spec.yaml --into hp_sweep
-slurmkit submit hp_sweep --delay 2
-slurmkit status hp_sweep
-slurmkit collections refresh hp_sweep
-slurmkit collections show hp_sweep
-slurmkit collections analyze hp_sweep
-slurmkit resubmit hp_sweep --filter failed
+slurmkit generate experiments/hyperparameter_sweep/slurmkit/job_spec.yaml --into demo/generated/hyperparameter_sweep
+slurmkit submit demo/generated/hyperparameter_sweep --delay 2
+slurmkit status demo/generated/hyperparameter_sweep
+slurmkit collections refresh demo/generated/hyperparameter_sweep
+slurmkit collections show demo/generated/hyperparameter_sweep
+slurmkit collections analyze demo/generated/hyperparameter_sweep
+slurmkit resubmit demo/generated/hyperparameter_sweep --filter failed
 ```
 
 If you want notification hooks in a real job script:
