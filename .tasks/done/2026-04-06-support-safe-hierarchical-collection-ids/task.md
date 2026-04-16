@@ -1,10 +1,10 @@
 ---
 task_id: t-20260406-004
 task_name: support-safe-hierarchical-collection-ids
-status: todo
+status: completed
 date_created: '2026-04-06'
-date_started: null
-date_completed: null
+date_started: '2026-04-16'
+date_completed: '2026-04-16'
 priority: p1
 effort: l
 spec_readiness: ready

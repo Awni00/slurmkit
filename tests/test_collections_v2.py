@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from slurmkit.collections import Collection, CollectionManager
 
 
@@ -41,6 +43,59 @@ def test_collection_manager_saves_and_loads_v2_schema(tmp_path):
     assert restored.to_dict()["version"] == 2
     assert restored.generation["spec_path"] == "specs/demo.yaml"
     assert restored.jobs[0]["attempts"][0]["script_path"] == "jobs/job1.job"
+
+
+def test_collection_manager_saves_and_loads_nested_collection_ids(tmp_path):
+    manager = CollectionManager(collections_dir=tmp_path)
+    collection = Collection(
+        "experiment/group/run_20260406",
+        description="demo",
+        generation={"spec_path": "specs/demo.yaml"},
+    )
+    collection.add_job("job1", script_path="jobs/job1.job", parameters={"lr": 0.1})
+
+    saved_path = manager.save(collection)
+    restored = manager.load("experiment/group/run_20260406")
+
+    assert saved_path == tmp_path / "experiment" / "group" / "run_20260406.yaml"
+    assert saved_path.exists()
+    assert restored.name == "experiment/group/run_20260406"
+    assert manager.list_collections() == ["experiment/group/run_20260406"]
+
+
+def test_collection_manager_delete_prunes_empty_parent_directories(tmp_path):
+    manager = CollectionManager(collections_dir=tmp_path)
+    collection = Collection("experiment/group/run_20260406")
+    collection.add_job("job1", script_path="jobs/job1.job", parameters={"lr": 0.1})
+    manager.save(collection)
+
+    assert manager.delete("experiment/group/run_20260406") is True
+    assert not (tmp_path / "experiment" / "group" / "run_20260406.yaml").exists()
+    assert not (tmp_path / "experiment" / "group").exists()
+    assert not (tmp_path / "experiment").exists()
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        "Train Exp 2026",
+        "../escape_collection",
+        "/absolute/path",
+        "exp//run",
+        "exp\\run",
+        "exp/./run",
+        "exp/../run",
+        " exp1",
+        "exp1 ",
+    ],
+)
+def test_collection_manager_rejects_invalid_collection_ids(name, tmp_path):
+    manager = CollectionManager(collections_dir=tmp_path)
+
+    with pytest.raises(ValueError, match="Invalid collection ID"):
+        manager.get_collection_path(name)
+
+    assert list(tmp_path.rglob("*")) == []
 
 
 def test_collection_manager_resolve_job_id_matches_old_attempts(tmp_path):

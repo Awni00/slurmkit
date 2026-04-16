@@ -20,7 +20,7 @@ def has_template_syntax(value: str) -> bool:
 def slugify_collection_name(collection_name: str) -> str:
     """Convert an arbitrary collection name into a filesystem-safe slug."""
     lowered = collection_name.strip().lower()
-    slug = re.sub(r"[^a-z0-9]+", "-", lowered)
+    slug = re.sub(r"[^a-z0-9_]+", "-", lowered)
     slug = re.sub(r"-+", "-", slug).strip("-")
     return slug or "collection"
 

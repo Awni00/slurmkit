@@ -516,13 +516,13 @@ echo "Batch size: {{ batch_size }}"
             generator = JobGenerator.from_spec(
                 spec_path,
                 config=config,
-                collection_name="Train Exp 2026",
+                collection_name="experiment/group/run_20260406",
             )
             assert generator.logs_dir == (
                 tmp_path
                 / ".jobs"
                 / "runs"
-                / "train-exp-2026"
+                / "experiment-group-run_20260406"
                 / "baseline"
                 / "logs"
             )
@@ -549,7 +549,7 @@ echo "Batch size: {{ batch_size }}"
                 JobGenerator.from_spec(
                     spec_path,
                     config=config,
-                    collection_name="Train Exp 2026",
+                    collection_name="experiment/group/run_20260406",
                 )
 
     def test_generator_from_spec_rejects_non_mapping_variables(self, template_dir):
@@ -575,7 +575,7 @@ echo "Batch size: {{ batch_size }}"
                 JobGenerator.from_spec(
                     spec_path,
                     config=config,
-                    collection_name="Train Exp 2026",
+                    collection_name="experiment/group/run_20260406",
                 )
 
     def test_generator_from_spec_rejects_absolute_job_subdir_after_render(self, template_dir):
@@ -600,7 +600,7 @@ echo "Batch size: {{ batch_size }}"
                 JobGenerator.from_spec(
                     spec_path,
                     config=config,
-                    collection_name="Train Exp 2026",
+                    collection_name="experiment/group/run_20260406",
                 )
 
     def test_generator_from_spec_rejects_parent_segments_after_render(self, template_dir):
@@ -626,7 +626,7 @@ echo "Batch size: {{ batch_size }}"
                 JobGenerator.from_spec(
                     spec_path,
                     config=config,
-                    collection_name="Train Exp 2026",
+                    collection_name="experiment/group/run_20260406",
                 )
 
     def test_generator_from_spec_with_parse_relative_path(self, template_dir):

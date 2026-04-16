@@ -317,7 +317,11 @@ def _read_created_at_timestamp_full(path: Path) -> float | None:
 
 
 def _read_created_at_timestamp(manager: CollectionManager, name: str) -> float | None:
-    path = manager.collections_dir / f"{name}.yaml"
+    get_collection_path = getattr(manager, "get_collection_path", None)
+    if callable(get_collection_path):
+        path = get_collection_path(name)
+    else:
+        path = manager.collections_dir / f"{name}.yaml"
     probe = _probe_created_at_fast(path)
     if probe.complete:
         return probe.timestamp

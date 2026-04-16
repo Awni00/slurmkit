@@ -298,7 +298,7 @@ def run_migration(
         jobs_dir = jobs_dir.resolve()
 
     if new_collections_dir.exists():
-        for path in sorted(new_collections_dir.glob("*.yaml")):
+        for path in sorted(new_collections_dir.rglob("*.yaml")):
             raw = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
             migrated, changed = _migrate_collection_data(raw)
             if not changed:

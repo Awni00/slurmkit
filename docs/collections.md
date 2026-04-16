@@ -10,13 +10,23 @@ Collections are stored as YAML files under:
 .slurmkit/collections/
 ```
 
+Collection IDs are slash-separated safe identifiers. For example, the ID
+`experiment/group/run_20260406` is stored at:
+
+```text
+.slurmkit/collections/experiment/group/run_20260406.yaml
+```
+
+Each segment must match `[A-Za-z0-9._-]+`. Spaces, backslashes, empty
+segments, `.`/`..`, and absolute paths are rejected.
+
 ## Current schema
 
 Collections use the v2 attempts-based schema. Each job has stable metadata plus an ordered `attempts` list.
 
 ```yaml
 version: 2
-name: my_experiment
+name: experiment/group/run_20260406
 description: "Example sweep"
 created_at: "2026-03-15T10:30:00"
 updated_at: "2026-03-15T14:00:00"
@@ -94,38 +104,38 @@ slurmkit collections list
 ### Show one collection
 
 ```bash
-slurmkit collections show exp1
-slurmkit collections show exp1 --state failed
-slurmkit collections show exp1 --json
+slurmkit collections show experiment/group/run_20260406
+slurmkit collections show experiment/group/run_20260406 --state failed
+slurmkit collections show experiment/group/run_20260406 --json
 ```
 
 ### Analyze outcomes by parameter
 
 ```bash
-slurmkit collections analyze exp1
-slurmkit collections analyze exp1 --param learning_rate --param batch_size
-slurmkit collections analyze exp1 --min-support 5 --top-k 20
-slurmkit collections analyze exp1 --json
+slurmkit collections analyze experiment/group/run_20260406
+slurmkit collections analyze experiment/group/run_20260406 --param learning_rate --param batch_size
+slurmkit collections analyze experiment/group/run_20260406 --min-support 5 --top-k 20
+slurmkit collections analyze experiment/group/run_20260406 --json
 ```
 
 ### Refresh from SLURM
 
 ```bash
-slurmkit collections refresh exp1
+slurmkit collections refresh experiment/group/run_20260406
 slurmkit collections refresh --all
 ```
 
 ### Cancel active jobs
 
 ```bash
-slurmkit collections cancel exp1 --dry-run
-slurmkit collections cancel exp1 -y
+slurmkit collections cancel experiment/group/run_20260406 --dry-run
+slurmkit collections cancel experiment/group/run_20260406 -y
 ```
 
 ### Delete a collection
 
 ```bash
-slurmkit collections delete exp1 -y
+slurmkit collections delete experiment/group/run_20260406 -y
 ```
 
 ## Workflow
@@ -133,11 +143,11 @@ slurmkit collections delete exp1 -y
 Typical collection lifecycle:
 
 ```bash
-slurmkit generate experiments/exp1/slurmkit/job_spec.yaml --into exp1
-slurmkit submit exp1
-slurmkit status exp1
-slurmkit collections show exp1
-slurmkit resubmit exp1 --filter failed
+slurmkit generate experiments/exp1/slurmkit/job_spec.yaml --into experiment/group/run_20260406
+slurmkit submit experiment/group/run_20260406
+slurmkit status experiment/group/run_20260406
+slurmkit collections show experiment/group/run_20260406
+slurmkit resubmit experiment/group/run_20260406 --filter failed
 ```
 
 ## Status semantics

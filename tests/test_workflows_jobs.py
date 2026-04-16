@@ -43,17 +43,19 @@ def test_generate_workflow_persists_generation_metadata(tmp_path):
     config = get_config(project_root=tmp_path, reload=True)
     manager = CollectionManager(config=config)
     spec = _write_spec(tmp_path)
+    collection_name = "experiment/group/run_20260406"
 
     plan = plan_generate(
         config=config,
         manager=manager,
         spec_path=spec,
-        collection_name="train_exp_20260315",
+        collection_name=collection_name,
     )
     result = execute_generate(config=config, manager=manager, plan=plan, dry_run=False)
 
-    collection = manager.load("train_exp_20260315")
+    collection = manager.load(collection_name)
     assert result["generated_count"] == 2
+    assert (tmp_path / ".slurmkit" / "collections" / "experiment" / "group" / "run_20260406.yaml").exists()
     assert collection.generation["spec_path"] == "job_spec.yaml"
     assert collection.generation["job_subdir"] == "experiments/train_exp"
     assert collection.generation["scripts_dir"] == str(tmp_path / ".jobs" / "experiments" / "train_exp" / "job_scripts")
@@ -88,20 +90,20 @@ def test_generate_workflow_resolves_templated_job_subdir_and_review(tmp_path):
         config=config,
         manager=manager,
         spec_path=spec,
-        collection_name="Train Exp 2026",
+        collection_name="experiment/group/run_20260406",
     )
     assert "Job subdir (raw): experiments/{{ collection_slug }}/{{ vars.stage }}" in plan.review.lines
-    assert "Job subdir (resolved): experiments/train-exp-2026/baseline" in plan.review.lines
+    assert "Job subdir (resolved): experiments/experiment-group-run_20260406/baseline" in plan.review.lines
 
     result = execute_generate(config=config, manager=manager, plan=plan, dry_run=False)
-    collection = manager.load("Train Exp 2026")
+    collection = manager.load("experiment/group/run_20260406")
     assert result["generated_count"] == 1
-    assert collection.generation["job_subdir"] == "experiments/train-exp-2026/baseline"
+    assert collection.generation["job_subdir"] == "experiments/experiment-group-run_20260406/baseline"
     assert collection.generation["scripts_dir"] == str(
-        tmp_path / ".jobs" / "experiments" / "train-exp-2026" / "baseline" / "job_scripts"
+        tmp_path / ".jobs" / "experiments" / "experiment-group-run_20260406" / "baseline" / "job_scripts"
     )
     assert collection.generation["logs_dir"] == str(
-        tmp_path / ".jobs" / "experiments" / "train-exp-2026" / "baseline" / "logs"
+        tmp_path / ".jobs" / "experiments" / "experiment-group-run_20260406" / "baseline" / "logs"
     )
 
 

@@ -43,7 +43,10 @@ def resolve_collection_name(
     structured_output: bool = False,
 ) -> str:
     if collection:
-        return collection
+        try:
+            return manager.normalize_name(collection)
+        except ValueError as exc:
+            raise typer.BadParameter(str(exc), param_hint="collection") from exc
     if structured_output or not can_prompt(state):
         exit_with_error("Missing collection argument.")
     selected = pick_collection(state, manager, title=prompt_title)
@@ -61,7 +64,10 @@ def resolve_target_collection_for_generate(
 ) -> tuple[str, dict[str, Any]]:
     spec_data = load_job_spec(spec_path)
     if into is not None:
-        return into, spec_data
+        try:
+            return manager.normalize_name(into), spec_data
+        except ValueError as exc:
+            raise typer.BadParameter(str(exc), param_hint="--into") from exc
     if not can_prompt(state):
         exit_with_error("Missing --into collection name.")
     default_name = default_collection_name_for_spec(spec_path, spec_data)
@@ -73,4 +79,7 @@ def resolve_target_collection_for_generate(
     )
     if collection_name is None:
         raise typer.Exit(canceled())
-    return collection_name, spec_data
+    try:
+        return manager.normalize_name(collection_name), spec_data
+    except ValueError as exc:
+        raise typer.BadParameter(str(exc), param_hint="--into") from exc

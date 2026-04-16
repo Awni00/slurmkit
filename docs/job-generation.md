@@ -17,7 +17,7 @@ A spec controls:
 Generation is collection-bound:
 
 ```bash
-slurmkit generate experiments/exp1/slurmkit/job_spec.yaml --into exp1
+slurmkit generate experiments/exp1/slurmkit/job_spec.yaml --into experiment/group/run_20260406
 ```
 
 If the target collection already exists, generation is append-only. Name collisions are renamed with suffixes like `-2`, `-3`, and so on.
@@ -63,10 +63,10 @@ variables:
   stage: baseline
 ```
 
-When run with `--into "Train Exp 2026"`, this resolves to:
+When run with `--into experiment/group/run_20260406`, this resolves to:
 
-- `.jobs/sweeps/train-exp-2026/baseline/job_scripts/`
-- `.jobs/sweeps/train-exp-2026/baseline/logs/`
+- `.jobs/sweeps/experiment-group-run_20260406/baseline/job_scripts/`
+- `.jobs/sweeps/experiment-group-run_20260406/baseline/logs/`
 
 Available built-ins for `job_subdir`:
 
@@ -78,6 +78,9 @@ Available built-ins for `job_subdir`:
 - `vars.<key>` (from top-level `variables:` mapping)
 
 If a referenced variable is undefined, generation fails with a clear error.
+
+Collection IDs must use slash-separated safe segments matching `[A-Za-z0-9._-]+`.
+Spaces, backslashes, empty segments, `.`/`..`, and absolute paths are rejected.
 
 ## Template variables
 

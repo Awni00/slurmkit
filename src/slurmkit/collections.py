@@ -10,6 +10,7 @@ resubmissions.
 from __future__ import annotations
 
 import json
+import re
 import socket
 import subprocess
 from copy import deepcopy
@@ -32,6 +33,8 @@ JOB_STATE_RUNNING = "running"
 JOB_STATE_COMPLETED = "completed"
 JOB_STATE_FAILED = "failed"
 JOB_STATE_UNKNOWN = "unknown"
+
+_COLLECTION_SEGMENT_RE = re.compile(r"^[A-Za-z0-9._-]+$")
 
 
 def _now_iso() -> str:
@@ -67,6 +70,63 @@ def _string_or_none(value: Any) -> Optional[str]:
         return None
     text = str(value).strip()
     return text if text else None
+
+
+def _invalid_collection_id(value: Any, reason: str) -> ValueError:
+    return ValueError(f"Invalid collection ID {value!r}: {reason}")
+
+
+def normalize_collection_id(value: Any) -> str:
+    text = "" if value is None else str(value)
+    if not text:
+        raise _invalid_collection_id(value, "value cannot be empty")
+    if text != text.strip():
+        raise _invalid_collection_id(value, "leading or trailing whitespace is not allowed")
+    if any(char.isspace() for char in text):
+        raise _invalid_collection_id(value, "whitespace is not allowed")
+    if "\\" in text:
+        raise _invalid_collection_id(value, "backslashes are not allowed; use '/' separators")
+    if text.startswith("/"):
+        raise _invalid_collection_id(value, "absolute paths are not allowed")
+    if text.startswith("."):
+        if text in {".", ".."} or text.startswith("./") or text.startswith("../"):
+            raise _invalid_collection_id(value, "'.' and '..' path segments are not allowed")
+    if text.endswith("/"):
+        raise _invalid_collection_id(value, "trailing '/' is not allowed")
+
+    segments = text.split("/")
+    if any(segment == "" for segment in segments):
+        raise _invalid_collection_id(value, "empty path segments are not allowed")
+
+    for segment in segments:
+        if segment in {".", ".."}:
+            raise _invalid_collection_id(value, "'.' and '..' path segments are not allowed")
+        if not _COLLECTION_SEGMENT_RE.fullmatch(segment):
+            raise _invalid_collection_id(
+                value,
+                "segments must contain only letters, numbers, '.', '_', or '-'",
+            )
+
+    return "/".join(segments)
+
+
+def collection_id_to_relative_path(name: Any) -> Path:
+    canonical_name = normalize_collection_id(name)
+    segments = canonical_name.split("/")
+    return Path(*segments[:-1], f"{segments[-1]}.yaml")
+
+
+def collection_id_from_relative_path(path: Union[str, Path]) -> str:
+    relative_path = Path(path)
+    if relative_path.is_absolute():
+        raise _invalid_collection_id(path, "collection paths must be relative to the collections directory")
+    if relative_path.suffix != ".yaml":
+        raise _invalid_collection_id(path, "collection files must use the .yaml suffix")
+    parts = list(relative_path.parts)
+    if not parts:
+        raise _invalid_collection_id(path, "collection path cannot be empty")
+    parts[-1] = Path(parts[-1]).stem
+    return normalize_collection_id("/".join(parts))
 
 
 class Collection:
@@ -819,23 +879,39 @@ class CollectionManager:
     def _ensure_dir(self) -> None:
         self.collections_dir.mkdir(parents=True, exist_ok=True)
 
-    def _get_path(self, name: str) -> Path:
-        return self.collections_dir / f"{name}.yaml"
+    def normalize_name(self, name: Any) -> str:
+        return normalize_collection_id(name)
+
+    def get_collection_path(self, name: Any) -> Path:
+        relative_path = collection_id_to_relative_path(name)
+        path = self.collections_dir / relative_path
+        collections_root = self.collections_dir.resolve(strict=False)
+        resolved_path = path.resolve(strict=False)
+        try:
+            resolved_path.relative_to(collections_root)
+        except ValueError as exc:
+            raise _invalid_collection_id(name, "resolved path escapes the collections directory") from exc
+        return path
 
     def exists(self, name: str) -> bool:
-        return self._get_path(name).exists()
+        return self.get_collection_path(name).exists()
 
     def load(self, name: str) -> Collection:
-        path = self._get_path(name)
+        canonical_name = self.normalize_name(name)
+        path = self.get_collection_path(canonical_name)
         if not path.exists():
-            raise FileNotFoundError(f"Collection not found: {name}")
+            raise FileNotFoundError(f"Collection not found: {canonical_name}")
         with open(path, "r", encoding="utf-8") as handle:
             data = yaml.safe_load(handle) or {}
-        return Collection.from_dict(data)
+        collection = Collection.from_dict(data)
+        collection.name = canonical_name
+        return collection
 
     def save(self, collection: Collection) -> Path:
         self._ensure_dir()
-        path = self._get_path(collection.name)
+        collection.name = self.normalize_name(collection.name)
+        path = self.get_collection_path(collection.name)
+        path.parent.mkdir(parents=True, exist_ok=True)
         with open(path, "w", encoding="utf-8") as handle:
             yaml.dump(
                 collection.to_dict(),
@@ -853,12 +929,13 @@ class CollectionManager:
         parameters: Optional[Dict[str, Any]] = None,
         overwrite: bool = False,
     ) -> Collection:
-        if self.exists(name) and not overwrite:
+        canonical_name = self.normalize_name(name)
+        if self.exists(canonical_name) and not overwrite:
             raise FileExistsError(
-                f"Collection already exists: {name}. Use overwrite=True to replace."
+                f"Collection already exists: {canonical_name}. Use overwrite=True to replace."
             )
         collection = Collection(
-            name=name,
+            name=canonical_name,
             description=description,
             parameters=parameters,
         )
@@ -871,21 +948,40 @@ class CollectionManager:
         description: str = "",
         parameters: Optional[Dict[str, Any]] = None,
     ) -> Collection:
-        if self.exists(name):
-            return self.load(name)
-        return self.create(name, description, parameters)
+        canonical_name = self.normalize_name(name)
+        if self.exists(canonical_name):
+            return self.load(canonical_name)
+        return self.create(canonical_name, description, parameters)
+
+    def _prune_empty_parent_dirs(self, directory: Path) -> None:
+        current = directory
+        while current != self.collections_dir:
+            try:
+                current.rmdir()
+            except OSError:
+                break
+            current = current.parent
 
     def delete(self, name: str) -> bool:
-        path = self._get_path(name)
+        path = self.get_collection_path(name)
         if path.exists():
             path.unlink()
+            self._prune_empty_parent_dirs(path.parent)
             return True
         return False
 
     def list_collections(self) -> List[str]:
         if not self.collections_dir.exists():
             return []
-        return sorted(path.stem for path in self.collections_dir.glob("*.yaml"))
+        names: List[str] = []
+        for path in sorted(self.collections_dir.rglob("*.yaml")):
+            if not path.is_file():
+                continue
+            try:
+                names.append(collection_id_from_relative_path(path.relative_to(self.collections_dir)))
+            except ValueError:
+                continue
+        return names
 
     def resolve_job_id(
         self,

@@ -33,6 +33,9 @@ def _write_collection_file(
 ) -> None:
     collections_dir = tmp_path / ".slurmkit" / "collections"
     collections_dir.mkdir(parents=True, exist_ok=True)
+    name_parts = name.split("/")
+    collection_path = collections_dir.joinpath(*name_parts[:-1], f"{name_parts[-1]}.yaml")
+    collection_path.parent.mkdir(parents=True, exist_ok=True)
     payload = {
         "version": 2,
         "name": name,
@@ -63,7 +66,7 @@ def _write_collection_file(
             }
         ],
     }
-    (collections_dir / f"{name}.yaml").write_text(
+    collection_path.write_text(
         yaml.safe_dump(payload, sort_keys=False),
         encoding="utf-8",
     )
@@ -145,7 +148,7 @@ def test_collections_list_table_renders_expected_columns_and_newest_first(tmp_pa
 def test_collections_list_json_preserves_schema_and_uses_newest_first_order(tmp_path):
     config_path = _write_config(tmp_path)
     _write_collection_file(tmp_path, name="older", updated_at="2026-03-20T10:00:00")
-    _write_collection_file(tmp_path, name="newer", updated_at="2026-03-24T10:00:00")
+    _write_collection_file(tmp_path, name="experiment/group/newer", updated_at="2026-03-24T10:00:00")
 
     result = runner.invoke(
         cli_app,
@@ -154,7 +157,7 @@ def test_collections_list_json_preserves_schema_and_uses_newest_first_order(tmp_
 
     assert result.exit_code == 0
     rows = json.loads(result.stdout)
-    assert [row["name"] for row in rows] == ["newer", "older"]
+    assert [row["name"] for row in rows] == ["experiment/group/newer", "older"]
     assert set(rows[0].keys()) == {
         "name",
         "description",
@@ -276,6 +279,29 @@ def test_status_json_is_compact_and_omits_jobs(tmp_path):
     }
 
 
+def test_status_supports_nested_collection_ids(tmp_path):
+    config_path = _write_config(tmp_path)
+    _write_collection_file(
+        tmp_path,
+        name="experiment/group/run_20260406",
+        updated_at="2026-03-24T10:00:00",
+        generation={
+            "spec_path": "experiments/exp1/slurmkit/job_spec.yaml",
+            "scripts_dir": ".jobs/exp1/job_scripts",
+            "logs_dir": ".jobs/exp1/logs",
+        },
+    )
+
+    result = runner.invoke(
+        cli_app,
+        ["--config", str(config_path), "--ui", "plain", "status", "experiment/group/run_20260406"],
+    )
+
+    assert result.exit_code == 0
+    assert "experiment/group/run_20260406" in result.stdout
+    assert ".slurmkit/collections/experiment/group/run_20260406.yaml" in result.stdout
+
+
 def test_collections_show_json_includes_eta_fields(monkeypatch, tmp_path):
     config_path = _write_config(tmp_path)
     _write_collection_file(
@@ -314,6 +340,35 @@ def test_collections_show_json_includes_eta_fields(monkeypatch, tmp_path):
     assert "effective_eta_start_at" in row
     assert row["effective_eta_completion_at"] is not None
     assert isinstance(row["effective_eta_remaining_seconds"], int)
+
+
+def test_generate_command_rejects_invalid_collection_id(tmp_path):
+    config_path = _write_config(tmp_path)
+    template = tmp_path / "template.job.j2"
+    template.write_text("#!/bin/bash\n", encoding="utf-8")
+    spec = tmp_path / "job_spec.yaml"
+    spec.write_text(
+        "\n".join(
+            [
+                "name: demo",
+                f"template: {template.name}",
+                "job_subdir: experiments/demo",
+                "parameters:",
+                "  mode: list",
+                "  values:",
+                "    - lr: 0.1",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    result = runner.invoke(
+        cli_app,
+        ["--config", str(config_path), "generate", str(spec), "--into", "Train Exp 2026"],
+    )
+
+    assert result.exit_code != 0
+    assert "Invalid collection ID" in plain_cli_output(result)
 
 
 def test_migrate_command_runs(tmp_path):

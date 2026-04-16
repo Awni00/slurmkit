@@ -60,9 +60,16 @@ def register(app: typer.Typer) -> None:
         push: bool = typer.Option(False, "--push", help="Commit and push the sync file."),
     ) -> None:
         state = get_state(ctx)
+        manager = CollectionManager(config=state.config)
+        normalized_collection_names = None
+        if collection is not None:
+            try:
+                normalized_collection_names = [manager.normalize_name(name) for name in collection]
+            except ValueError as exc:
+                raise typer.BadParameter(str(exc), param_hint="--collection") from exc
         result = sync_collections(
             config=state.config,
-            collection_names=collection,
+            collection_names=normalized_collection_names,
             push=push,
         )
         typer.echo(f"Syncing job states on {result['hostname']}...")

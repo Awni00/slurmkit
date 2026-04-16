@@ -6,6 +6,7 @@ from typing import Optional
 
 import typer
 
+from slurmkit.collections import CollectionManager
 from slurmkit.notifications import NotificationService
 from slurmkit.workflows.notifications import (
     run_collection_final_notification,
@@ -17,6 +18,18 @@ from .runtime import get_state
 
 
 notify_app = typer.Typer(help="Send notifications to configured routes.")
+
+
+def _normalize_optional_collection_name(
+    manager: CollectionManager,
+    collection_name: Optional[str],
+) -> Optional[str]:
+    if collection_name is None:
+        return None
+    try:
+        return manager.normalize_name(collection_name)
+    except ValueError as exc:
+        raise typer.BadParameter(str(exc), param_hint="--collection") from exc
 
 
 def register(app: typer.Typer) -> None:
@@ -36,11 +49,12 @@ def notify_job_command(
     dry_run: bool = typer.Option(False, "--dry-run", help="Preview without sending."),
 ) -> None:
     state = get_state(ctx)
+    manager = CollectionManager(config=state.config)
     service = NotificationService(config=state.config)
     result = run_job_notification(
         service=service,
         job_id=job_id,
-        collection_name=collection_name,
+        collection_name=_normalize_optional_collection_name(manager, collection_name),
         exit_code=exit_code,
         on=on,
         routes=route,
@@ -86,12 +100,13 @@ def notify_collection_final_command(
     no_refresh: bool = typer.Option(False, "--no-refresh", help="Do not refresh collection state before evaluating finality."),
 ) -> None:
     state = get_state(ctx)
+    manager = CollectionManager(config=state.config)
     service = NotificationService(config=state.config)
     result = run_collection_final_notification(
         service=service,
         job_id=job_id,
         trigger_exit_code=trigger_exit_code,
-        collection_name=collection_name,
+        collection_name=_normalize_optional_collection_name(manager, collection_name),
         routes=route,
         strict=strict,
         dry_run=dry_run,
