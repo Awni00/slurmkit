@@ -248,6 +248,20 @@ def _parse_created_at(value: object) -> float | None:
         return None
 
 
+def _format_relative_timestamp(timestamp: float, *, now: datetime | None = None) -> str:
+    current = now or datetime.now(timezone.utc)
+    if current.tzinfo is None:
+        current = current.replace(tzinfo=timezone.utc)
+    else:
+        current = current.astimezone(timezone.utc)
+    delta_seconds = max(int(current.timestamp() - timestamp), 0)
+    if delta_seconds < 3600:
+        return f"{delta_seconds // 60}m ago"
+    if delta_seconds < 86400:
+        return f"{delta_seconds // 3600}h ago"
+    return f"{delta_seconds // 86400}d ago"
+
+
 def _parse_top_level_mapping_line(raw_line: str) -> tuple[str, str] | None:
     if not raw_line:
         return None
@@ -267,7 +281,7 @@ def _parse_top_level_mapping_line(raw_line: str) -> tuple[str, str] | None:
     return normalized_key, value
 
 
-def _probe_created_at_fast(path: Path) -> _TimestampProbe:
+def _probe_updated_at_fast(path: Path) -> _TimestampProbe:
     line_count = 0
     bytes_read = 0
     try:
@@ -287,7 +301,7 @@ def _probe_created_at_fast(path: Path) -> _TimestampProbe:
                 key, value = parsed
                 if key == "jobs":
                     return _TimestampProbe(timestamp=None, complete=False)
-                if key != "created_at":
+                if key != "updated_at":
                     continue
                 scalar = value.strip()
                 if not scalar:
@@ -302,7 +316,7 @@ def _probe_created_at_fast(path: Path) -> _TimestampProbe:
     return _TimestampProbe(timestamp=None, complete=False)
 
 
-def _read_created_at_timestamp_full(path: Path) -> float | None:
+def _read_updated_at_timestamp_full(path: Path) -> float | None:
     try:
         raw = path.read_text(encoding="utf-8")
     except (OSError, UnicodeDecodeError):
@@ -313,25 +327,29 @@ def _read_created_at_timestamp_full(path: Path) -> float | None:
         return None
     if not isinstance(payload, dict):
         return None
-    return _parse_created_at(payload.get("created_at"))
+    return _parse_created_at(payload.get("updated_at"))
 
 
-def _read_created_at_timestamp(manager: CollectionManager, name: str) -> float | None:
+def _read_updated_at_timestamp(manager: CollectionManager, name: str) -> float | None:
     get_collection_path = getattr(manager, "get_collection_path", None)
     if callable(get_collection_path):
         path = get_collection_path(name)
     else:
         path = manager.collections_dir / f"{name}.yaml"
-    probe = _probe_created_at_fast(path)
+    probe = _probe_updated_at_fast(path)
     if probe.complete:
         return probe.timestamp
-    return _read_created_at_timestamp_full(path)
+    return _read_updated_at_timestamp_full(path)
 
 
-def _collection_options(manager: CollectionManager) -> list[tuple[str, str]]:
+def _collection_options(
+    manager: CollectionManager,
+    *,
+    now: datetime | None = None,
+) -> list[tuple[str, str]]:
     rows: list[tuple[str, float | None]] = []
     for name in manager.list_collections():
-        rows.append((name, _read_created_at_timestamp(manager, name)))
+        rows.append((name, _read_updated_at_timestamp(manager, name)))
     rows.sort(
         key=lambda item: (
             item[1] is None,
@@ -339,7 +357,13 @@ def _collection_options(manager: CollectionManager) -> list[tuple[str, str]]:
             item[0],
         )
     )
-    return [(name, name) for name, _created_at in rows]
+    options: list[tuple[str, str]] = []
+    for name, updated_at in rows:
+        if updated_at is None:
+            options.append((name, f"{name} (unknown)"))
+            continue
+        options.append((name, f"{name} ({_format_relative_timestamp(updated_at, now=now)})"))
+    return options
 
 
 def pick_collection(
