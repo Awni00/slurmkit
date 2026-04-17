@@ -55,6 +55,8 @@ def _write_demo_script(path: Path, *, job_name: str, command: str, logs_dir: Pat
 
 
 def _validate_prefix_segment(raw_prefix: str) -> str:
+    if not raw_prefix:
+        return ""
     normalized = normalize_collection_id(raw_prefix)
     if "/" in normalized:
         raise ValueError("--prefix must be a single safe segment, not a hierarchical path.")
@@ -62,7 +64,7 @@ def _validate_prefix_segment(raw_prefix: str) -> str:
 
 
 def _collection_id(prefix: str, *segments: str) -> str:
-    return normalize_collection_id("/".join((prefix, *segments)))
+    return normalize_collection_id("/".join(part for part in (prefix, *segments) if part))
 
 
 def _job_dirs(project_root: Path, *segments: str) -> tuple[Path, Path]:
@@ -169,8 +171,8 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--prefix",
-        default="demo",
-        help="Collection name prefix (default: demo).",
+        default="",
+        help="Optional top-level collection namespace segment.",
     )
     parser.add_argument(
         "--include-non-terminal",

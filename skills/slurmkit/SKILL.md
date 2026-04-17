@@ -13,6 +13,7 @@ Use this skill when working in repositories that manage SLURM experiments with `
 
 - `job spec` + `template` define job generation.
 - `collection` is the tracked unit of work.
+- collection names may be hierarchical, using `/` to organize nested collection folders under `.slurmkit/collections/`.
 - each collection job keeps an `attempts` history.
 - operational loop is `generate -> submit -> status/show -> analyze -> resubmit`.
 
@@ -70,6 +71,11 @@ Placement default when no pattern exists yet:
 - cross-host sync snapshot: `slurmkit sync`
 - cleanup failed outputs: `slurmkit clean outputs <collection> --dry-run`
 - cleanup short failed W&B runs: `slurmkit clean wandb --project <name> --dry-run`
+
+Collection naming guidance:
+
+- prefer safe slash-separated collection names like `experiment/group/run_20260406` when hierarchical organization is useful.
+- each segment must use the safe collection ID charset supported by the CLI and collection manager.
 
 ## References (Mini Examples)
 

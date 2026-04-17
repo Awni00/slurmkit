@@ -35,13 +35,13 @@ warn() {
 }
 
 DUMMY_COLLECTIONS_READY=0
-DUMMY_COLLECTION_NAME="demo/fixtures/mixed_30"
+DUMMY_COLLECTION_NAME="fixtures/mixed_30"
 DUMMY_FAILED_JOB_ID="990013"
-NOTIFY_FAILED_COLLECTION="demo/notifications/terminal_failed"
+NOTIFY_FAILED_COLLECTION="notifications/terminal_failed"
 NOTIFY_FAILED_JOB_ID="991002"
-NOTIFY_COMPLETED_COLLECTION="demo/notifications/terminal_completed"
+NOTIFY_COMPLETED_COLLECTION="notifications/terminal_completed"
 NOTIFY_COMPLETED_JOB_ID="992011"
-NOTIFY_IN_PROGRESS_COLLECTION="demo/notifications/in_progress"
+NOTIFY_IN_PROGRESS_COLLECTION="notifications/in_progress"
 NOTIFY_RUNNING_JOB_ID="993020"
 
 # Function to run demo commands without aborting the full quickstart.
@@ -121,13 +121,13 @@ echo "Available demo experiments:"
 echo "  1. Parameter Sweep - Grid Mode (6 jobs, ~15 sec each)"
 echo "     experiments/hyperparameter_sweep/slurmkit/job_spec.yaml"
 echo "     job_subdir: hyperparameter_sweep"
-echo "     collection id: demo/generated/hyperparameter_sweep"
+echo "     collection id: generated/hyperparameter_sweep"
 echo "     8 combos minus 2 filtered (algo_b + small) = 6 jobs"
 echo ""
 echo "  2. Parameter List - List Mode (4 jobs, 10-30 sec each)"
 echo "     experiments/model_comparison/slurmkit/job_spec.yaml"
 echo "     job_subdir: comparisons/model_comparison  # nested path demo"
-echo "     collection id: demo/generated/model_comparison"
+echo "     collection id: generated/model_comparison"
 echo "     4 explicit parameter combinations"
 echo ""
 
@@ -138,20 +138,20 @@ case $choice in
         EXPERIMENT="hyperparameter_sweep"
         JOB_SUBDIR="hyperparameter_sweep"
         JOB_SPEC="experiments/hyperparameter_sweep/slurmkit/job_spec.yaml"
-        COLLECTION="demo/generated/hyperparameter_sweep"
+        COLLECTION="generated/hyperparameter_sweep"
         ;;
     2)
         EXPERIMENT="model_comparison"
         JOB_SUBDIR="comparisons/model_comparison"
         JOB_SPEC="experiments/model_comparison/slurmkit/job_spec.yaml"
-        COLLECTION="demo/generated/model_comparison"
+        COLLECTION="generated/model_comparison"
         ;;
     *)
         echo "Invalid choice. Using hyperparameter_sweep."
         EXPERIMENT="hyperparameter_sweep"
         JOB_SUBDIR="hyperparameter_sweep"
         JOB_SPEC="experiments/hyperparameter_sweep/slurmkit/job_spec.yaml"
-        COLLECTION="demo/generated/hyperparameter_sweep"
+        COLLECTION="generated/hyperparameter_sweep"
         ;;
 esac
 
