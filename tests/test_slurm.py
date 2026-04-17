@@ -235,13 +235,63 @@ def test_get_pending_jobs_preserves_dot_suffixes(monkeypatch):
     assert pending[0]["job_name"] == "train.resubmit-1"
 
 
-def test_get_active_queue_timing_parses_expected_fields(monkeypatch):
+def test_get_active_queue_timing_parses_running_job(monkeypatch):
+    from slurmkit import slurm
+
+    fake_output = "1527605|RUNNING|2026-04-16T06:37:43|1-00:00:00|11:09:03\n"
+    monkeypatch.setattr(
+        slurm,
+        "run_command",
+        lambda _cmd: SimpleNamespace(stdout=fake_output),
+    )
+
+    timing = get_active_queue_timing(job_ids=["1527605"])
+    assert timing["1527605"]["state_raw"] == "RUNNING"
+    assert timing["1527605"]["estimated_start_at"] == "2026-04-16T06:37:43"
+    assert timing["1527605"]["time_limit_seconds"] == 86400
+    assert timing["1527605"]["time_left_seconds"] == 40143
+
+
+def test_get_active_queue_timing_parses_pending_job(monkeypatch):
+    from slurmkit import slurm
+
+    fake_output = "1600000|PENDING|2026-04-17T12:00:00|1-00:00:00|1-00:00:00\n"
+    monkeypatch.setattr(
+        slurm,
+        "run_command",
+        lambda _cmd: SimpleNamespace(stdout=fake_output),
+    )
+
+    timing = get_active_queue_timing(job_ids=["1600000"])
+    assert timing["1600000"]["state_raw"] == "PENDING"
+    assert timing["1600000"]["estimated_start_at"] == "2026-04-17T12:00:00"
+    assert timing["1600000"]["time_limit_seconds"] == 86400
+    assert timing["1600000"]["time_left_seconds"] == 86400
+
+
+def test_get_active_queue_timing_pending_without_backfill_returns_nones(monkeypatch):
+    from slurmkit import slurm
+
+    fake_output = "1600001|PENDING|N/A|UNLIMITED|UNLIMITED\n"
+    monkeypatch.setattr(
+        slurm,
+        "run_command",
+        lambda _cmd: SimpleNamespace(stdout=fake_output),
+    )
+
+    timing = get_active_queue_timing(job_ids=["1600001"])
+    assert timing["1600001"]["state_raw"] == "PENDING"
+    assert timing["1600001"]["estimated_start_at"] is None
+    assert timing["1600001"]["time_limit_seconds"] is None
+    assert timing["1600001"]["time_left_seconds"] is None
+
+
+def test_get_active_queue_timing_parses_mixed_batch(monkeypatch):
     from slurmkit import slurm
 
     fake_output = (
-        "123|PENDING|2026-04-06T10:00:00|04:00:00|01:30:00\n"
-        "124|RUNNING|N/A|02:00:00|00:25:30\n"
-        "125|RUNNING|Unknown|UNLIMITED|UNKNOWN\n"
+        "1527606|RUNNING|2026-04-16T09:00:00|12:00:00|05:30:00\n"
+        "1600000|PENDING|2026-04-17T12:00:00|1-00:00:00|1-00:00:00\n"
     )
     monkeypatch.setattr(
         slurm,
@@ -249,19 +299,29 @@ def test_get_active_queue_timing_parses_expected_fields(monkeypatch):
         lambda _cmd: SimpleNamespace(stdout=fake_output),
     )
 
-    timing = get_active_queue_timing(job_ids=["123", "124", "125"])
-    assert timing["123"]["state_raw"] == "PENDING"
-    assert timing["123"]["estimated_start_at"] == "2026-04-06T10:00:00"
-    assert timing["123"]["time_limit_seconds"] == 14400
-    assert timing["123"]["time_left_seconds"] == 5400
+    timing = get_active_queue_timing(job_ids=["1527606", "1600000"])
+    assert set(timing) == {"1527606", "1600000"}
+    assert timing["1527606"]["state_raw"] == "RUNNING"
+    assert timing["1600000"]["state_raw"] == "PENDING"
 
-    assert timing["124"]["estimated_start_at"] is None
-    assert timing["124"]["time_limit_seconds"] == 7200
-    assert timing["124"]["time_left_seconds"] == 1530
 
-    assert timing["125"]["estimated_start_at"] is None
-    assert timing["125"]["time_limit_seconds"] is None
-    assert timing["125"]["time_left_seconds"] is None
+def test_get_active_queue_timing_uses_pending_and_running_states_filter(monkeypatch):
+    from slurmkit import slurm
+
+    captured_cmd = None
+
+    def fake_run_command(cmd):
+        nonlocal captured_cmd
+        captured_cmd = cmd
+        return SimpleNamespace(stdout="")
+
+    monkeypatch.setattr(slurm, "run_command", fake_run_command)
+
+    get_active_queue_timing(job_ids=["1527605"])
+
+    assert captured_cmd is not None
+    assert "--states=PENDING,RUNNING" in captured_cmd
+    assert "--start" not in captured_cmd
 
 
 def _mock_sacct_rows(monkeypatch, output: str) -> None:

@@ -136,3 +136,42 @@ def test_show_collection_collection_eta_unknown_reports_coverage(monkeypatch, tm
 
     metadata = dict(rendered.report.metadata)
     assert metadata["Collection Est. Completion"] == "N/A (0/1 estimable active jobs)"
+
+
+def test_show_collection_running_only_collection_estimates_completion(monkeypatch, tmp_path):
+    config = get_config(project_root=tmp_path, reload=True)
+    manager = CollectionManager(config=config)
+    collection = Collection("eta_running_only")
+    collection.add_job("job_running", job_id="1527605", state="RUNNING")
+    manager.save(collection)
+
+    monkeypatch.setattr(
+        "slurmkit.workflows.collections.get_active_queue_timing",
+        lambda job_ids=None: {
+            "1527605": {
+                "job_id": "1527605",
+                "state_raw": "RUNNING",
+                "estimated_start_at": "2026-04-16T06:37:43",
+                "time_limit_seconds": 86400,
+                "time_left_seconds": 40143,
+            }
+        },
+    )
+
+    rendered = show_collection(
+        config=config,
+        manager=manager,
+        name="eta_running_only",
+        refresh=False,
+        state_filter="all",
+        json_mode=True,
+        attempt_mode="latest",
+        include_jobs_table=True,
+        include_jobs_in_payload=True,
+    )
+
+    payload = rendered.payload
+    assert payload is not None
+    assert payload["estimated_completion_at"] is not None
+    assert payload["estimable_active_jobs"] == 1
+    assert payload["active_jobs"] == 1

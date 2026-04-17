@@ -632,7 +632,7 @@ def get_active_queue_timing(
     Query active queue timing fields for pending/running jobs.
 
     Uses:
-    squeue --start --format=%i|%T|%S|%l|%L --noheader
+    squeue --states=PENDING,RUNNING --format=%i|%T|%S|%l|%L --noheader
 
     Returns a map keyed by job_id with machine-friendly values:
     - job_id
@@ -646,7 +646,12 @@ def get_active_queue_timing(
         for job_id in (job_ids or [])
         if str(job_id).strip()
     ]
-    cmd = ["squeue", "--start", "--format=%i|%T|%S|%l|%L", "--noheader"]
+    cmd = [
+        "squeue",
+        "--states=PENDING,RUNNING",
+        "--format=%i|%T|%S|%l|%L",
+        "--noheader",
+    ]
     if normalized_ids:
         cmd.extend(["-j", ",".join(normalized_ids)])
     elif user:
