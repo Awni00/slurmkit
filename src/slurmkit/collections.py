@@ -9,10 +9,15 @@ resubmissions.
 
 from __future__ import annotations
 
+import fcntl
 import json
+import os
 import re
 import socket
+import stat
 import subprocess
+import tempfile
+from contextlib import contextmanager
 from copy import deepcopy
 from dataclasses import dataclass
 from datetime import datetime
@@ -869,12 +874,18 @@ class CollectionManager:
         collections_dir: Optional[Union[str, Path]] = None,
         config: Optional[Config] = None,
     ):
+        explicit_config = config is not None
         if config is None:
             config = get_config()
+        self.config = config
         if collections_dir is not None:
             self.collections_dir = Path(collections_dir)
         else:
             self.collections_dir = config.collections_dir
+        if explicit_config or collections_dir is None:
+            self.collection_locks_dir = config.collection_locks_dir
+        else:
+            self.collection_locks_dir = self.collections_dir.parent / "locks" / "collections"
 
     def _ensure_dir(self) -> None:
         self.collections_dir.mkdir(parents=True, exist_ok=True)
@@ -896,6 +907,31 @@ class CollectionManager:
     def exists(self, name: str) -> bool:
         return self.get_collection_path(name).exists()
 
+    def _get_collection_lock_path(self, name: Any) -> Path:
+        relative_path = collection_id_to_relative_path(name).with_suffix(".lock")
+        path = self.collection_locks_dir / relative_path
+        locks_root = self.collection_locks_dir.resolve(strict=False)
+        resolved_path = path.resolve(strict=False)
+        try:
+            resolved_path.relative_to(locks_root)
+        except ValueError as exc:
+            raise _invalid_collection_id(name, "resolved lock path escapes the collection locks directory") from exc
+        return path
+
+    @contextmanager
+    def _collection_lock(self, name: Any) -> Iterator[None]:
+        lock_path = self._get_collection_lock_path(name)
+        lock_path.parent.mkdir(parents=True, exist_ok=True)
+        fd = os.open(str(lock_path), os.O_CREAT | os.O_RDWR, 0o644)
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX)
+            yield
+        finally:
+            try:
+                fcntl.flock(fd, fcntl.LOCK_UN)
+            finally:
+                os.close(fd)
+
     def load(self, name: str) -> Collection:
         canonical_name = self.normalize_name(name)
         path = self.get_collection_path(canonical_name)
@@ -912,15 +948,53 @@ class CollectionManager:
         collection.name = self.normalize_name(collection.name)
         path = self.get_collection_path(collection.name)
         path.parent.mkdir(parents=True, exist_ok=True)
-        with open(path, "w", encoding="utf-8") as handle:
-            yaml.dump(
-                collection.to_dict(),
-                handle,
-                default_flow_style=False,
-                sort_keys=False,
-                allow_unicode=True,
-            )
+
+        with self._collection_lock(collection.name):
+            self._atomic_write_collection(path, collection)
         return path
+
+    def _atomic_write_collection(self, path: Path, collection: Collection) -> None:
+        mode = stat.S_IMODE(path.stat().st_mode) if path.exists() else 0o644
+        fd: Optional[int] = None
+        tmp_path: Optional[Path] = None
+        try:
+            fd, raw_tmp_path = tempfile.mkstemp(
+                dir=path.parent,
+                prefix=f".{path.name}.",
+                suffix=".tmp",
+            )
+            tmp_path = Path(raw_tmp_path)
+            os.fchmod(fd, mode)
+            with os.fdopen(fd, "w", encoding="utf-8") as handle:
+                fd = None
+                yaml.dump(
+                    collection.to_dict(),
+                    handle,
+                    default_flow_style=False,
+                    sort_keys=False,
+                    allow_unicode=True,
+                )
+                handle.flush()
+                os.fsync(handle.fileno())
+            os.replace(tmp_path, path)
+            tmp_path = None
+            try:
+                dir_fd = os.open(str(path.parent), os.O_RDONLY)
+            except OSError:
+                dir_fd = None
+            if dir_fd is not None:
+                try:
+                    os.fsync(dir_fd)
+                finally:
+                    os.close(dir_fd)
+        finally:
+            if fd is not None:
+                os.close(fd)
+            if tmp_path is not None:
+                try:
+                    tmp_path.unlink()
+                except FileNotFoundError:
+                    pass
 
     def create(
         self,

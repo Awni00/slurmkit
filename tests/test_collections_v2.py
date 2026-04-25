@@ -2,9 +2,37 @@
 
 from __future__ import annotations
 
+import multiprocessing
+import os
+import stat
+
 import pytest
+import yaml
 
 from slurmkit.collections import Collection, CollectionManager
+
+
+def _save_collection_many_times(collections_dir: str, worker_index: int, rounds: int) -> None:
+    manager = CollectionManager(collections_dir=collections_dir)
+    for round_index in range(rounds):
+        collection = Collection(
+            "exp1",
+            description=f"worker {worker_index} round {round_index}",
+            parameters={"worker": worker_index, "round": round_index},
+        )
+        for job_index in range(25):
+            collection.add_job(
+                f"worker_{worker_index}_job_{job_index}",
+                script_path=f"jobs/worker_{worker_index}/job_{job_index}.job",
+                job_id=f"{worker_index}{round_index:02d}{job_index:02d}",
+                state="RUNNING",
+                parameters={
+                    "worker": worker_index,
+                    "round": round_index,
+                    "job": job_index,
+                },
+            )
+        manager.save(collection)
 
 
 def test_collection_add_job_and_resubmission_uses_attempts(tmp_path):
@@ -43,6 +71,91 @@ def test_collection_manager_saves_and_loads_v2_schema(tmp_path):
     assert restored.to_dict()["version"] == 2
     assert restored.generation["spec_path"] == "specs/demo.yaml"
     assert restored.jobs[0]["attempts"][0]["script_path"] == "jobs/job1.job"
+
+
+def test_collection_manager_save_failure_leaves_existing_file_intact(monkeypatch, tmp_path):
+    manager = CollectionManager(collections_dir=tmp_path)
+    original = Collection("exp1", description="original")
+    original.add_job("job1", script_path="jobs/job1.job", parameters={"lr": 0.1})
+    path = manager.save(original)
+    original_bytes = path.read_bytes()
+
+    replacement = Collection("exp1", description="replacement")
+    replacement.add_job("job2", script_path="jobs/job2.job", parameters={"lr": 0.2})
+
+    def fail_after_partial_write(data, stream, **kwargs):
+        stream.write("partial: true\n")
+        raise RuntimeError("simulated dump failure")
+
+    monkeypatch.setattr("slurmkit.collections.yaml.dump", fail_after_partial_write)
+
+    with pytest.raises(RuntimeError, match="simulated dump failure"):
+        manager.save(replacement)
+
+    assert path.read_bytes() == original_bytes
+    assert yaml.safe_load(path.read_text(encoding="utf-8"))["description"] == "original"
+    assert path.stat().st_size > 0
+    assert list(tmp_path.glob(".exp1.yaml.*.tmp")) == []
+
+
+def test_collection_manager_save_uses_temp_file_and_default_mode(tmp_path):
+    manager = CollectionManager(collections_dir=tmp_path)
+    collection = Collection("exp1", description="demo")
+    collection.add_job("job1", script_path="jobs/job1.job", parameters={"lr": 0.1})
+
+    path = manager.save(collection)
+
+    assert yaml.safe_load(path.read_text(encoding="utf-8"))["description"] == "demo"
+    assert stat.S_IMODE(path.stat().st_mode) == 0o644
+    assert list(tmp_path.glob(".exp1.yaml.*.tmp")) == []
+
+
+def test_collection_manager_save_preserves_existing_file_mode(tmp_path):
+    manager = CollectionManager(collections_dir=tmp_path)
+    collection = Collection("exp1", description="first")
+    path = manager.save(collection)
+    os.chmod(path, 0o640)
+
+    collection.description = "second"
+    manager.save(collection)
+
+    assert yaml.safe_load(path.read_text(encoding="utf-8"))["description"] == "second"
+    assert stat.S_IMODE(path.stat().st_mode) == 0o640
+
+
+def test_collection_manager_save_creates_nested_collection_lock_path(tmp_path):
+    manager = CollectionManager(collections_dir=tmp_path / "collections")
+    collection = Collection("group/sub/run", description="nested")
+
+    manager.save(collection)
+
+    assert (tmp_path / "locks" / "collections" / "group" / "sub" / "run.lock").exists()
+
+
+def test_collection_manager_concurrent_saves_leave_parseable_yaml(tmp_path):
+    collections_dir = tmp_path / "collections"
+    workers = [
+        multiprocessing.Process(
+            target=_save_collection_many_times,
+            args=(str(collections_dir), worker_index, 8),
+        )
+        for worker_index in range(4)
+    ]
+
+    for worker in workers:
+        worker.start()
+    for worker in workers:
+        worker.join(timeout=30)
+
+    for worker in workers:
+        assert worker.exitcode == 0
+
+    path = collections_dir / "exp1.yaml"
+    data = yaml.safe_load(path.read_text(encoding="utf-8"))
+    assert data["name"] == "exp1"
+    restored = CollectionManager(collections_dir=collections_dir).load("exp1")
+    assert restored.name == "exp1"
+    assert len(restored.jobs) == 25
 
 
 def test_collection_manager_saves_and_loads_nested_collection_ids(tmp_path):
