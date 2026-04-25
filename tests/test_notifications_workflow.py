@@ -82,3 +82,31 @@ def test_collection_final_notification_uses_attempts_schema(tmp_path):
     assert result.payload["collection_report"]["summary"]["counts"]["completed"] == 1
     assert (tmp_path / ".slurmkit" / "locks" / "collections" / "exp1.lock").exists()
     assert not (tmp_path / ".slurmkit" / "collections" / "exp1.yaml.lock").exists()
+
+
+def test_collection_final_notification_locks_nested_collection_path(tmp_path):
+    config_path = _write_config(tmp_path)
+    config = get_config(config_path=config_path, project_root=tmp_path, reload=True)
+    manager = CollectionManager(config=config)
+    collection = Collection("group/sub/run")
+    collection.add_job("job1", job_id="101", state="COMPLETED")
+    manager.save(collection)
+    service = NotificationService(config=config, collection_manager=manager)
+
+    result = run_collection_final_notification(
+        service=service,
+        job_id="101",
+        trigger_exit_code=0,
+        collection_name="group/sub/run",
+        routes=None,
+        strict=False,
+        dry_run=True,
+        force=True,
+        no_refresh=True,
+    )
+
+    assert result.exit_code == 0
+    assert result.payload["collection"]["name"] == "group/sub/run"
+    assert (
+        tmp_path / ".slurmkit" / "locks" / "collections" / "group" / "sub" / "run.lock"
+    ).exists()

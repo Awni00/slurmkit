@@ -39,6 +39,7 @@ from slurmkit.collections import (
     JOB_STATE_PENDING,
     JOB_STATE_RUNNING,
     JOB_STATE_UNKNOWN,
+    collection_id_to_relative_path,
 )
 from slurmkit.config import Config, get_config
 from slurmkit.notification_formatters import (
@@ -1430,7 +1431,10 @@ class NotificationService:
         """Acquire an exclusive lock for collection-final notification workflow."""
         lock_dir = self.config.collection_locks_dir
         lock_dir.mkdir(parents=True, exist_ok=True)
-        lock_path = lock_dir / f"{collection_name}.lock"
+        lock_path = (
+            lock_dir / collection_id_to_relative_path(collection_name).with_suffix(".lock")
+        )
+        lock_path.parent.mkdir(parents=True, exist_ok=True)
 
         fd = os.open(str(lock_path), os.O_CREAT | os.O_RDWR, 0o644)
         start = time.time()
