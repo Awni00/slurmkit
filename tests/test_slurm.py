@@ -14,6 +14,7 @@ from slurmkit.slurm import (
     parse_elapsed_to_seconds,
     parse_timestamp,
     match_output_pattern,
+    resolve_job_output_path,
     _try_match_pattern,
 )
 
@@ -218,6 +219,42 @@ class TestFindJobOutput:
 
             results = find_job_output("99999999", jobs_dir, mock_config)
             assert len(results) == 0
+
+
+class TestResolveJobOutputPath:
+    def test_resolves_sbatch_output_directive_with_job_id(self, tmp_path):
+        logs_dir = tmp_path / "logs"
+        script = tmp_path / "job_scripts" / "train.job"
+        script.parent.mkdir()
+        script.write_text(
+            f"#!/bin/bash\n#SBATCH --output={logs_dir}/train.%j.out\n",
+            encoding="utf-8",
+        )
+
+        output_path = resolve_job_output_path(script, "12345", job_name="train")
+
+        assert output_path == logs_dir / "train.12345.out"
+
+    def test_resolves_array_output_directive_tokens(self, tmp_path):
+        script = tmp_path / "array.job"
+        script.write_text("#!/bin/bash\n#SBATCH -o logs/%x.%A_%a.out\n", encoding="utf-8")
+
+        output_path = resolve_job_output_path(script, "12345_7", job_name="sweep")
+
+        assert output_path == tmp_path / "logs" / "sweep.12345_7.out"
+
+    def test_falls_back_to_existing_output_file(self, tmp_path):
+        jobs_dir = tmp_path / ".jobs"
+        output_file = jobs_dir / "exp1" / "logs" / "train.9001.out"
+        output_file.parent.mkdir(parents=True)
+        output_file.write_text("done\n", encoding="utf-8")
+        script = jobs_dir / "exp1" / "job_scripts" / "train.job"
+        script.parent.mkdir(parents=True)
+        script.write_text("#!/bin/bash\n", encoding="utf-8")
+
+        output_path = resolve_job_output_path(script, "9001", jobs_dir=jobs_dir)
+
+        assert output_path == output_file
 
 
 def test_get_pending_jobs_preserves_dot_suffixes(monkeypatch):

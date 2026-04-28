@@ -16,7 +16,9 @@ Python data structures for easy manipulation.
 from __future__ import annotations
 
 import fnmatch
+import getpass
 import re
+import shlex
 import subprocess
 import sys
 from datetime import datetime
@@ -818,6 +820,113 @@ def find_job_output(
     matches.sort(key=lambda p: p.stat().st_mtime, reverse=True)
 
     return matches
+
+
+def _extract_output_directive(script_path: Path) -> Optional[str]:
+    """Read a job script and return the configured SLURM output pattern."""
+    try:
+        lines = script_path.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return None
+
+    for line in lines:
+        stripped = line.strip()
+        if not stripped.startswith("#SBATCH"):
+            continue
+        directive = stripped[len("#SBATCH"):].strip()
+        if not directive:
+            continue
+
+        if directive.startswith("--output="):
+            return directive.split("=", 1)[1].strip().strip("'\"")
+        if directive.startswith("-o") and len(directive) > 2 and not directive[2].isspace():
+            return directive[2:].strip().strip("'\"")
+
+        try:
+            parts = shlex.split(directive)
+        except ValueError:
+            parts = directive.split()
+        for index, part in enumerate(parts):
+            if part in {"--output", "-o"} and index + 1 < len(parts):
+                return parts[index + 1].strip().strip("'\"")
+
+    return None
+
+
+def _expand_slurm_filename_tokens(pattern: str, *, job_id: str, job_name: Optional[str]) -> Optional[str]:
+    """Best-effort expansion of common SLURM filename tokens."""
+    array_job_id = job_id
+    array_task_id: Optional[str] = None
+    if "_" in job_id:
+        array_job_id, array_task_id = job_id.split("_", 1)
+
+    values = {
+        "j": job_id,
+        "J": job_id,
+        "A": array_job_id,
+        "a": array_task_id,
+        "x": job_name,
+        "u": getpass.getuser(),
+    }
+
+    result: List[str] = []
+    index = 0
+    while index < len(pattern):
+        char = pattern[index]
+        if char != "%" or index + 1 >= len(pattern):
+            result.append(char)
+            index += 1
+            continue
+
+        token = pattern[index + 1]
+        if token == "%":
+            result.append("%")
+            index += 2
+            continue
+
+        value = values.get(token)
+        if value is None:
+            return None
+        result.append(str(value))
+        index += 2
+
+    return "".join(result)
+
+
+def resolve_job_output_path(
+    script_path: Union[str, Path],
+    job_id: str,
+    *,
+    job_name: Optional[str] = None,
+    jobs_dir: Optional[Path] = None,
+    config: Optional[Config] = None,
+) -> Optional[Path]:
+    """
+    Resolve the expected SLURM output path for a submitted job.
+
+    The preferred source is the job script's ``#SBATCH --output``/``-o``
+    directive with common SLURM filename tokens expanded. If the script does not
+    provide a usable directive, fall back to finding an existing ``.out`` file
+    containing the job id under the configured jobs directory.
+    """
+    script = Path(script_path)
+    output_pattern = _extract_output_directive(script)
+    if output_pattern:
+        expanded = _expand_slurm_filename_tokens(
+            output_pattern,
+            job_id=str(job_id),
+            job_name=job_name or script.stem,
+        )
+        if expanded:
+            output_path = Path(expanded).expanduser()
+            if not output_path.is_absolute():
+                output_path = script.parent / output_path
+            return output_path
+
+    matches = find_job_output(str(job_id), jobs_dir=jobs_dir, config=config)
+    if len(matches) == 1:
+        return matches[0]
+    return None
 
 
 def match_output_pattern(

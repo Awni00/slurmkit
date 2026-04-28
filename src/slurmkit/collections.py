@@ -28,7 +28,7 @@ from typing import Any, Dict, Iterator, List, Optional, Set, Union
 import yaml
 
 from slurmkit.config import Config, get_config
-from slurmkit.slurm import get_canonical_sacct_states
+from slurmkit.slurm import get_canonical_sacct_states, resolve_job_output_path
 
 
 COLLECTION_SCHEMA_VERSION = 2
@@ -374,6 +374,7 @@ class Collection:
         self,
         job_name: str,
         job_id: str,
+        output_path: Optional[Union[str, Path]] = None,
         extra_params: Optional[Dict[str, Any]] = None,
         submission_group: Optional[str] = None,
         hostname: Optional[str] = None,
@@ -390,6 +391,7 @@ class Collection:
             job_id=job_id,
             hostname=hostname,
             submitted_at=_now_iso(),
+            output_path=output_path,
             submission_group=submission_group,
             attempt_job_name=attempt_job_name or job_name,
             script_path=attempt_script_path,
@@ -779,27 +781,58 @@ class Collection:
         # legacy parent-only sacct view.
         info_map = get_canonical_sacct_states(job_ids)
         updated = 0
+        changed = False
+        config = get_config()
+        jobs_dir = config.get_path("jobs_dir")
         for job in self._jobs:
             for attempt in job["attempts"]:
                 job_id = attempt.get("job_id")
-                if not job_id or job_id not in info_map:
+                if not job_id:
                     continue
-                info = info_map[job_id]
+                job_id_text = str(job_id)
+                if not attempt.get("output_path") and attempt.get("script_path"):
+                    output_path = resolve_job_output_path(
+                        attempt["script_path"],
+                        job_id_text,
+                        job_name=attempt.get("job_name") or job.get("job_name"),
+                        jobs_dir=jobs_dir,
+                        config=config,
+                    )
+                    if output_path is not None:
+                        attempt["output_path"] = str(output_path)
+                        changed = True
+                if job_id_text not in info_map:
+                    continue
+                info = info_map[job_id_text]
                 new_state = info.get("state")
                 if attempt.get("state") != new_state:
                     attempt["state"] = new_state
                     updated += 1
+                    changed = True
                 # Persist row-level diagnostics alongside canonical state to
                 # support debugging without affecting state-based behavior.
-                attempt["raw_state"] = info.get("raw_state")
+                raw_state = info.get("raw_state")
+                if attempt.get("raw_state") != raw_state:
+                    attempt["raw_state"] = raw_state
+                    changed = True
                 # Start/end come from the canonical resolver's selected/fallback
                 # row ordering, rather than directly trusting the parent row.
-                if info.get("start") and info["start"] != "Unknown":
+                if (
+                    info.get("start")
+                    and info["start"] != "Unknown"
+                    and attempt.get("started_at") != info["start"]
+                ):
                     attempt["started_at"] = info["start"]
-                if info.get("end") and info["end"] != "Unknown":
+                    changed = True
+                if (
+                    info.get("end")
+                    and info["end"] != "Unknown"
+                    and attempt.get("completed_at") != info["end"]
+                ):
                     attempt["completed_at"] = info["end"]
+                    changed = True
 
-        if updated > 0:
+        if changed:
             self._touch()
         return updated
 

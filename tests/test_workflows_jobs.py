@@ -112,7 +112,8 @@ def test_submit_workflow_updates_primary_attempt(monkeypatch, tmp_path):
     manager = CollectionManager(config=config)
     collection = Collection("exp1")
     script = tmp_path / "job1.job"
-    script.write_text("#!/bin/bash\n", encoding="utf-8")
+    logs_dir = tmp_path / ".jobs" / "exp1" / "logs"
+    script.write_text(f"#!/bin/bash\n#SBATCH --output={logs_dir}/job1.%j.out\n", encoding="utf-8")
     collection.add_job("job1", script_path=script)
     manager.save(collection)
 
@@ -124,13 +125,17 @@ def test_submit_workflow_updates_primary_attempt(monkeypatch, tmp_path):
     updated = manager.load("exp1")
     assert result["submitted_count"] == 1
     assert updated.jobs[0]["attempts"][0]["job_id"] == "9001"
+    assert updated.jobs[0]["attempts"][0]["output_path"] == str(logs_dir / "job1.9001.out")
 
 
 def test_resubmit_workflow_adds_attempt(monkeypatch, tmp_path):
     config = get_config(project_root=tmp_path, reload=True)
     manager = CollectionManager(config=config)
     template = tmp_path / "template.job.j2"
-    template.write_text("#!/bin/bash\n#SBATCH --job-name={{ job_name }}\n", encoding="utf-8")
+    template.write_text(
+        "#!/bin/bash\n#SBATCH --job-name={{ job_name }}\n#SBATCH --output={{ logs_dir }}/{{ job_name }}.%j.out\n",
+        encoding="utf-8",
+    )
     scripts_dir = tmp_path / "jobs" / "exp1" / "job_scripts"
     logs_dir = tmp_path / "jobs" / "exp1" / "logs"
     scripts_dir.mkdir(parents=True)
@@ -174,6 +179,7 @@ def test_resubmit_workflow_adds_attempt(monkeypatch, tmp_path):
     assert result["resubmitted_count"] == 1
     assert len(updated.jobs[0]["attempts"]) == 2
     assert updated.jobs[0]["attempts"][1]["job_id"] == "101"
+    assert updated.jobs[0]["attempts"][1]["output_path"] == str(logs_dir / "job1.resubmit-1.101.out")
     assert updated.jobs[0]["attempts"][1]["submission_group"] == "group_a"
 
 

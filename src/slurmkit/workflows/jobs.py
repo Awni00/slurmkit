@@ -21,7 +21,7 @@ from slurmkit.collections import (
 from slurmkit.config import Config
 from slurmkit.generate import JobGenerator, load_job_spec
 from slurmkit.spec_interpolation import has_template_syntax
-from slurmkit.slurm import submit_job
+from slurmkit.slurm import resolve_job_output_path, submit_job
 
 from .shared import (
     ReviewPlan,
@@ -369,9 +369,19 @@ def execute_submit_collection(
         if success:
             submitted += 1
             if not dry_run:
+                output_path = None
+                if job_id is not None:
+                    output_path = resolve_job_output_path(
+                        item["path"],
+                        str(job_id),
+                        job_name=item["job_name"],
+                        jobs_dir=manager.config.get_path("jobs_dir"),
+                        config=manager.config,
+                    )
                 plan.collection.update_job(
                     item["job_name"],
                     job_id=job_id,
+                    output_path=output_path,
                     submitted_at=datetime.now().isoformat(timespec="seconds"),
                 )
         if delay > 0 and index < len(plan.items) - 1 and not dry_run:
@@ -616,9 +626,19 @@ def execute_resubmit_collection(
         if success:
             resubmitted += 1
             if not dry_run:
+                output_path = None
+                if job_id is not None:
+                    output_path = resolve_job_output_path(
+                        attempt_script_path,
+                        str(job_id),
+                        job_name=item["attempt_job_name"],
+                        jobs_dir=manager.config.get_path("jobs_dir"),
+                        config=manager.config,
+                    )
                 plan.collection.add_resubmission(
                     item["job_name"],
                     job_id=str(job_id),
+                    output_path=output_path,
                     extra_params=item["resolved_extra_params"],
                     submission_group=plan.submission_group,
                     attempt_job_name=item["attempt_job_name"],

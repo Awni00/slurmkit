@@ -10,6 +10,7 @@ import pytest
 import yaml
 
 from slurmkit.collections import Collection, CollectionManager
+from slurmkit.config import get_config
 
 
 def _save_collection_many_times(collections_dir: str, worker_index: int, rounds: int) -> None:
@@ -319,3 +320,22 @@ def test_collection_refresh_states_keeps_attempt_when_no_canonical_row(monkeypat
     attempt = collection.jobs[0]["attempts"][0]
     assert attempt["state"] == "FAILED"
     assert attempt["raw_state"] is None
+
+
+def test_collection_refresh_states_backfills_missing_output_path(monkeypatch, tmp_path):
+    get_config(project_root=tmp_path, reload=True)
+    logs_dir = tmp_path / ".jobs" / "exp1" / "logs"
+    script = tmp_path / ".jobs" / "exp1" / "job_scripts" / "job1.job"
+    script.parent.mkdir(parents=True)
+    script.write_text(f"#!/bin/bash\n#SBATCH --output={logs_dir}/job1.%j.out\n", encoding="utf-8")
+
+    collection = Collection("exp1")
+    collection.add_job("job1", script_path=script, job_id="100", state="RUNNING")
+    assert collection.jobs[0]["attempts"][0]["output_path"] is None
+
+    monkeypatch.setattr("slurmkit.collections.get_canonical_sacct_states", lambda *_args, **_kwargs: {})
+
+    updated = collection.refresh_states()
+
+    assert updated == 0
+    assert collection.jobs[0]["attempts"][0]["output_path"] == str(logs_dir / "job1.100.out")

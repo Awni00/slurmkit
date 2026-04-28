@@ -21,6 +21,7 @@ from slurmkit.slurm import (
     get_pending_jobs,
     submit_job,
     find_job_output,
+    resolve_job_output_path,
 )
 from slurmkit.generate import JobGenerator
 
@@ -40,6 +41,7 @@ __all__ = [
     "get_pending_jobs",
     "submit_job",
     "find_job_output",
+    "resolve_job_output_path",
     # Generation
     "JobGenerator",
 ]
